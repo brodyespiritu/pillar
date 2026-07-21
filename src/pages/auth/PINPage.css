@@ -1,0 +1,175 @@
+.pin-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  padding: 24px;
+  background:
+    radial-gradient(120% 100% at 15% 0%, rgba(255,255,255,0.20) 0%, transparent 45%),
+    linear-gradient(150deg, #3B8BFF 0%, #006BFF 55%, #0057D6 100%);
+}
+
+/* Re-lock over an existing page: blur what's behind, float the card */
+.pin-wrap.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  height: auto;
+  background: rgba(11, 53, 88, 0.28);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  animation: pin-overlay-in 0.18s ease;
+}
+@keyframes pin-overlay-in { from { opacity: 0; } to { opacity: 1; } }
+
+.pin-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 360px;
+  max-width: 100%;
+  padding: 40px 36px 32px;
+  background: var(--surface);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 30px 70px rgba(11,53,88,0.30);
+}
+
+.pin-avatar {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-size: 22px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 12px;
+  box-shadow: 0 8px 22px rgba(0,107,255,0.35);
+}
+
+.pin-name {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--text);
+  letter-spacing: -0.3px;
+}
+
+.pin-sub {
+  font-size: 13px;
+  color: var(--text-3);
+  font-weight: 500;
+  margin-top: 4px;
+  margin-bottom: 28px;
+}
+
+/* dots */
+.pin-dots {
+  display: flex;
+  gap: 14px;
+  margin-bottom: 8px;
+}
+
+.pin-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  background: transparent;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.pin-dot.filled {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.pin-dot.error {
+  border-color: var(--red);
+  background: var(--red);
+}
+
+.pin-error {
+  font-size: 12px;
+  color: var(--red);
+  font-weight: 600;
+  margin-top: 6px;
+  margin-bottom: 4px;
+  min-height: 16px;
+}
+
+/* keypad */
+.pin-keypad {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 22px;
+  width: 100%;
+}
+
+.pin-row {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+}
+
+.pin-key {
+  width: 82px;
+  height: 58px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text);
+  transition: background 0.1s, border-color 0.1s, color 0.1s, transform 0.05s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pin-key:hover:not(:disabled) {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.pin-key:active:not(:disabled) { transform: scale(0.94); }
+
+.pin-key.back {
+  font-size: 16px;
+  color: var(--text-2);
+}
+
+.pin-key.invisible {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.pin-signout {
+  margin-top: 26px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-3);
+  background: none;
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.pin-signout:hover {
+  color: var(--text-2);
+  border-color: var(--text-3);
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-6px); }
+  40% { transform: translateX(6px); }
+  60% { transform: translateX(-5px); }
+  80% { transform: translateX(4px); }
+}
+
+.pin-dots.shake { animation: shake 0.4s ease-in-out; }

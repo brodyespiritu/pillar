@@ -1,0 +1,13 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Capability for the main window. Grants the hosted Pillar site access to the native mail bridge so email works in the desktop app.",
+  "windows": ["main"],
+  "remote": {
+    "urls": ["https://pillar-bethesda.vercel.app"]
+  },
+  "permissions": [
+    "core:default",
+    "opener:default"
+  ]
+}

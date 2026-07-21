@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -vE \":0$\")",
+      "Bash(sort -t: -k2 -rn)"
+    ]
+  }
+}

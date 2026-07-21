@@ -1,0 +1,49 @@
+name: build-installers
+
+# Builds native installers on real Windows + macOS machines and attaches
+# them to a GitHub Release. Run manually from the Actions tab, or push a
+# tag like "pillar-v1.0.0".
+on:
+  workflow_dispatch:
+  push:
+    tags: ['pillar-v*']
+
+jobs:
+  build:
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest      # universal .dmg (Apple Silicon + Intel)
+            args: '--target universal-apple-darwin'
+          - platform: windows-latest     # .msi + .exe
+            args: ''
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - name: Install frontend dependencies
+        run: npm install
+
+      - name: Build app + publish release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: pillar-v__VERSION__
+          releaseName: 'Pillar v__VERSION__'
+          releaseBody: 'Download the installer for your platform — Windows (.msi or .exe) or macOS (.dmg).'
+          releaseDraft: false
+          args: ${{ matrix.args }}
