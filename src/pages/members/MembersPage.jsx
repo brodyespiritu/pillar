@@ -3,18 +3,30 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import TopNav from '../../components/TopNav';
 import { P, Icon } from '../../lib/icons';
+import { useAuth } from '../../context/AuthContext';
+import { normalizeRole } from '../../lib/admin';
 import {
   fetchChurchMembers, saveChurchMember, deleteChurchMember, STATUSES, initials, fileToAvatarDataUrl,
+  FAMILY_POSITIONS, GENDERS, MARITAL_STATUSES, MEMBER_STATUSES, RECORD_TYPES, JOINED_HOW_OPTIONS,
+  fmtMDY, ageFromBirthday, familyMembers,
+  parseCsv, mapIndividualList, importMembers,
 } from '../../lib/members';
 import '../care/Modal.css';
 import './Members.css';
 
 export default function MembersPage() {
   const location = useLocation();
+  const { profile } = useAuth();
+  const isAdmin = normalizeRole(profile?.role) === 'Admin';
   const [data, setData]   = useState({ rows: [], missing: false });
   const [search, setSearch] = useState('');
   const [edit, setEdit]   = useState(location.state?.add ? {} : null);
   const [viewing, setViewing] = useState(null);
+  const [importing, setImporting] = useState(false);
+  const [page, setPage] = useState(0);
+  const importRef = useRef(null);
+  const openedRef = useRef(false);
+  const PAGE_SIZE = 12;
 
   async function load() {
     const d = await fetchChurchMembers();
@@ -23,6 +35,39 @@ export default function MembersPage() {
     setViewing(v => v ? (d.rows.find(x => x.id === v.id) || null) : v);
   }
   useEffect(() => { load(); }, []);
+
+  // Open a specific member when arriving from Reports (?state.openMember), once.
+  useEffect(() => {
+    if (openedRef.current) return;
+    const id = location.state?.openMember;
+    if (id && data.rows.length) {
+      const m = data.rows.find(x => x.id === id);
+      if (m) { setViewing(m); openedRef.current = true; }
+    }
+  }, [data.rows, location.state]);
+
+  async function onImportFile(e) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setImporting(true);
+    try {
+      const text = await file.text();
+      const mapped = mapIndividualList(parseCsv(text));
+      if (!mapped.length) { setImporting(false); return alertDialog('No members found in that file.'); }
+      if (!(await confirmDialog({ title: 'Import members', message: `Import ${mapped.length} members from "${file.name}"? People already imported (same source id) will be updated, not duplicated.`, confirmLabel: 'Import' }))) {
+        setImporting(false); return;
+      }
+      const { data: res, error } = await importMembers(mapped);
+      setImporting(false);
+      if (error) return alertDialog(`Import failed: ${error.message}`);
+      await load();
+      alertDialog(`Import complete.\n\n${res.inserted} added · ${res.updated} updated\nDirectory now has ${res.total} members.`);
+    } catch (err) {
+      setImporting(false);
+      alertDialog(`Could not read that file: ${err.message}`);
+    }
+  }
 
   async function removeMember(m) {
     if (!(await confirmDialog({ message: `Remove ${m.name}? This cannot be undone.` }))) return;
@@ -34,9 +79,14 @@ export default function MembersPage() {
   const rows = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return data.rows;
-    return data.rows.filter(m => [m.name, m.phone, m.email, m.tags, m.family]
+    return data.rows.filter(m => [m.name, m.phone, m.email, m.tags, m.family, m.family_name]
       .filter(Boolean).some(v => v.toLowerCase().includes(q)));
   }, [data.rows, search]);
+
+  useEffect(() => { setPage(0); }, [search]);
+  const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages - 1);
+  const pageRows = rows.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE);
 
   return (
     <div className="mbr-wrap">
@@ -44,7 +94,14 @@ export default function MembersPage() {
       <main className="mbr-scroll">
         <div className="mbr-container">
           {viewing ? (
-            <MemberProfile member={viewing} onBack={() => setViewing(null)} onEdit={() => setEdit(viewing)} onDelete={() => removeMember(viewing)} />
+            <MemberProfile
+              member={viewing}
+              allRows={data.rows}
+              onOpenMember={m => setViewing(m)}
+              onBack={() => setViewing(null)}
+              onEdit={() => setEdit(viewing)}
+              onDelete={() => removeMember(viewing)}
+            />
           ) : (<>
             <header className="mbr-hero">
               <span className="mbr-pill">My Church</span>
@@ -56,6 +113,14 @@ export default function MembersPage() {
                   <Icon d={P.search} size={18} className="mbr-search-icon" />
                   <input placeholder="Search members by name, phone, or email…" value={search} onChange={e => setSearch(e.target.value)} />
                 </div>
+                {isAdmin && (
+                  <>
+                    <input ref={importRef} type="file" accept=".csv,text/csv" hidden onChange={onImportFile} />
+                    <button className="mbr-import" onClick={() => importRef.current?.click()} disabled={importing}>
+                      <Icon d={P.arrowUp} size={16} />{importing ? 'Importing…' : 'Import CSV'}
+                    </button>
+                  </>
+                )}
                 <button className="mbr-add" onClick={() => setEdit({})}><Icon d={P.plus} size={16} />Add Member</button>
               </div>
             </header>
@@ -72,11 +137,24 @@ export default function MembersPage() {
                 <p className="mbr-empty-title">{search ? 'No members match your search' : 'No members yet'}</p>
                 <p className="mbr-empty-sub">{search ? 'Try a different name or number.' : 'Add your first member to get started.'}</p>
               </div>
-            ) : (
+            ) : (<>
               <div className="mbr-grid">
-                {rows.map(m => <MemberCard key={m.id} member={m} onOpen={() => setViewing(m)} />)}
+                {pageRows.map(m => <MemberCard key={m.id} member={m} onOpen={() => setViewing(m)} />)}
               </div>
-            )}
+              {rows.length > PAGE_SIZE && (
+                <div className="mbr-pager">
+                  <button className="mbr-pager-btn" onClick={() => setPage(p => Math.max(0, p - 1))} disabled={safePage === 0} aria-label="Previous page">
+                    <Icon d={P.chevL} size={18} />
+                  </button>
+                  <span className="mbr-pager-info">
+                    {safePage * PAGE_SIZE + 1}–{Math.min(rows.length, safePage * PAGE_SIZE + PAGE_SIZE)} of {rows.length}
+                  </span>
+                  <button className="mbr-pager-btn" onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))} disabled={safePage >= totalPages - 1} aria-label="Next page">
+                    <Icon d={P.chevR} size={18} />
+                  </button>
+                </div>
+              )}
+            </>)}
           </>)}
         </div>
       </main>
@@ -113,12 +191,16 @@ function MemberCard({ member, onOpen }) {
 /* ── Full member profile ── */
 const PROFILE_TABS = ['Info', 'Notes', 'Groups', 'Attachments'];
 
-function MemberProfile({ member, onBack, onEdit, onDelete }) {
+function MemberProfile({ member, allRows = [], onOpenMember, onBack, onEdit, onDelete }) {
   const [tab, setTab] = useState('Info');
   const [menu, setMenu] = useState(false);
   const tags = (member.tags || '').split(',').map(t => t.trim()).filter(Boolean);
   const fmt = d => d ? new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : null;
   const mapUrl = member.address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(member.address)}` : null;
+  const age = ageFromBirthday(member.birthday);
+  const family = familyMembers(allRows, member);
+  const yesNo = v => (v === true ? 'Yes' : v === false ? 'No' : null);
+  const trueFalse = v => (v === true ? 'True' : v === false ? 'False' : null);
 
   return (
     <div className="mp2">
@@ -167,26 +249,60 @@ function MemberProfile({ member, onBack, onEdit, onDelete }) {
       {/* Body */}
       {tab === 'Info' && (
         <div className="mp2-grid">
-          <div className="mp2-card">
-            <h2 className="mp2-card-title">Contact Information</h2>
-            <Row label="Name" value={member.name} />
-            <Row label="Home Address" value={member.address}
-              extra={mapUrl && <a href={mapUrl} target="_blank" rel="noreferrer" className="mp2-link">View Map</a>} />
-            <Row label="Phone" value={member.phone && <a href={`tel:${member.phone}`} className="mp2-link">{member.phone}</a>} />
-            <Row label="Email" value={member.email && <a href={`mailto:${member.email}`} className="mp2-link">{member.email}</a>} />
-            <Row label="Birthday" value={fmt(member.birthday)} />
-            <Row label="Status" value={<span className={`mp2-statusbadge ${member.status === 'Inactive' ? 'off' : 'on'}`}>{member.status || 'Active'}</span>} last />
+          <div className="mp2-col">
+            <div className="mp2-card">
+              <h2 className="mp2-card-title">Contact Information</h2>
+              <Row label="Name" value={member.name} />
+              <Row label="Home Address" value={member.address}
+                extra={mapUrl && <a href={mapUrl} target="_blank" rel="noreferrer" className="mp2-link">View Map</a>} />
+              <Row label="Phone" value={member.phone && <a href={`tel:${member.phone}`} className="mp2-link">{member.phone}</a>} />
+              <Row label="Email" value={member.email && <a href={`mailto:${member.email}`} className="mp2-link">{member.email}</a>} last />
+            </div>
+
+            <div className="mp2-card">
+              <h2 className="mp2-card-title">Personal Information</h2>
+              <Row label="Family Position" value={member.family_position} />
+              <Row label="Birthday" value={member.birthday && <>{fmtMDY(member.birthday)}{age != null && <span className="mp2-muted"> / {age} years old</span>}</>} />
+              <Row label="Gender" value={member.gender} />
+              <Row label="Marital Status" value={member.marital_status} />
+              <Row label="Member Status" value={member.member_status} />
+              <Row label="Record Type" value={member.record_type} />
+              <Row label="Joined How" value={member.joined_how} />
+              <Row label="Date Joined" value={fmtMDY(member.date_joined)} />
+              <Row label="Include on Directory" value={yesNo(member.include_directory)} />
+              <Row label="Status Code" value={member.status_code} />
+              <Row label="Active" value={trueFalse(member.active)} last />
+            </div>
           </div>
 
           <aside className="mp2-side">
             <div className="mp2-sidecard">
+              <p className="mp2-side-title">Family</p>
+              {family.length ? (
+                <div className="mp2-family">
+                  {family.map(fm => (
+                    <button key={fm.id} type="button" className="mp2-family-item" onClick={() => onOpenMember?.(fm)}>
+                      <span className="mp2-family-avatar">
+                        {fm.photo_url ? <img src={fm.photo_url} alt={fm.name} /> : <span>{initials(fm.name)}</span>}
+                      </span>
+                      <span className="mp2-family-text">
+                        <span className="mp2-family-name">{fm.name}</span>
+                        {fm.family_position && <span className="mp2-family-role">{fm.family_position}</span>}
+                      </span>
+                      <Icon d={P.chevron} size={16} className="mp2-family-caret" />
+                    </button>
+                  ))}
+                </div>
+              ) : member.family ? (
+                <p className="mp2-side-text">{member.family}</p>
+              ) : (
+                <p className="mp2-side-empty">No family recorded.</p>
+              )}
+            </div>
+            <div className="mp2-sidecard">
               <p className="mp2-side-title">Groups</p>
               {tags.length ? <div className="mbr-card-tags">{tags.map(t => <span key={t} className="mbr-tag">{t}</span>)}</div>
                 : <p className="mp2-side-empty">No groups assigned.</p>}
-            </div>
-            <div className="mp2-sidecard">
-              <p className="mp2-side-title">Family</p>
-              {member.family ? <p className="mp2-side-text">{member.family}</p> : <p className="mp2-side-empty">No family recorded.</p>}
             </div>
           </aside>
         </div>
@@ -209,6 +325,18 @@ function MemberProfile({ member, onBack, onEdit, onDelete }) {
         <div className="mp2-card"><h2 className="mp2-card-title">Attachments</h2><p className="mp2-side-empty">No attachments — file uploads coming soon.</p></div>
       )}
     </div>
+  );
+}
+
+/* A <select> that always includes the current value, even if it isn't one of
+   the presets (CSV imports may bring values like "STATEMENT"). */
+function SelectWithValue({ value, onChange, options, placeholder = 'Select…' }) {
+  const opts = value && !options.includes(value) ? [value, ...options] : options;
+  return (
+    <select value={value || ''} onChange={e => onChange(e.target.value)}>
+      <option value="">{placeholder}</option>
+      {opts.map(o => <option key={o} value={o}>{o}</option>)}
+    </select>
   );
 }
 
@@ -250,6 +378,12 @@ function MemberModal({ member, onClose, onSaved, onDeleted }) {
     name: member.name || '', phone: member.phone || '', email: member.email || '',
     address: member.address || '', photo_url: member.photo_url || '', birthday: member.birthday || '',
     family: member.family || '', tags: member.tags || '', status: member.status || 'Active', notes: member.notes || '',
+    family_name: member.family_name || '', family_position: member.family_position || '',
+    gender: member.gender || '', marital_status: member.marital_status || '',
+    member_status: member.member_status || 'Member', record_type: member.record_type || 'Member',
+    joined_how: member.joined_how || '', date_joined: member.date_joined || '',
+    include_directory: member.include_directory ?? true, status_code: member.status_code || 'Active',
+    active: member.active ?? true,
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -321,7 +455,46 @@ function MemberModal({ member, onClose, onSaved, onDeleted }) {
               <select value={f.status} onChange={e => set('status', e.target.value)}>{STATUSES.map(s => <option key={s}>{s}</option>)}</select>
             </label>
           </div>
-          <label className="field-group"><span>Family</span><input value={f.family} onChange={e => set('family', e.target.value)} placeholder="Spouse & children" /></label>
+          <div className="field-row">
+            <label className="field-group"><span>Family / Household Name</span><input value={f.family_name} onChange={e => set('family_name', e.target.value)} placeholder="e.g. Smith Family" /></label>
+            <label className="field-group"><span>Family Position</span>
+              <SelectWithValue value={f.family_position} onChange={v => set('family_position', v)} options={FAMILY_POSITIONS} placeholder="Select…" />
+            </label>
+          </div>
+
+          <div className="mbr-section-label">Personal Information</div>
+          <div className="field-row">
+            <label className="field-group"><span>Gender</span>
+              <SelectWithValue value={f.gender} onChange={v => set('gender', v)} options={GENDERS} placeholder="Select…" />
+            </label>
+            <label className="field-group"><span>Marital Status</span>
+              <SelectWithValue value={f.marital_status} onChange={v => set('marital_status', v)} options={MARITAL_STATUSES} placeholder="Select…" />
+            </label>
+          </div>
+          <div className="field-row">
+            <label className="field-group"><span>Member Status</span>
+              <SelectWithValue value={f.member_status} onChange={v => set('member_status', v)} options={MEMBER_STATUSES} placeholder="Select…" />
+            </label>
+            <label className="field-group"><span>Record Type</span>
+              <SelectWithValue value={f.record_type} onChange={v => set('record_type', v)} options={RECORD_TYPES} placeholder="Select…" />
+            </label>
+          </div>
+          <div className="field-row">
+            <label className="field-group"><span>Joined How</span>
+              <SelectWithValue value={f.joined_how} onChange={v => set('joined_how', v)} options={JOINED_HOW_OPTIONS} placeholder="Select…" />
+            </label>
+            <label className="field-group"><span>Date Joined</span><input type="date" value={f.date_joined || ''} onChange={e => set('date_joined', e.target.value)} /></label>
+          </div>
+          <div className="field-row">
+            <label className="field-group"><span>Include on Directory</span>
+              <select value={f.include_directory ? 'Yes' : 'No'} onChange={e => set('include_directory', e.target.value === 'Yes')}><option>Yes</option><option>No</option></select>
+            </label>
+            <label className="field-group"><span>Status Code</span><input value={f.status_code} onChange={e => set('status_code', e.target.value)} placeholder="Active" /></label>
+          </div>
+          <label className="field-group"><span>Active</span>
+            <select value={f.active ? 'True' : 'False'} onChange={e => set('active', e.target.value === 'True')}><option>True</option><option>False</option></select>
+          </label>
+
           <label className="field-group"><span>Groups / Tags</span><input value={f.tags} onChange={e => set('tags', e.target.value)} placeholder="e.g. Choir, Small Group A" /></label>
           <label className="field-group"><span>Notes</span><textarea rows={3} value={f.notes} onChange={e => set('notes', e.target.value)} placeholder="Anything worth remembering…" /></label>
           {error && <p className="modal-error">{error}</p>}

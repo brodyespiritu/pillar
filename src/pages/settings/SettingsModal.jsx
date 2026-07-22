@@ -1,8 +1,9 @@
-import { confirmDialog } from "../../lib/dialog";
+import { confirmDialog, alertDialog } from "../../lib/dialog";
 import { useEffect, useMemo, useState } from 'react';
 import { P, Icon } from '../../lib/icons';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
+import { enableDesktopNotifications, notificationPermission, getPermission, blockedHelpText, unsupportedHelpText } from '../../lib/notify';
 import { fetchEmailGroups, createGroup as createEmailGroup, addGroupEmail, removeGroupEmail, deleteGroup } from '../../lib/emailGroups';
 import './Settings.css';
 
@@ -120,7 +121,9 @@ const NOTIF_DEFAULT = Object.fromEntries(NOTIF.flatMap(g => g.rows).map(r => [r.
 
 function Notifications() {
   const [prefs, setPrefs] = useLocalState('notif', NOTIF_DEFAULT);
-  const [perm, setPerm]   = useState(typeof Notification !== 'undefined' ? Notification.permission : 'default');
+  const [perm, setPerm]   = useState(notificationPermission());
+
+  useEffect(() => { getPermission().then(setPerm); }, []);
 
   const set = (key, chan, val) => setPrefs(p => ({ ...p, [key]: { ...NOTIF_DEFAULT[key], ...p[key], [chan]: val } }));
   const disableAllDesktop = () => setPrefs(p => {
@@ -129,9 +132,10 @@ function Notifications() {
     return next;
   });
   async function enablePush() {
-    if (typeof Notification === 'undefined') return;
-    const res = await Notification.requestPermission();
+    const res = await enableDesktopNotifications();
     setPerm(res);
+    if (res === 'denied') alertDialog(blockedHelpText());
+    else if (res === 'unsupported') alertDialog(unsupportedHelpText());
   }
 
   return (

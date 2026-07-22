@@ -11,6 +11,7 @@ import EmailPage from './pages/email/EmailPage';
 import AdminPage from './pages/admin/AdminPage';
 import SmsPage from './pages/sms/SmsPage';
 import MembersPage from './pages/members/MembersPage';
+import ReportsPage from './pages/reports/ReportsPage';
 import ServicePlanner from './pages/services/ServicePlanner';
 import OnboardingWizard from './pages/onboarding/OnboardingWizard';
 import OverviewPage from './pages/app/OverviewPage';
@@ -72,6 +73,7 @@ export default function App() {
         <Route path="/admin"    element={<AdminPage />} />
         <Route path="/sms"      element={<SmsPage />} />
         <Route path="/members"  element={<MembersPage />} />
+        <Route path="/reports"  element={<ReportsPage />} />
         <Route path="/services" element={<ServicePlanner />} />
 
         {/* Bethesda App admin — gated to admins only */}

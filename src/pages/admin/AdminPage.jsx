@@ -3,7 +3,7 @@ import { useLocation } from 'react-router-dom';
 import TopNav from '../../components/TopNav';
 import { P, Icon } from '../../lib/icons';
 import {
-  fetchStaff, updateStaff, removeStaff, resetPin, normalizeRole, roleColor,
+  fetchStaff, updateStaff, removeStaff, resetPin, resetPassword, normalizeRole, roleColor,
   fetchTimeOff, decideTimeOff, fetchChangeLog, ACTION_COLORS,
   setEmulation, timeAgo,
 } from '../../lib/admin';
@@ -157,6 +157,16 @@ function UsersTab({ staff, testMode, pendingPTO, reload, onGoTimeOff, initialSea
     if (error) return toast(`Could not reset PIN: ${error.message}`);
     toast('PIN reset.'); reload();
   }
+  async function doResetPassword(u) {
+    setMenu(null);
+    if (testMode) return toast('Test Mode: password not reset.');
+    const pw = await promptDialog({ title: 'Reset login password', message: `Set a new login password for ${u.name}. Share it with them — they can change it later.`, placeholder: 'New password (min 6 characters)', confirmLabel: 'Reset password' });
+    if (!pw) return;
+    if (pw.length < 6) return toast('Password must be at least 6 characters.');
+    const { error } = await resetPassword(u.id, pw);
+    if (error) return toast(`Could not reset password: ${error.message}`);
+    toast(`Password reset for ${u.name}.`);
+  }
   async function doInvite(u) {
     setMenu(null);
     if (testMode) return toast('Test Mode: invite not sent.');
@@ -258,6 +268,7 @@ function UsersTab({ staff, testMode, pendingPTO, reload, onGoTimeOff, initialSea
                               <Icon d={P.radio} size={14} />Control{u.id === user?.id ? ' (you)' : ''}
                             </button>
                             <button onClick={() => { setMenu(null); doReset(u); }}><Icon d={P.lock} size={14} />Reset PIN</button>
+                            <button onClick={() => { setMenu(null); doResetPassword(u); }}><Icon d={P.person} size={14} />Reset Password</button>
                             <button onClick={() => doInvite(u)}><Icon d={P.mail} size={14} />Send Invite</button>
                             <button onClick={() => { setMenu(null); setEmulation({ id: u.id, name: u.name, role: normalizeRole(u.role) }); toast(`Now viewing as ${u.name}.`); }}>
                               <Icon d={P.person} size={14} />Emulate User

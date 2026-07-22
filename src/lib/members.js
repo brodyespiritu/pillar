@@ -2,6 +2,140 @@ import { supabase } from './supabase';
 
 export const STATUSES = ['Active', 'Inactive'];
 
+/* ── Personal-information option lists ── */
+export const FAMILY_POSITIONS = ['Head', 'Spouse', 'Child', 'Other'];
+export const GENDERS = ['Male', 'Female'];
+export const MARITAL_STATUSES = ['Single', 'Married', 'Widowed', 'Divorced', 'Separated'];
+export const MEMBER_STATUSES = ['Member', 'Regular Attender', 'Visitor', 'Inactive'];
+export const RECORD_TYPES = ['Member', 'Visitor', 'Prospect'];
+export const JOINED_HOW_OPTIONS = ['Statement', 'Baptism', 'Transfer', 'Profession of Faith', 'Other'];
+
+/* Order family members so the head comes first, then spouse, then children. */
+const FAMILY_ORDER = { head: 0, spouse: 1, child: 2, other: 3 };
+
+/* Format a date value as MM/DD/YYYY without timezone drift. */
+export function fmtMDY(d) {
+  if (!d) return null;
+  const s = String(d);
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return `${m[2]}/${m[3]}/${m[1]}`;
+  const x = new Date(d);
+  if (isNaN(x)) return null;
+  return `${String(x.getMonth() + 1).padStart(2, '0')}/${String(x.getDate()).padStart(2, '0')}/${x.getFullYear()}`;
+}
+
+/* Whole-years age from a birthday (YYYY-MM-DD or Date-parseable). */
+export function ageFromBirthday(b) {
+  if (!b) return null;
+  const s = String(b);
+  let y, mo, d;
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) { y = +m[1]; mo = +m[2]; d = +m[3]; }
+  else { const x = new Date(b); if (isNaN(x)) return null; y = x.getFullYear(); mo = x.getMonth() + 1; d = x.getDate(); }
+  const now = new Date();
+  let age = now.getFullYear() - y;
+  const mDiff = (now.getMonth() + 1) - mo;
+  if (mDiff < 0 || (mDiff === 0 && now.getDate() < d)) age--;
+  return age >= 0 && age < 130 ? age : null;
+}
+
+/* Household key — the import's family_id if present, else the free-text name. */
+const familyKey = r => (r.family_id || '').trim() || (r.family_name || '').trim().toLowerCase();
+
+/* Everyone else in the same household, head-first. */
+export function familyMembers(rows, member) {
+  const key = familyKey(member);
+  if (!key) return [];
+  return rows
+    .filter(r => r.id !== member.id && familyKey(r) === key)
+    .sort((a, b) => {
+      const pa = FAMILY_ORDER[(a.family_position || 'other').toLowerCase()] ?? 3;
+      const pb = FAMILY_ORDER[(b.family_position || 'other').toLowerCase()] ?? 3;
+      return pa - pb || (a.name || '').localeCompare(b.name || '');
+    });
+}
+
+/* ── CSV import ── */
+
+/* Minimal RFC-4180 CSV parser: handles quoted fields, embedded commas,
+   escaped quotes ("") and \r\n / \n line endings. Returns array of rows. */
+export function parseCsv(text) {
+  const rows = [];
+  let row = [], field = '', inQuotes = false;
+  const s = text.replace(/^﻿/, ''); // strip BOM
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (inQuotes) {
+      if (c === '"') {
+        if (s[i + 1] === '"') { field += '"'; i++; }
+        else inQuotes = false;
+      } else field += c;
+    } else if (c === '"') inQuotes = true;
+    else if (c === ',') { row.push(field); field = ''; }
+    else if (c === '\n') { row.push(field); rows.push(row); row = []; field = ''; }
+    else if (c === '\r') { /* ignore, handled by \n */ }
+    else field += c;
+  }
+  if (field !== '' || row.length) { row.push(field); rows.push(row); }
+  return rows;
+}
+
+/* Map a parsed CSV (Realm "Individual List" export) to church_members rows.
+   Keyed by header name, so column order can vary. */
+export function mapIndividualList(rows) {
+  if (!rows.length) return [];
+  const header = rows[0].map(h => h.trim().toLowerCase());
+  const idx = name => header.indexOf(name.toLowerCase());
+  const col = {
+    id: idx('Individual Id'), label: idx('Label'), first: idx('First Name'), last: idx('Last Name'),
+    email: idx('Primary Email'), phone: idx('Primary Phone Number'), family: idx('Family Id'),
+    deceased: idx('Date Marked Deceased'),
+    a1: idx('Mailing Address 1'), a2: idx('Mailing Address 2'), city: idx('Mailing City'),
+    region: idx('Mailing Region'), postal: idx('Mailing Postal Code'),
+  };
+  const get = (r, i) => (i >= 0 && r[i] != null ? String(r[i]).trim() : '');
+
+  const out = [];
+  for (let n = 1; n < rows.length; n++) {
+    const r = rows[n];
+    if (!r || r.every(v => !String(v || '').trim())) continue; // skip blank lines
+    const first = get(r, col.first), last = get(r, col.last);
+    const name = get(r, col.label) || [first, last].filter(Boolean).join(' ').trim();
+    if (!name) continue;
+
+    const street = [get(r, col.a1), get(r, col.a2)].filter(Boolean).join(', ');
+    const cityLine = [get(r, col.city), [get(r, col.region), get(r, col.postal)].filter(Boolean).join(' ')]
+      .filter(Boolean).join(', ');
+    const address = [street, cityLine].filter(Boolean).join(', ');
+    const deceased = !!get(r, col.deceased);
+
+    out.push({
+      external_id: get(r, col.id) || null,
+      name,
+      email: get(r, col.email) || null,
+      phone: get(r, col.phone) || null,
+      address: address || null,
+      family_id: get(r, col.family) || null,
+      family_name: last ? `${last} Family` : null,
+      active: !deceased,
+      status: deceased ? 'Inactive' : 'Active',
+    });
+  }
+  return out;
+}
+
+/* Bulk import via the admin-only edge function; returns confirmed DB counts. */
+export async function importMembers(rows) {
+  const { data, error } = await supabase.functions.invoke('admin-import-members', { body: { rows } });
+  if (error) {
+    let msg = error.message;
+    try { const j = await error.context?.json?.(); if (j?.error) msg = j.error; } catch { /* keep default */ }
+    return { error: { message: msg } };
+  }
+  if (data?.error) return { error: { message: data.error } };
+  return { data };
+}
+
 export async function fetchChurchMembers() {
   const { data, error } = await supabase.from('church_members').select('*').order('name');
   if (error) return { rows: [], missing: true };
@@ -11,6 +145,7 @@ export async function fetchChurchMembers() {
 export async function saveChurchMember(member) {
   const payload = { ...member };
   if (payload.birthday === '') payload.birthday = null;
+  if (payload.date_joined === '') payload.date_joined = null;
   if (member.id) {
     const { data, error } = await supabase.from('church_members').update(payload).eq('id', member.id).select().single();
     return { data, error };

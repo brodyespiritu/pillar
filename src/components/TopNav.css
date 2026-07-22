@@ -13,7 +13,9 @@
   align-items: center;
   height: 64px;
   padding: 0 24px;
-  margin: 14px 16px 0;
+  margin: 14px auto 0;
+  width: calc(100% - 32px);
+  max-width: 1340px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -27,7 +29,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-left: clamp(16px, 5vw, 120px);
+  margin-left: 4px;
   margin-right: 28px;
   white-space: nowrap;
   cursor: pointer;
@@ -130,6 +132,7 @@
 
 .tn-col { flex: 1; display: flex; flex-direction: column; gap: 6px; }
 .tn-col.right { min-width: 180px; }
+.tn-col.mid { margin-left: 44px; min-width: 190px; }
 
 .tn-divider { width: 1px; background: var(--border); margin: 0 32px; flex-shrink: 0; }
 

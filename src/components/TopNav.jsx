@@ -1,33 +1,17 @@
 import { alertDialog } from "../lib/dialog";
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useSettings } from '../context/SettingsContext';
 import { P, Icon } from '../lib/icons';
-import { fetchMembers } from '../lib/care';
-import { fetchGuests, isProspect } from '../lib/guests';
-import { fetchEvents } from '../lib/calendar';
-import { fetchStaff, normalizeRole } from '../lib/admin';
+import { normalizeRole } from '../lib/admin';
+import { useGlobalSearch } from '../lib/globalSearch';
 import './TopNav.css';
 
-/* ── Global search index ── */
 const PAGE_LABELS = {
   '/': 'Home', '/cares': 'Care List', '/guests': 'Guest List',
   '/calendar': 'Calendar', '/email': 'Email', '/admin': 'Admin',
 };
-
-const PAGE_ENTRIES = [
-  { icon: P.heart,    name: 'Care List',      sub: 'Pastoral care & visits',   to: '/cares',    kw: 'cares pastoral members' },
-  { icon: P.users,    name: 'Guest List',     sub: 'Visitors & prospects',     to: '/guests',   kw: 'guests prospects visitors' },
-  { icon: P.calendar, name: 'Calendar',       sub: 'Events & schedule',        to: '/calendar', kw: 'events schedule' },
-  { icon: P.mail,     name: 'Email',          sub: 'Gmail / Yahoo inbox',      to: '/email',    kw: 'inbox mail compose' },
-  { icon: P.shield,   name: 'Admin Dashboard', sub: 'Staff, settings & tools', to: '/admin',    kw: 'admin staff settings' },
-  { icon: P.person,   name: 'Users',          sub: 'Admin · staff management', to: '/admin', state: { tab: 'users' },   kw: 'staff roles pins' },
-  { icon: P.clock,    name: 'Time Off',       sub: 'Admin · PTO & requests',   to: '/admin', state: { tab: 'timeoff' }, kw: 'pto vacation requests' },
-  { icon: P.layers,   name: 'Merge Tool',     sub: 'Admin · deduplicate care', to: '/admin', state: { tab: 'data' },    kw: 'duplicate merge change log audit' },
-  { icon: P.announce, name: 'Reminders',      sub: 'Admin · follow-up emails', to: '/admin', state: { tab: 'email' },   kw: 'reminders automated scanner' },
-  { icon: P.link,     name: 'Integrations',   sub: 'Admin · API tokens',       to: '/admin', state: { tab: 'tools' },   kw: 'canva token forms' },
-];
 
 const NAV_MENUS = {
   'My Church': {
@@ -38,6 +22,12 @@ const NAV_MENUS = {
         { icon: P.users,  name: 'Guest List', sub: 'Manage visitors and guests', to: '/guests', actions: ['Add Guest', 'Send Welcome Email', 'Export List', 'View All'] },
         { icon: P.person, name: 'Members',    sub: 'Congregation directory', to: '/members', actions: ['Add Member', 'Edit Member', 'View All'] },
         { icon: P.shield, name: 'Admin',      sub: 'Dashboard & controls', to: '/admin', actions: ['View Dashboard', 'App Settings', 'Audit Log', 'View All'] },
+      ],
+    },
+    mid: {
+      heading: 'Reporting',
+      items: [
+        { icon: P.grid, name: 'Reports', sub: 'Custom queries & lists', to: '/reports' },
       ],
     },
     right: { heading: 'Quick Actions', items: [
@@ -93,54 +83,8 @@ export default function TopNav({ onNewClick }) {
   const [hoveredItem, setHoveredItem] = useState(null);
   const [profileOpen, setProfileOpen] = useState(false);
   const [query, setQuery] = useState('');
-  const [index, setIndex] = useState(null);   // { members, guests, events, staff }
   const leaveTimer = useRef(null);
-
-  // Lazy-load searchable data the first time the user types
-  useEffect(() => {
-    if (!query.trim() || index) return;
-    Promise.all([fetchMembers(), fetchGuests(), fetchEvents(), fetchStaff()])
-      .then(([members, guests, events, staffList]) => setIndex({ members, guests, events, staff: staffList }))
-      .catch(() => setIndex({ members: [], guests: [], events: [], staff: [] }));
-  }, [query, index]);
-
-  const search = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return null;
-    const has = (...vals) => vals.filter(Boolean).some(v => String(v).toLowerCase().includes(q));
-
-    const items = [];
-    PAGE_ENTRIES.forEach(p => {
-      if (has(p.name, p.sub, p.kw)) items.push({ ...p, module: p.to, kind: 'page' });
-    });
-    (index?.members || []).forEach(m => {
-      if (has(m.full_name, m.category, m.care_notes)) items.push({
-        icon: P.heart, name: m.full_name, sub: `Care member · ${m.category}`, to: '/cares', state: { openMember: m.id }, module: '/cares',
-      });
-    });
-    (index?.guests || []).forEach(g => {
-      if (has(g.full_name, g.type, g.email, g.phone)) items.push({
-        icon: P.users, name: g.full_name, sub: `Guest · ${g.type}`, to: '/guests', state: { q: g.full_name, prospect: isProspect(g) }, module: '/guests',
-      });
-    });
-    (index?.events || []).forEach(e => {
-      if (has(e.title, e.category, e.location)) items.push({
-        icon: P.calendar, name: e.title, sub: `Event · ${e.start_date}`, to: '/calendar', state: { openEvent: e.id, date: e.start_date }, module: '/calendar',
-      });
-    });
-    (index?.staff || []).forEach(s => {
-      if (has(s.name, s.email, s.role)) items.push({
-        icon: P.person, name: s.name, sub: `Staff · ${s.role || 'Staff'}`, to: '/admin', state: { tab: 'users', q: s.name }, module: '/admin',
-      });
-    });
-
-    const here = location.pathname;
-    // A page-link pointing at the page you're already on is useless — drop it
-    const useful = items.filter(i => !(i.kind === 'page' && i.to === here && !i.state));
-    const current = useful.filter(i => i.module === here).slice(0, 5);
-    const across  = useful.filter(i => !current.includes(i)).slice(0, 7);
-    return { current, across, loading: !index };
-  }, [query, index, location.pathname]);
+  const search = useGlobalSearch(query);
 
   function goSearch(item) {
     setQuery('');
@@ -180,7 +124,10 @@ export default function TopNav({ onNewClick }) {
             >
               <button
                 className={`tn-link ${openMenu === label ? 'active' : ''}`}
-                onClick={() => setOpenMenu(openMenu === label ? null : label)}
+                onClick={() => {
+                  if (label === 'Settings') { setOpenMenu(null); openSettings('general'); return; }
+                  setOpenMenu(openMenu === label ? null : label);
+                }}
               >
                 {label}
                 {NAV_MENUS[label] && <Icon d={P.chevron} size={16} />}
@@ -205,11 +152,31 @@ export default function TopNav({ onNewClick }) {
                     ))}
                   </div>
 
+                  {NAV_MENUS[label].mid && (
+                    <div className="tn-col mid">
+                      <p className="tn-heading">{NAV_MENUS[label].mid.heading}</p>
+                      {NAV_MENUS[label].mid.items.map(item => (
+                        <button key={item.name}
+                          className={`tn-dd-item ${hoveredItem === item.name ? 'hovered' : ''}`}
+                          onMouseEnter={() => setHoveredItem(item.name)}
+                          onClick={() => go(item)}
+                        >
+                          <div className="tn-dd-icon"><Icon d={item.icon} size={24} /></div>
+                          <div className="tn-dd-text">
+                            <p className="tn-dd-name">{item.name}</p>
+                            {item.sub && <p className="tn-dd-sub">{item.sub}</p>}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
                   <div className="tn-divider" />
 
                   <div className="tn-col right">
                     {(() => {
-                      const active = NAV_MENUS[label].left.items.find(i => i.name === hoveredItem);
+                      const menu = NAV_MENUS[label];
+                      const active = [...menu.left.items, ...(menu.mid?.items || [])].find(i => i.name === hoveredItem);
                       if (active?.actions) {
                         return (<>
                           <p className="tn-heading">{active.name}</p>

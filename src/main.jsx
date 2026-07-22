@@ -4,7 +4,10 @@ import { BrowserRouter } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import App from './App';
 import Dialogs from './components/Dialogs';
+import { startAutoUpdate } from './lib/autoUpdate';
 import './styles/global.css';
+
+startAutoUpdate();
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>

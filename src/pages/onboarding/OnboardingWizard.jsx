@@ -2,6 +2,8 @@ import { useState, useMemo } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { PROVIDERS, connectAccount } from '../../lib/email';
+import { enableDesktopNotifications, blockedHelpText, unsupportedHelpText } from '../../lib/notify';
+import { alertDialog } from '../../lib/dialog';
 import { P, Icon } from '../../lib/icons';
 import './onboarding.css';
 
@@ -75,11 +77,13 @@ export default function OnboardingWizard() {
   }, [stepKey, code, codeOk, name, pin, pin2]);
 
   async function enableDesktop() {
-    try {
-      if (!('Notification' in window)) { setDesktopOn(false); return; }
-      const res = await Notification.requestPermission();
-      setDesktopOn(res === 'granted');
-    } catch { setDesktopOn(false); }
+    const res = await enableDesktopNotifications();
+    setDesktopOn(res === 'granted');
+    if (res === 'denied') {
+      alertDialog(blockedHelpText());
+    } else if (res === 'unsupported') {
+      alertDialog(unsupportedHelpText());
+    }
   }
 
   const setSlot = (i, key) => setFeatured(f => f.map((k, idx) => (idx === i ? key : k)));

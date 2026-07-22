@@ -9,6 +9,7 @@ import { fetchGuests, computeGuestStats } from '../../lib/guests';
 import { fetchChurchMembers } from '../../lib/members';
 import { fetchRecentReads, sampleHistory } from '../../lib/attendance';
 import { fetchEvents, eventCoversDay } from '../../lib/calendar';
+import { useGlobalSearch } from '../../lib/globalSearch';
 import './HomePage.css';
 
 export default function HomePage() {
@@ -62,14 +63,18 @@ export default function HomePage() {
     const chosen = Array.isArray(pick) ? pick.map(k => byKey[k]).filter(Boolean) : [];
     return chosen.length ? chosen.slice(0, 3) : MODULES.slice(0, 3);
   }, [MODULES, profile]);
-  const query = q.trim().toLowerCase();
-  const results = query
-    ? MODULES.filter(m => [m.title, m.sub, m.kw].some(v => v.toLowerCase().includes(query)))
-    : MODULES;
+  // Same global search as the top-nav bar: pages + live members/guests/events/staff.
+  const search = useGlobalSearch(q);
+  const hits = search ? [...search.current, ...search.across] : [];
+
+  const goSearch = item => {
+    setQ('');
+    navigate(item.to, item.state ? { state: item.state } : undefined);
+  };
 
   const onSubmit = e => {
     e.preventDefault();
-    if (results.length) results[0].onClick();
+    if (hits.length) goSearch(hits[0]);
   };
 
   return (
@@ -92,10 +97,32 @@ export default function HomePage() {
               <input
                 value={q}
                 onChange={e => setQ(e.target.value)}
-                placeholder="Search for a tool or page…"
+                onKeyDown={e => e.key === 'Escape' && setQ('')}
+                placeholder="Search people, guests, events, pages…"
                 autoComplete="off"
               />
               {q && <button type="button" className="hero-search-x" onClick={() => setQ('')} aria-label="Clear"><Icon d={P.close} size={16} /></button>}
+
+              {search && (
+                <>
+                  <div className="hero-search-backdrop" onClick={() => setQ('')} />
+                  <div className="hero-search-menu">
+                    {search.loading && <p className="hero-search-empty">Searching…</p>}
+                    {hits.map((r, i) => (
+                      <button type="button" key={i} className="hero-search-item" onClick={() => goSearch(r)}>
+                        <span className="hero-search-ic"><Icon d={r.icon} size={18} /></span>
+                        <span className="hero-search-txt">
+                          <span className="hero-search-name">{r.name}</span>
+                          <span className="hero-search-sub">{r.sub}</span>
+                        </span>
+                      </button>
+                    ))}
+                    {!search.loading && hits.length === 0 && (
+                      <p className="hero-search-empty">No results for “{q.trim()}”.</p>
+                    )}
+                  </div>
+                </>
+              )}
             </form>
 
             <div className="hero-cards">
@@ -108,20 +135,14 @@ export default function HomePage() {
         <section className="roles">
           <div className="roles-inner">
             <span className="roles-pill">Your church</span>
-            <h2 className="roles-title">{query ? 'Search results' : 'Everything in one place'}</h2>
+            <h2 className="roles-title">Everything in one place</h2>
             <p className="roles-sub">
-              {query
-                ? `${results.length} ${results.length === 1 ? 'match' : 'matches'} for “${q.trim()}”.`
-                : 'Jump into any part of Pillar — care, guests, services, messaging, and more.'}
+              Jump into any part of Pillar — care, guests, services, messaging, and more.
             </p>
 
-            {results.length === 0 ? (
-              <p className="roles-empty">No tools match your search.</p>
-            ) : (
-              <div className="roles-grid">
-                {results.map(m => <RoleCard key={m.key} module={m} light />)}
-              </div>
-            )}
+            <div className="roles-grid">
+              {MODULES.map(m => <RoleCard key={m.key} module={m} light />)}
+            </div>
           </div>
         </section>
       </main>

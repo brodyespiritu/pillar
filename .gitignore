@@ -31,7 +31,10 @@ src-tauri/target
 .vercel
 .env*
 
-# Hosted installer copies (built fresh by CI)
+# Hosted installer copies (released via GitHub, not committed)
 public/*.dmg
 public/*.msi
 public/*.exe
+
+# Local runtime lock
+.claude/scheduled_tasks.lock

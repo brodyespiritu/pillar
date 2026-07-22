@@ -16,9 +16,23 @@
 .mbr-search input::placeholder { color: var(--text-3); }
 .mbr-add { display: flex; align-items: center; gap: 7px; padding: 0 20px; border-radius: var(--radius-sm); background: var(--accent); color: #fff; font-size: 14px; font-weight: 600; white-space: nowrap; }
 .mbr-add:hover { background: var(--accent-hover); }
+.mbr-import { display: flex; align-items: center; gap: 7px; padding: 0 18px; border-radius: var(--radius-sm); background: var(--surface); border: 1px solid var(--border); color: var(--text); font-size: 14px; font-weight: 600; white-space: nowrap; }
+.mbr-import:hover:not(:disabled) { background: var(--surface-2); border-color: #C6D5EC; }
+.mbr-import:disabled { opacity: 0.6; cursor: default; }
 
 /* Grid */
 .mbr-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+
+/* Pager */
+.mbr-pager { display: flex; align-items: center; justify-content: center; gap: 18px; margin-top: 28px; }
+.mbr-pager-btn {
+  width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;
+  border-radius: 50%; background: var(--surface); border: 1px solid var(--border); color: var(--text);
+  cursor: pointer; transition: background 0.12s, border-color 0.12s;
+}
+.mbr-pager-btn:hover:not(:disabled) { background: var(--surface-2); border-color: #C6D5EC; }
+.mbr-pager-btn:disabled { opacity: 0.4; cursor: default; }
+.mbr-pager-info { font-size: 14px; font-weight: 600; color: var(--text-2); min-width: 120px; text-align: center; }
 
 /* Card — care-card style with avatar top-right */
 .mbr-card {
@@ -111,7 +125,35 @@
 .mp2-statusbadge.on { background: var(--green-soft); color: var(--green); }
 .mp2-statusbadge.off { background: var(--surface-2); color: var(--text-2); }
 
+.mp2-col { display: flex; flex-direction: column; gap: 16px; }
+.mp2-muted { color: var(--text-3); font-weight: 400; }
+
 .mp2-side { display: flex; flex-direction: column; gap: 16px; }
+
+/* Clickable family members */
+.mp2-family { display: flex; flex-direction: column; gap: 4px; }
+.mp2-family-item {
+  display: flex; align-items: center; gap: 11px; width: 100%; text-align: left;
+  background: none; border: none; padding: 8px; border-radius: 10px; cursor: pointer;
+  transition: background 0.12s;
+}
+.mp2-family-item:hover { background: var(--surface-2); }
+.mp2-family-avatar {
+  width: 34px; height: 34px; flex-shrink: 0; border-radius: 50%; overflow: hidden;
+  background: var(--accent-soft); color: var(--accent);
+  display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700;
+}
+.mp2-family-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.mp2-family-text { min-width: 0; flex: 1; display: flex; flex-direction: column; }
+.mp2-family-name { font-size: 14px; font-weight: 600; color: var(--accent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mp2-family-role { font-size: 12px; color: var(--text-3); }
+.mp2-family-caret { color: var(--text-3); flex-shrink: 0; }
+
+/* Section label inside the add/edit modal */
+.mbr-section-label {
+  font-size: 11px; font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase;
+  color: var(--text-3); margin: 8px 0 2px; padding-top: 8px; border-top: 1px solid var(--border);
+}
 .mp2-sidecard { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 20px; }
 .mp2-side-title { font-size: 11px; font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase; color: var(--text-3); margin-bottom: 12px; }
 .mp2-side-text { font-size: 14px; color: var(--text); line-height: 1.5; }

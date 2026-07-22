@@ -34,6 +34,18 @@ export async function resetPin(id, pin) {
   return supabase.rpc('admin_set_pin', { target: id, input: pin });
 }
 
+// Reset a user's LOGIN password (Supabase auth) — admin-only, via edge function.
+export async function resetPassword(userId, password) {
+  const { data, error } = await supabase.functions.invoke('admin-reset-password', { body: { user_id: userId, password } });
+  if (error) {
+    let msg = error.message;
+    try { const j = await error.context?.json?.(); if (j?.error) msg = j.error; } catch { /* keep default */ }
+    return { error: { message: msg } };
+  }
+  if (data?.error) return { error: { message: data.error } };
+  return { data };
+}
+
 /* ── Add a new user (auth login + staff row) via edge function ── */
 export async function createUser(payload) {
   const { data, error } = await supabase.functions.invoke('admin-create-user', { body: payload });
