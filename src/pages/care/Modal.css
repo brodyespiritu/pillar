@@ -114,6 +114,21 @@
 .field-group { display: flex; flex-direction: column; gap: 6px; }
 .field-group > span { font-size: 13px; font-weight: 500; color: var(--text-2); }
 .field-group > span b { color: var(--red); }
+
+/* Name autocomplete (Add Care Member → pulls from the member directory) */
+.cf-ac { position: relative; }
+.cf-ac-menu {
+  position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 30;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm);
+  box-shadow: 0 14px 34px rgba(11,53,88,0.16); padding: 5px; max-height: 220px; overflow-y: auto;
+}
+.cf-ac-item {
+  width: 100%; display: flex; flex-direction: column; gap: 1px; text-align: left;
+  padding: 8px 10px; border: none; background: none; border-radius: 8px; cursor: pointer;
+}
+.cf-ac-item:hover { background: var(--surface-2); }
+.cf-ac-name { font-size: 14px; font-weight: 600; color: var(--text); }
+.cf-ac-sub { font-size: 12px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .field-row { display: flex; gap: 12px; }
 .field-row > * { flex: 1; }
 

@@ -4,8 +4,9 @@ import { useLocation } from 'react-router-dom';
 import TopNav from '../../components/TopNav';
 import { P, Icon } from '../../lib/icons';
 import {
-  fetchGuests, deleteGuests, computeGuestStats, weekLabel,
+  fetchGuests, deleteGuests, computeGuestStats,
   isProspect, TYPE_COLORS, STATUS_COLORS,
+  guestWeekStart, guestWeekLabel, inGuestWeek, listGuestWeeks, msUntilNextReset,
 } from '../../lib/guests';
 import GuestTypePicker from './GuestTypePicker';
 import GuestForm from './GuestForm';
@@ -54,6 +55,8 @@ export default function GuestsPage() {
   const [emailOpen, setEmailOpen] = useState(false);
   const [commentOpen, setCommentOpen] = useState(false);
   const [connectOpen, setConnectOpen] = useState(false);
+  const [weekView, setWeekView] = useState(null);   // null = this week, else a past week's start
+  const [resetTick, setResetTick] = useState(0);    // bumps when 7:00 AM Sunday passes
 
   async function load() {
     setLoading(true);
@@ -63,6 +66,13 @@ export default function GuestsPage() {
   }
   useEffect(() => { load(); }, []);
 
+  // Roll the list over on its own the moment the Sunday 7:00 AM reset passes,
+  // even if the page has been sitting open.
+  useEffect(() => {
+    const t = setTimeout(() => setResetTick(n => n + 1), msUntilNextReset() + 1000);
+    return () => clearTimeout(t);
+  }, [resetTick]);
+
   const deepLinked = useRef(false);
   useEffect(() => {
     if (deepLinked.current || !location.state?.add) return;
@@ -70,12 +80,17 @@ export default function GuestsPage() {
     deepLinked.current = true;
   }, [location.state]);
 
-  const stats = useMemo(() => computeGuestStats(guests), [guests]);
-  const guestCount    = useMemo(() => guests.filter(g => !isProspect(g)).length, [guests]);
-  const prospectCount = useMemo(() => guests.filter(isProspect).length, [guests]);
+  // Which guest week the list is showing — this week, or one picked from history.
+  const activeWeek = useMemo(() => weekView || guestWeekStart(), [weekView, resetTick]);
+  const stats = useMemo(() => computeGuestStats(guests, activeWeek), [guests, activeWeek]);
+  const history = useMemo(() => listGuestWeeks(guests), [guests, resetTick]);
+  const guestCount    = useMemo(() => guests.filter(g => !isProspect(g) && inGuestWeek(g, activeWeek)).length, [guests, activeWeek]);
+  const prospectCount = useMemo(() => guests.filter(g => isProspect(g) && inGuestWeek(g, activeWeek)).length, [guests, activeWeek]);
 
   const rows = useMemo(() => {
-    let list = guests.filter(g => (tab === 'prospects' ? isProspect(g) : !isProspect(g)));
+    // Both tabs are scoped to one guest week — the whole list resets Sunday 7:00 AM.
+    let list = guests.filter(g => inGuestWeek(g, activeWeek)
+      && (tab === 'prospects' ? isProspect(g) : !isProspect(g)));
     if (search.trim()) {
       const q = search.toLowerCase();
       list = list.filter(g => [g.full_name, g.phone, g.email, g.type, g.status, g.assigned_name]
@@ -89,7 +104,7 @@ export default function GuestsPage() {
       return 0;
     });
     return list;
-  }, [guests, tab, search, sort]);
+  }, [guests, tab, search, sort, activeWeek]);
 
   function toggleSort(key) {
     setSort(s => s.key === key ? { key, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' });
@@ -145,13 +160,13 @@ export default function GuestsPage() {
           <div className="gp-stats">
             <div className="gp-stat">
               <span className="gp-stat-value">{stats.thisWeek}</span>
-              <span className="gp-stat-label">This Week</span>
-              <span className="gp-stat-sub">{weekLabel()}</span>
+              <span className="gp-stat-label">Guests</span>
+              <span className="gp-stat-sub">{guestWeekLabel(activeWeek)}</span>
             </div>
             <div className="gp-stat">
               <span className="gp-stat-value">{stats.prospects}</span>
-              <span className="gp-stat-label">Total Prospects</span>
-              <span className="gp-stat-sub">All time</span>
+              <span className="gp-stat-label">Prospects</span>
+              <span className="gp-stat-sub">{weekView ? 'That week' : 'This week'}</span>
             </div>
             <div className="gp-stat">
               <span className="gp-stat-value">{stats.recap}</span>
@@ -193,11 +208,34 @@ export default function GuestsPage() {
                 Prospects <span className="gp-tab-count">{prospectCount}</span>
               </button>
             </div>
+            <div className="gp-week">
+              <Icon d={P.clock} size={15} className="gp-week-ic" />
+              <select
+                value={weekView ? String(weekView.getTime()) : ''}
+                onChange={e => { setWeekView(e.target.value ? new Date(Number(e.target.value)) : null); setSelected(new Set()); }}
+                aria-label="Guest week"
+              >
+                <option value="">This week</option>
+                {history.map(w => (
+                  <option key={w.start.getTime()} value={String(w.start.getTime())}>
+                    {w.label} · {w.guests} guests, {w.prospects} prospects
+                  </option>
+                ))}
+              </select>
+            </div>
             <div className="gp-search">
               <Icon d={P.search} size={16} />
               <input placeholder="Search entries…" value={search} onChange={e => setSearch(e.target.value)} />
             </div>
           </div>
+
+          {weekView && (
+            <div className="gp-archive-note">
+              <Icon d={P.clock} size={14} />
+              Viewing history — <strong>{guestWeekLabel(weekView)}</strong>. Guests and prospects from that week; new entries always land in the current week.
+              <button onClick={() => { setWeekView(null); setSelected(new Set()); }}>Back to this week</button>
+            </div>
+          )}
 
           {/* Bulk bar */}
           {selected.size > 0 && (
@@ -213,7 +251,9 @@ export default function GuestsPage() {
               <div className="gp-empty">Loading…</div>
             ) : rows.length === 0 ? (
               <div className="gp-empty">
-                No {tab === 'prospects' ? 'prospects' : 'guests'} yet. Click <strong>New Entry</strong> to add one.
+                {weekView
+                  ? <>No {tab === 'prospects' ? 'prospects' : 'guests'} were recorded in {guestWeekLabel(weekView)}.</>
+                  : <>No {tab === 'prospects' ? 'prospects' : 'guests'} this week yet — the list cleared at 7:00 AM Sunday. Click <strong>New Entry</strong> to add one.</>}
               </div>
             ) : (
               <table className="gp-table">
@@ -260,7 +300,7 @@ export default function GuestsPage() {
           </div>
 
           <div className="gp-footer">
-            {rows.length} {tab === 'prospects' ? 'prospects' : 'guests'} · {selected.size} selected · {stats.thisWeek} this week
+            {rows.length} {tab === 'prospects' ? 'prospects' : 'guests'} · {selected.size} selected · {guestWeekLabel(activeWeek)}
           </div>
         </div>
       </main>

@@ -37,6 +37,47 @@ jobs:
       - name: Install frontend dependencies
         run: npm install
 
+      # ── macOS desktop widget (WidgetKit appex) ──
+      # Built before tauri-action, embedded via bundle.macOS.files. Signed with
+      # the Developer ID cert when the APPLE_* secrets exist; ad-hoc otherwise
+      # (an ad-hoc widget may not register with macOS — it becomes fully
+      # functional once real signing is configured).
+      - name: Build widget extension (macOS)
+        if: matrix.platform == 'macos-latest'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+        run: |
+          brew install xcodegen jq
+          cd src-tauri/widget
+          xcodegen generate
+          xcodebuild -project PillarWidget.xcodeproj -scheme PillarWidgetExtension \
+            -configuration Release -derivedDataPath build CODE_SIGNING_ALLOWED=NO build
+          APPEX="build/Build/Products/Release/PillarWidget.appex"
+          if [ -n "$APPLE_CERTIFICATE" ]; then
+            KC=widget.keychain-db; KCPASS=$(uuidgen)
+            echo "$APPLE_CERTIFICATE" | base64 --decode > cert.p12
+            security create-keychain -p "$KCPASS" "$KC"
+            security unlock-keychain -p "$KCPASS" "$KC"
+            security import cert.p12 -k "$KC" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+            security set-key-partition-list -S apple-tool:,apple: -s -k "$KCPASS" "$KC" >/dev/null
+            security list-keychains -d user -s "$KC" login.keychain-db
+            codesign --force --options runtime --timestamp --keychain "$KC" \
+              --sign "$APPLE_SIGNING_IDENTITY" "$APPEX"
+            rm -f cert.p12
+            echo "Widget signed with Developer ID."
+          else
+            codesign --force --sign - "$APPEX"
+            echo "No signing secrets — widget ad-hoc signed."
+          fi
+          mkdir -p dist && rm -rf dist/PillarWidget.appex && cp -R "$APPEX" dist/
+          cd ..
+          jq '.bundle.macOS //= {} | .bundle.macOS.files = {"PlugIns/PillarWidget.appex": "widget/dist/PillarWidget.appex"}' \
+            tauri.conf.json > tauri.conf.patched.json
+          mv tauri.conf.patched.json tauri.conf.json
+          echo "Widget embedded into bundle config."
+
       - name: Build app + publish release
         uses: tauri-apps/tauri-action@v0
         env:

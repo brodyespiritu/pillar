@@ -39,6 +39,20 @@ export function ageFromBirthday(b) {
   return age >= 0 && age < 130 ? age : null;
 }
 
+/* A fresh household id for a newly-formed family. */
+export function newFamilyId() {
+  return (globalThis.crypto?.randomUUID?.() || `fam-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+}
+/* "{Last name} Family" for a friendly household label. */
+export function lastNameFamily(name) {
+  const parts = (name || '').trim().split(/\s+/).filter(Boolean);
+  return parts.length ? `${parts[parts.length - 1]} Family` : 'Family';
+}
+/* Patch a member's household fields. */
+export async function updateFamilyLink(id, patch) {
+  return supabase.from('church_members').update(patch).eq('id', id);
+}
+
 /* Household key — the import's family_id if present, else the free-text name. */
 const familyKey = r => (r.family_id || '').trim() || (r.family_name || '').trim().toLowerCase();
 
@@ -53,6 +67,149 @@ export function familyMembers(rows, member) {
       const pb = FAMILY_ORDER[(b.family_position || 'other').toLowerCase()] ?? 3;
       return pa - pb || (a.name || '').localeCompare(b.name || '');
     });
+}
+
+/* ── Avatar: clipboard paste + white-background knockout ── */
+function loadImg(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error('That image could not be loaded.'));
+    img.src = src;
+  });
+}
+
+/* Read an image off the clipboard (async API). Returns a data URL or null. */
+export async function readClipboardImage() {
+  try {
+    if (!navigator.clipboard?.read) return null;
+    const items = await navigator.clipboard.read();
+    for (const item of items) {
+      const type = item.types.find(t => t.startsWith('image/'));
+      if (type) {
+        const blob = await item.getType(type);
+        return await new Promise((res, rej) => {
+          const r = new FileReader();
+          r.onload = () => res(r.result);
+          r.onerror = () => rej(new Error('Could not read that image.'));
+          r.readAsDataURL(blob);
+        });
+      }
+    }
+  } catch { /* permission denied / unsupported — caller falls back to ⌘V */ }
+  return null;
+}
+
+/* Center-crop to a square, then flood-fill the near-white background inward
+   from the edges and make it transparent — so a pasted circular avatar loses
+   its white corners. Returns a PNG data URL. */
+export async function removeWhiteBackground(src, { size = 400 } = {}) {
+  const img = await loadImg(src);
+  const side = Math.min(img.width, img.height);
+  const sx = (img.width - side) / 2, sy = (img.height - side) / 2;
+  const canvas = document.createElement('canvas');
+  canvas.width = size; canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(img, sx, sy, side, side, 0, 0, size, size);
+
+  const data = ctx.getImageData(0, 0, size, size);
+  const d = data.data;
+  const isNearWhite = i => d[i] > 236 && d[i + 1] > 236 && d[i + 2] > 236;
+  const visited = new Uint8Array(size * size);
+  const stack = [];
+  const push = (x, y) => {
+    if (x < 0 || y < 0 || x >= size || y >= size) return;
+    const p = y * size + x; if (visited[p]) return; visited[p] = 1; stack.push(p);
+  };
+  for (let x = 0; x < size; x++) { push(x, 0); push(x, size - 1); }
+  for (let y = 0; y < size; y++) { push(0, y); push(size - 1, y); }
+  while (stack.length) {
+    const p = stack.pop(), i = p * 4;
+    if (!isNearWhite(i)) continue;   // stop at the photo
+    d[i + 3] = 0;                     // knock the pixel out
+    const x = p % size, y = (p - x) / size;
+    push(x + 1, y); push(x - 1, y); push(x, y + 1); push(x, y - 1);
+  }
+  ctx.putImageData(data, 0, 0);
+  return canvas.toDataURL('image/png');
+}
+
+/* ── Groups (stored as comma-separated tags on each member) ── */
+export const DEACON_GROUP = 'Deacons';
+
+export function memberTags(m) {
+  return (m.tags || '').split(',').map(t => t.trim()).filter(Boolean);
+}
+export function allGroups(rows) {
+  const set = new Set();
+  rows.forEach(m => memberTags(m).forEach(t => set.add(t)));
+  return [...set].sort((a, b) => a.localeCompare(b));
+}
+export function inGroup(m, group) {
+  return memberTags(m).some(t => t.toLowerCase() === group.toLowerCase());
+}
+export async function setMemberTags(id, tags) {
+  return supabase.from('church_members').update({ tags: tags.join(', ') }).eq('id', id);
+}
+export async function addToGroup(member, group) {
+  const tags = memberTags(member);
+  if (!tags.some(t => t.toLowerCase() === group.toLowerCase())) tags.push(group);
+  return setMemberTags(member.id, tags);
+}
+export async function removeFromGroup(member, group) {
+  return setMemberTags(member.id, memberTags(member).filter(t => t.toLowerCase() !== group.toLowerCase()));
+}
+
+/* ── Deacon assignments (member.deacon_id → the deacon who shepherds them) ── */
+export async function setDeacon(memberId, deaconId) {
+  return supabase.from('church_members').update({ deacon_id: deaconId || null }).eq('id', memberId);
+}
+/* Assign/unassign a member AND their whole household to a deacon in one go. */
+export async function setDeaconForFamily(rows, member, deaconId) {
+  const ids = [member.id, ...familyMembers(rows, member).map(m => m.id)];
+  return supabase.from('church_members').update({ deacon_id: deaconId || null }).in('id', ids);
+}
+export function assignedToDeacon(rows, deaconId) {
+  return rows.filter(m => m.deacon_id === deaconId).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+}
+export function deaconOf(rows, member) {
+  return member.deacon_id ? rows.find(m => m.id === member.deacon_id) || null : null;
+}
+
+/* ── Household display labels ("Carey & Annlies Cato") ── */
+const firstNameOf = m => (m.name || '').trim().split(/\s+/)[0] || '';
+const lastNameOf = m => { const p = (m.name || '').trim().split(/\s+/).filter(Boolean); return p.length > 1 ? p[p.length - 1] : ''; };
+
+/* One-line label for a set of household members. */
+export function householdLabel(members) {
+  if (!members.length) return '';
+  if (members.length === 1) return members[0].name;
+  const head = members.find(m => (m.family_position || '').toLowerCase() === 'head');
+  const spouse = members.find(m => (m.family_position || '').toLowerCase() === 'spouse');
+  if (head && spouse) {
+    const lh = lastNameOf(head), ls = lastNameOf(spouse);
+    return lh && lh === ls ? `${firstNameOf(head)} & ${firstNameOf(spouse)} ${lh}` : `${head.name} & ${spouse.name}`;
+  }
+  if (head) return head.name;
+  if (members[0].family_name) return members[0].family_name;   // e.g. "Cato Family"
+  const [a, b] = members;
+  const la = lastNameOf(a), lb = lastNameOf(b);
+  return la && la === lb ? `${firstNameOf(a)} & ${firstNameOf(b)} ${la}` : a.name;
+}
+
+/* Group members into households (by family_id); loners become their own group. */
+export function groupByFamily(members) {
+  const map = new Map();
+  const groups = [];
+  for (const m of members) {
+    const key = (m.family_id || '').trim();
+    if (!key) { groups.push({ key: `s-${m.id}`, members: [m] }); continue; }
+    if (!map.has(key)) { const g = { key, members: [] }; map.set(key, g); groups.push(g); }
+    map.get(key).members.push(m);
+  }
+  return groups
+    .map(g => ({ ...g, label: householdLabel(g.members), head: g.members.find(m => (m.family_position || '').toLowerCase() === 'head') || g.members[0] }))
+    .sort((a, b) => a.label.localeCompare(b.label));
 }
 
 /* ── CSV import ── */

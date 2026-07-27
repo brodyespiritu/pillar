@@ -1,0 +1,30 @@
+# XcodeGen spec for the Pillar macOS widget extension.
+# CI runs `xcodegen generate` here, builds the appex with xcodebuild, and
+# embeds it into the Tauri app bundle (see build-installers.yml).
+name: PillarWidget
+options:
+  deploymentTarget:
+    macOS: "14.0"          # desktop widgets arrived in Sonoma
+targets:
+  PillarWidgetExtension:
+    type: app-extension
+    platform: macOS
+    sources: [Sources]
+    info:
+      path: Info.plist
+      properties:
+        CFBundleDisplayName: Pillar
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.brodyespiritu.pillar.widget
+        PRODUCT_NAME: PillarWidget
+        SWIFT_VERSION: "5.9"
+        GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGNING_ALLOWED: "NO"     # CI signs explicitly after the build
+        ENABLE_HARDENED_RUNTIME: YES
+        SKIP_INSTALL: YES
+        ARCHS: arm64 x86_64            # universal, matching the Tauri build
+        ONLY_ACTIVE_ARCH: NO

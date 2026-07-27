@@ -16,13 +16,21 @@ export default function ConnectAccountModal({ onClose, onConnected }) {
 
   async function submit() {
     if (!email.trim() || !pw.trim()) { setError('Email and app password are required.'); return; }
+    if (!user?.id) { setError('You appear to be signed out. Sign in again, then reconnect.'); return; }
     setSaving(true); setError('');
-    const { error } = await connectAccount({
-      provider, email: email.trim(), display_name: name.trim(), app_password: pw.trim(), owner: user?.id,
-    });
-    setSaving(false);
-    if (error) { setError(error.message); return; }
-    onConnected();
+    try {
+      const { error } = await connectAccount({
+        provider, email: email.trim(), display_name: name.trim(), app_password: pw.trim(), owner: user.id,
+      });
+      if (error) { setError(error.message || 'Could not save the account.'); return; }
+      onConnected();
+    } catch (e) {
+      // Without this the throw escapes, `saving` never clears and the button
+      // just looks dead — no message, no spinner, nothing.
+      setError(e?.message ? `Could not connect: ${e.message}` : 'Could not connect. Please try again.');
+    } finally {
+      setSaving(false);
+    }
   }
 
   const p = provider ? PROVIDERS[provider] : null;

@@ -149,3 +149,40 @@
   .sms-broadcast { grid-template-columns: 1fr; }
   .sms-preview { display: none; }
 }
+
+/* ── Add-from-Members picker ── */
+.mp-modal {
+  margin: auto; width: 94vw; max-width: 720px; max-height: calc(100vh - 60px);
+  border-radius: var(--radius-lg); box-shadow: 0 20px 60px rgba(11,53,88,0.3);
+  animation: mSheet 0.2s cubic-bezier(0.16,1,0.3,1);
+}
+.mp-body { display: flex; flex: 1; min-height: 0; overflow: hidden; }
+.mp-left { flex: 1.2; min-width: 0; display: flex; flex-direction: column; padding: 14px 14px 14px 20px; }
+.mp-right { flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 14px 20px 14px 14px; border-left: 1px solid var(--border); background: var(--surface-2); }
+.mp-search { margin-bottom: 10px; }
+.mp-list { flex: 1; min-height: 240px; overflow-y: auto; display: flex; flex-direction: column; gap: 3px; }
+.mp-note { font-size: 13px; color: var(--text-3); padding: 14px 6px; }
+.mp-row {
+  display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
+  padding: 8px 10px; border-radius: 10px; background: none; border: none; cursor: pointer;
+  transition: background 0.12s;
+}
+.mp-row:hover:not(:disabled) { background: var(--surface-2); }
+.mp-right .mp-row:hover { background: var(--surface); }
+.mp-row.picked { background: var(--accent-soft); }
+.mp-row.have { opacity: 0.55; cursor: default; }
+.mp-avatar {
+  width: 32px; height: 32px; flex-shrink: 0; border-radius: 50%; overflow: hidden;
+  background: var(--accent-soft); color: var(--accent);
+  display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700;
+}
+.mp-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.mp-row-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.mp-row-name { font-size: 14px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mp-row.picked .mp-row-name { color: var(--accent); }
+.mp-row-phone { font-size: 12.5px; color: var(--text-3); }
+.mp-row-state { flex-shrink: 0; font-size: 11px; font-weight: 700; color: var(--text-3); display: flex; align-items: center; }
+.mp-row.picked .mp-row-state { color: var(--accent); }
+.mp-right-title { font-size: 12px; font-weight: 700; letter-spacing: 0.6px; text-transform: uppercase; color: var(--text-3); margin: 4px 0 10px; }
+.mp-right-title span { color: var(--accent); margin-left: 4px; }
+@media (max-width: 640px) { .mp-body { flex-direction: column; } .mp-right { border-left: none; border-top: 1px solid var(--border); } }

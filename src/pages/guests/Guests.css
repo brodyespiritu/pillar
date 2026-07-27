@@ -109,6 +109,32 @@
 .gp-search input { flex: 1; border: none; background: none; font-size: 14px; color: var(--text); }
 .gp-search:focus-within { border-color: var(--accent); }
 
+/* Address row — city gets the space, state stays narrow */
+.gf-addr-row .gf-city  { flex: 2.2; }
+.gf-addr-row .gf-state { flex: 0.7; }
+.gf-addr-row .gf-zip   { flex: 1.1; }
+.field-group > span em { font-style: normal; color: var(--text-3); font-weight: 500; }
+
+/* Guest-week picker (history) */
+.gp-week { position: relative; display: flex; align-items: center; margin-bottom: 8px; margin-left: auto; }
+.gp-week-ic { position: absolute; left: 12px; color: var(--text-3); pointer-events: none; }
+.gp-week select {
+  appearance: none; -webkit-appearance: none;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm);
+  padding: 9px 14px 9px 34px; font-size: 14px; font-weight: 600; color: var(--text); cursor: pointer;
+}
+.gp-week select:hover { border-color: #C6D5EC; }
+
+.gp-archive-note {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  background: var(--accent-soft); color: var(--text-2); border-radius: var(--radius-sm);
+  padding: 10px 14px; margin-bottom: 14px; font-size: 13.5px; line-height: 1.5;
+}
+.gp-archive-note svg { color: var(--accent); flex-shrink: 0; }
+.gp-archive-note strong { color: var(--text); }
+.gp-archive-note button { margin-left: auto; font-size: 13px; font-weight: 700; color: var(--accent); background: none; }
+.gp-archive-note button:hover { text-decoration: underline; }
+
 /* Bulk bar */
 .gp-bulk {
   display: flex; align-items: center; justify-content: space-between;
@@ -237,10 +263,33 @@
   font-size: 13px; font-weight: 600; color: var(--accent); background: none;
   padding: 4px 0; align-self: flex-start;
 }
-.gf-family-row { display: flex; gap: 8px; align-items: center; }
-.gf-family-row select { max-width: 150px; }
+/* Family + school rows share one height and one column rhythm so every box lines up */
+.gf-family-block { --row-h: 40px; display: flex; flex-direction: column; gap: 8px; }
+.gf-family-row,
+.gf-school-row { display: flex; gap: 8px; align-items: center; }
+.gf-family-row > select,
+.gf-family-row > input,
+.gf-school-row > select,
+.gf-school-row .cf-ac input {
+  height: var(--row-h);
+  padding-top: 0; padding-bottom: 0;   /* height drives it, not padding */
+}
+.gf-family-row > select { flex: 0 0 150px; }
+.gf-family-row > input:not(.gf-age) { flex: 1; min-width: 0; }
+.gf-age,
+.gf-grade { flex: 0 0 110px; max-width: 110px; }
+.gf-school-ac { flex: 1; min-width: 0; }
+.gf-school-ac input { width: 100%; }
+
+.gf-add-school {
+  align-self: flex-start; display: inline-flex; align-items: center; gap: 5px;
+  padding: 2px 0; background: none;
+  font-size: 12.5px; font-weight: 600; color: var(--accent); cursor: pointer;
+}
+.gf-add-school:hover { text-decoration: underline; }
+
 .gf-family-x {
-  width: 34px; height: 34px; flex-shrink: 0; border-radius: 8px;
+  width: var(--row-h, 40px); height: var(--row-h, 40px); flex-shrink: 0; border-radius: 8px;
   background: var(--surface-2); color: var(--text-3);
   display: flex; align-items: center; justify-content: center;
 }

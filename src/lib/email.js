@@ -59,14 +59,24 @@ export async function fetchAccounts() {
 export async function connectAccount({ provider, email, display_name, app_password, owner }) {
   const p = PROVIDERS[provider];
   const row = {
-    owner, provider, email, display_name: display_name || email,
+    owner, provider, email: String(email || '').trim(), display_name: display_name || email,
     imap_host: p.imap_host, imap_port: p.imap_port,
     smtp_host: p.smtp_host, smtp_port: p.smtp_port,
-    app_password,
+    // Google shows app passwords as "abcd efgh ijkl mnop" — the spaces are
+    // display-only and SMTP rejects them, so strip all whitespace.
+    app_password: String(app_password || '').replace(/\s+/g, ''),
   };
   // Credentials are validated on first send (via the cloud mail function),
   // so we just save the account here — works on web and desktop alike.
-  const { data, error } = await supabase.from('email_accounts').insert(row).select().single();
+  //
+  // Upsert on (owner, email): reconnecting the same address updates it — most
+  // often to replace an expired app password — instead of failing on the
+  // table's unique constraint.
+  const { data, error } = await supabase
+    .from('email_accounts')
+    .upsert(row, { onConflict: 'owner,email' })
+    .select()
+    .single();
   return { data, error };
 }
 
@@ -106,22 +116,30 @@ export async function fetchMessages(account, folder = 'INBOX') {
 }
 
 export async function sendMessage(account, { to, cc, subject, body, htmlBody, attachments }) {
-  if (!account?.app_password) throw new Error('Connect a mail account before sending.');
   // SMTP runs in a Vercel serverless function (same origin) — works in the web
   // app and the desktop app, and reliably holds the TCP socket SMTP needs.
+  //
+  // Send from the user's own connected account when they have one; otherwise
+  // send nothing and let the server use the church-wide account.
+  const payload = {
+    to, cc: cc || '', subject,
+    text: body || '', html: htmlBody || '',
+    attachments: attachments || [],
+  };
+  if (account?.app_password) {
+    payload.host = account.smtp_host;
+    payload.port = account.smtp_port;
+    payload.user = account.email;
+    payload.pass = account.app_password;
+    payload.from = account.display_name ? `${account.display_name} <${account.email}>` : account.email;
+  }
+
   let res, data;
   try {
     res = await fetch('/api/send-email', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        host: account.smtp_host, port: account.smtp_port,
-        user: account.email, pass: account.app_password,
-        from: account.display_name ? `${account.display_name} <${account.email}>` : account.email,
-        to, cc: cc || '', subject,
-        text: body || '', html: htmlBody || '',
-        attachments: attachments || [],
-      }),
+      body: JSON.stringify(payload),
     });
   } catch {
     throw new Error('Could not reach the mail service. Are you on the hosted app (not the dev server)?');

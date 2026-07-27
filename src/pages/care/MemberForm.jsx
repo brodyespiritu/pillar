@@ -1,10 +1,11 @@
 import { alertDialog } from "../../lib/dialog";
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { P, Icon } from '../../lib/icons';
 import { supabase } from '../../lib/supabase';
 import {
   CATEGORIES, PRIORITIES, STATUSES, MEDICAL_CATEGORIES, saveMember,
 } from '../../lib/care';
+import { fetchChurchMembers } from '../../lib/members';
 import './Modal.css';
 
 const BLANK = {
@@ -21,15 +22,37 @@ const BLANK = {
 export default function MemberForm({ member, onClose, onSaved }) {
   const [form, setForm]   = useState(() => ({ ...BLANK, ...(member || {}) }));
   const [staff, setStaff] = useState([]);
+  const [directory, setDirectory] = useState([]);
+  const [showSug, setShowSug] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState('');
 
   useEffect(() => {
     supabase.from('staff').select('id, name').then(({ data }) => setStaff(data || []));
+    fetchChurchMembers().then(d => setDirectory(d.rows || []));
   }, []);
 
   const showMedical = MEDICAL_CATEGORIES.includes(form.category);
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  // Name autocomplete against the member directory (church_members).
+  const suggestions = useMemo(() => {
+    const q = form.full_name.trim().toLowerCase();
+    if (!q) return [];
+    return directory.filter(m => (m.name || '').toLowerCase().includes(q)).slice(0, 6);
+  }, [directory, form.full_name]);
+
+  // Pull contact details from the chosen directory member.
+  function pickDirectory(m) {
+    setForm(f => ({
+      ...f,
+      full_name: m.name || f.full_name,
+      phone: m.phone || f.phone,
+      email: m.email || f.email,
+      address: m.address || f.address,
+    }));
+    setShowSug(false);
+  }
 
   function onAssign(id) {
     const s = staff.find(x => x.id === id);
@@ -58,7 +81,27 @@ export default function MemberForm({ member, onClose, onSaved }) {
         <form className="modal-body" onSubmit={submit}>
           <Section title="Contact Info">
             <Field label="Full Name" required>
-              <input value={form.full_name} onChange={e => set('full_name', e.target.value)} placeholder="Jane Doe" />
+              <div className="cf-ac">
+                <input
+                  value={form.full_name}
+                  onChange={e => { set('full_name', e.target.value); setShowSug(true); }}
+                  onFocus={() => { if (form.full_name.trim()) setShowSug(true); }}
+                  onBlur={() => setTimeout(() => setShowSug(false), 150)}
+                  onKeyDown={e => e.key === 'Escape' && setShowSug(false)}
+                  placeholder="Start typing a name…"
+                  autoComplete="off"
+                />
+                {showSug && suggestions.length > 0 && (
+                  <div className="cf-ac-menu">
+                    {suggestions.map(m => (
+                      <button type="button" key={m.id} className="cf-ac-item" onMouseDown={() => pickDirectory(m)}>
+                        <span className="cf-ac-name">{m.name}</span>
+                        <span className="cf-ac-sub">{[m.phone, m.email].filter(Boolean).join(' · ') || 'No contact info'}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </Field>
             <Row>
               <Field label="Phone"><input value={form.phone || ''} onChange={e => set('phone', e.target.value)} placeholder="(555) 123-4567" /></Field>

@@ -4,13 +4,14 @@ import TopNav from '../../components/TopNav';
 import { P, Icon } from '../../lib/icons';
 import { useAuth } from '../../context/AuthContext';
 import {
-  fetchContacts, addContact, updateContact, deleteContact,
+  fetchContacts, addContact, addContacts, updateContact, deleteContact,
   fetchGroups, addGroup, deleteGroup,
   fetchMemberships, setContactGroups, importFromPillar,
   sendBroadcast, smsSegments,
   fetchLibrary, deleteLibraryItem, recordSend, saveToLibrary,
   fetchScheduled, scheduleBroadcast, cancelScheduled,
 } from '../../lib/broadcast';
+import { fetchChurchMembers, initials } from '../../lib/members';
 import '../care/Modal.css';
 import '../admin/Admin.css';
 import './Sms.css';
@@ -406,6 +407,7 @@ function Contacts({ owner, contacts, groups, members, reload }) {
   const [search, setSearch] = useState('');
   const [edit, setEdit] = useState(null);   // contact being edited, or {} for new
   const [importing, setImporting] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   const groupsFor = id => members.filter(m => m.contact_id === id).map(m => groups.find(g => g.id === m.group_id)?.name).filter(Boolean);
   const rows = contacts.filter(c => !search.trim() || [c.name, c.phone].filter(Boolean).some(v => v.toLowerCase().includes(search.toLowerCase())));
@@ -429,6 +431,7 @@ function Contacts({ owner, contacts, groups, members, reload }) {
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <div className="adm-search"><Icon d={P.search} size={16} /><input placeholder="Search…" value={search} onChange={e => setSearch(e.target.value)} /></div>
           <button className="btn-ghost sm" onClick={doImport} disabled={importing}><Icon d={P.folder} size={14} />{importing ? 'Importing…' : 'Import'}</button>
+          <button className="btn-ghost sm" onClick={() => setPickerOpen(true)}><Icon d={P.person} size={14} />From Members</button>
           <button className="btn-primary sm" onClick={() => setEdit({})}><Icon d={P.plus} size={14} />Add Contact</button>
         </div>
       </div>
@@ -453,6 +456,122 @@ function Contacts({ owner, contacts, groups, members, reload }) {
       </div>
 
       {edit && <ContactModal owner={owner} contact={edit} groups={groups} members={members} onClose={() => setEdit(null)} onSaved={() => { setEdit(null); reload(); }} />}
+      {pickerOpen && <MemberPickerModal owner={owner} contacts={contacts} onClose={() => setPickerOpen(false)} onAdded={n => { setPickerOpen(false); reload(); toast(`Added ${n} contact${n === 1 ? '' : 's'} from Members.`); }} />}
+    </div>
+  );
+}
+
+/* ── Pull contacts straight from the member directory ──
+   Left: everyone on the Members page with a phone number. Click a name to
+   stage it on the right; "Add" copies the staged people into SMS Contacts. */
+function MemberPickerModal({ owner, contacts, onClose, onAdded }) {
+  const [directory, setDirectory] = useState(null);   // null = loading
+  const [search, setSearch] = useState('');
+  const [staged, setStaged] = useState([]);           // member ids, in click order
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => { fetchChurchMembers().then(d => setDirectory(d.rows || [])); }, []);
+
+  const norm = p => String(p || '').replace(/\D/g, '').slice(-10);
+  const inContacts = useMemo(() => new Set(contacts.map(c => norm(c.phone)).filter(Boolean)), [contacts]);
+
+  const withPhones = useMemo(() => (directory || []).filter(m => m.phone?.trim()), [directory]);
+  const rows = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return withPhones;
+    return withPhones.filter(m => [m.name, m.phone].filter(Boolean).some(v => v.toLowerCase().includes(q)));
+  }, [withPhones, search]);
+
+  const stagedRows = useMemo(
+    () => staged.map(id => withPhones.find(m => m.id === id)).filter(Boolean),
+    [staged, withPhones],
+  );
+
+  const toggle = m => {
+    if (inContacts.has(norm(m.phone))) return;   // already a contact
+    setStaged(s => (s.includes(m.id) ? s.filter(x => x !== m.id) : [...s, m.id]));
+  };
+
+  async function save() {
+    if (!stagedRows.length || saving) return;
+    setSaving(true);
+    // Dedupe by phone within the staged batch too (e.g. spouses sharing a line).
+    const seen = new Set();
+    const toAdd = [];
+    for (const m of stagedRows) {
+      const key = norm(m.phone);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      toAdd.push({ owner, name: m.name, phone: m.phone.trim() });
+    }
+    const { error } = await addContacts(toAdd);
+    setSaving(false);
+    if (error) return toast(`Could not add contacts: ${error.message}`);
+    onAdded(toAdd.length);
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal mp-modal" onClick={e => e.stopPropagation()}>
+        <div className="modal-head">
+          <div>
+            <h2>Add from Members</h2>
+            <p className="tp-sub">Click a name to copy it into SMS Contacts.</p>
+          </div>
+          <button className="modal-x" onClick={onClose}><Icon d={P.close} size={20} /></button>
+        </div>
+
+        <div className="mp-body">
+          {/* Left — the member directory */}
+          <div className="mp-left">
+            <div className="adm-search mp-search"><Icon d={P.search} size={16} /><input placeholder="Search members…" value={search} onChange={e => setSearch(e.target.value)} autoFocus /></div>
+            <div className="mp-list">
+              {directory === null && <p className="mp-note">Loading members…</p>}
+              {directory !== null && rows.length === 0 && <p className="mp-note">{withPhones.length ? 'No matches.' : 'No members with phone numbers yet.'}</p>}
+              {rows.map(m => {
+                const already = inContacts.has(norm(m.phone));
+                const picked = staged.includes(m.id);
+                return (
+                  <button key={m.id} type="button"
+                    className={`mp-row ${picked ? 'picked' : ''} ${already ? 'have' : ''}`}
+                    onClick={() => toggle(m)} disabled={already}>
+                    <span className="mp-avatar">{m.photo_url ? <img src={m.photo_url} alt="" /> : <span>{initials(m.name)}</span>}</span>
+                    <span className="mp-row-text">
+                      <span className="mp-row-name">{m.name}</span>
+                      <span className="mp-row-phone">{m.phone}</span>
+                    </span>
+                    <span className="mp-row-state">{already ? 'In contacts' : picked ? <Icon d={P.check} size={15} /> : <Icon d={P.plus} size={15} />}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Right — staged for copying */}
+          <div className="mp-right">
+            <p className="mp-right-title">Adding to Contacts <span>{stagedRows.length}</span></p>
+            <div className="mp-list">
+              {stagedRows.length === 0 && <p className="mp-note">Nothing selected yet — click names on the left.</p>}
+              {stagedRows.map(m => (
+                <button key={m.id} type="button" className="mp-row picked" onClick={() => toggle(m)}>
+                  <span className="mp-row-text">
+                    <span className="mp-row-name">{m.name}</span>
+                    <span className="mp-row-phone">{m.phone}</span>
+                  </span>
+                  <span className="mp-row-state"><Icon d={P.close} size={14} /></span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="modal-foot">
+          <button className="btn-ghost" onClick={onClose}>Cancel</button>
+          <button className="btn-primary" onClick={save} disabled={saving || !stagedRows.length}>
+            {saving ? 'Adding…' : `Add ${stagedRows.length || ''} to Contacts`}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

@@ -5,13 +5,29 @@ import nodemailer from 'nodemailer';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
-  try {
-    const b = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {});
-    const { host, port, user, pass, from, to, cc, subject, text, html, attachments } = b;
-    if (!host || !user || !pass) return res.status(400).json({ error: 'Missing SMTP credentials.' });
-    if (!to) return res.status(400).json({ error: 'No recipients.' });
 
-    const p = Number(port) || 587;
+  const b = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {});
+  const { to, cc, subject, text, html, attachments } = b;
+
+  // Use the sender's own connected account when there is one; otherwise fall
+  // back to the church-wide account configured in the environment, so staff
+  // don't each have to connect a personal mailbox.
+  // Declared out here so the catch below can report which server we tried.
+  const host = b.host || process.env.CHURCH_SMTP_HOST;
+  const user = b.user || process.env.CHURCH_SMTP_USER;
+  const pass = b.pass || process.env.CHURCH_SMTP_PASS;
+  const port = b.port || process.env.CHURCH_SMTP_PORT;
+  const from = b.from || process.env.CHURCH_FROM || user;
+  const p = Number(port) || 587;
+
+  if (!host || !user || !pass) {
+    return res.status(400).json({
+      error: 'No mail account configured. Connect an account, or set CHURCH_SMTP_HOST / CHURCH_SMTP_USER / CHURCH_SMTP_PASS.',
+    });
+  }
+  if (!to) return res.status(400).json({ error: 'No recipients.' });
+
+  try {
     const transporter = nodemailer.createTransport({
       host,
       port: p,
@@ -34,8 +50,10 @@ export default async function handler(req, res) {
       })),
     });
 
-    return res.status(200).json({ ok: true });
+    return res.status(200).json({ ok: true, via: `${host}:${p}` });
   } catch (e) {
-    return res.status(400).json({ error: String(e?.message || e) });
+    // Echo the server + username we tried (never the password) — otherwise an
+    // auth failure gives no way to tell which account is actually in use.
+    return res.status(400).json({ error: String(e?.message || e), via: `${host}:${p}`, user });
   }
 }

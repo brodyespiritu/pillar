@@ -167,7 +167,7 @@ export default function GreeterRecapModal({ guests, onBack, onClose }) {
             </div>
 
             {!account && (
-              <div className="er-warn">Connect an email account in the <strong>Email</strong> module (desktop app) to send. You can still open the Recap PDF.</div>
+              <div className="er-warn">No personal email account connected — this will send from the church account (noreply@bethesdaupdates.org).</div>
             )}
             {error && <div className="er-error">{error}</div>}
 

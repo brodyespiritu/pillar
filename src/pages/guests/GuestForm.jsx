@@ -1,9 +1,11 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { P, Icon } from '../../lib/icons';
 import { supabase } from '../../lib/supabase';
 import {
   STATUSES, RELATIONS, composeFullName, saveGuest, TYPE_COLORS,
+  splitAddress, joinAddress, gradeOptions,
 } from '../../lib/guests';
+import { placeSuggest, placeDetails } from '../../lib/places';
 import '../care/Modal.css';
 import './Guests.css';
 
@@ -37,7 +39,11 @@ export default function GuestForm({ type, guest, onClose, onSaved }) {
 
   const [phone, setPhone]   = useState(guest?.phone || '');
   const [email, setEmail]   = useState(guest?.email || '');
-  const [address, setAddress] = useState(guest?.address || '');
+  const [addr, setAddr] = useState(() => splitAddress(guest?.address));
+  const setAddrField = (k, v) => setAddr(a => ({ ...a, [k]: v }));
+  const [addrSug, setAddrSug] = useState([]);
+  const [showAddr, setShowAddr] = useState(false);
+  const skipLookup = useRef(false);   // don't re-query a street we just filled in
 
   const [firstVisit, setFirstVisit] = useState(guest?.first_visit || today());
   const [lastVisit, setLastVisit]   = useState(guest?.last_visit || today());
@@ -54,6 +60,35 @@ export default function GuestForm({ type, guest, onClose, onSaved }) {
     supabase.from('staff').select('id, name').then(({ data }) => setStaff(data || []));
   }, []);
 
+  // Address prediction — debounced so we don't fire a lookup on every keystroke.
+  useEffect(() => {
+    if (skipLookup.current) { skipLookup.current = false; return; }
+    const q = addr.street.trim();
+    if (q.length < 3) { setAddrSug([]); return; }
+    const ctrl = new AbortController();
+    const t = setTimeout(() => {
+      placeSuggest(q, ctrl.signal).then(setAddrSug);
+    }, 350);
+    return () => { clearTimeout(t); ctrl.abort(); };
+  }, [addr.street]);
+
+  // Fill every box from the chosen address.
+  async function chooseAddress(s) {
+    setShowAddr(false);
+    setAddrSug([]);
+    skipLookup.current = true;
+    const d = await placeDetails(s.placeId);
+    setAddr(a => (d
+      ? {
+        street: d.street || s.main || a.street,
+        line2:  d.line2  || a.line2,
+        city:   d.city   || a.city,
+        state:  d.state  || a.state,
+        zip:    d.zip    || a.zip,
+      }
+      : { ...a, street: s.main || a.street }));
+  }
+
   const isReturning = type === 'Returning Guest/Member';
   const isProspectType = type === 'Prospect';
   const color = TYPE_COLORS[type] || '#3B82F6';
@@ -62,6 +97,7 @@ export default function GuestForm({ type, guest, onClose, onSaved }) {
 
   const addFamily    = () => setFamily(f => [...f, { relation: 'Son', name: '', age: '' }]);
   const updateFamily = (i, k, v) => setFamily(f => f.map((x, idx) => idx === i ? { ...x, [k]: v } : x));
+  const patchFamily  = (i, patch) => setFamily(f => f.map((x, idx) => idx === i ? { ...x, ...patch } : x));
   const removeFamily = i => setFamily(f => f.filter((_, idx) => idx !== i));
 
   function onAssign(id) {
@@ -76,7 +112,7 @@ export default function GuestForm({ type, guest, onClose, onSaved }) {
       id: guest?.id,
       full_name: preview,
       type,
-      phone, email, address,
+      phone, email, address: joinAddress(addr),
       first_visit: firstVisit, last_visit: lastVisit,
       assigned_to: assignedTo || null, assigned_name: assignedName,
       status, notes,
@@ -135,13 +171,28 @@ export default function GuestForm({ type, guest, onClose, onSaved }) {
               )}
 
               {family.map((f, i) => (
-                <div key={i} className="gf-family-row">
-                  <select value={f.relation} onChange={e => updateFamily(i, 'relation', e.target.value)}>
-                    {RELATIONS.map(r => <option key={r}>{r}</option>)}
-                  </select>
-                  <input placeholder="Name" value={f.name} onChange={e => updateFamily(i, 'name', e.target.value)} />
-                  <input placeholder="Age" style={{ maxWidth: 70 }} value={f.age} onChange={e => updateFamily(i, 'age', e.target.value)} />
-                  <button className="gf-family-x" onClick={() => removeFamily(i)}><Icon d={P.close} size={16} /></button>
+                <div key={i} className="gf-family-block">
+                  <div className="gf-family-row">
+                    <select value={f.relation} onChange={e => updateFamily(i, 'relation', e.target.value)}>
+                      {RELATIONS.map(r => <option key={r}>{r}</option>)}
+                    </select>
+                    <input placeholder="Name" value={f.name} onChange={e => updateFamily(i, 'name', e.target.value)} />
+                    <input className="gf-age" placeholder="Age" value={f.age} onChange={e => updateFamily(i, 'age', e.target.value)} />
+                    <button className="gf-family-x" onClick={() => removeFamily(i)}><Icon d={P.close} size={16} /></button>
+                  </div>
+                  {f.school == null ? (
+                    <button type="button" className="gf-add-school" onClick={() => updateFamily(i, 'school', '')}>
+                      <Icon d={P.plus} size={12} />Add school
+                    </button>
+                  ) : (
+                    <SchoolField
+                      school={f.school}
+                      grade={f.grade}
+                      onSchool={v => patchFamily(i, { school: v, grade: gradeOptions(v).includes(f.grade) ? f.grade : '' })}
+                      onGrade={v => patchFamily(i, { grade: v })}
+                      onRemove={() => patchFamily(i, { school: null, grade: null })}
+                    />
+                  )}
                 </div>
               ))}
               <button className="gf-add-link" onClick={addFamily}><Icon d={P.plus} size={14} />Add Family Member</button>
@@ -183,9 +234,70 @@ export default function GuestForm({ type, guest, onClose, onSaved }) {
               <label className="field-group"><span>Email</span>
                 <input value={email} onChange={e => setEmail(e.target.value)} placeholder="john@email.com" />
               </label>
-              <label className="field-group"><span>Address</span>
-                <input value={address} onChange={e => setAddress(e.target.value)} placeholder="123 Main St, City, State" />
+              <label className="field-group"><span>Street Address</span>
+                <div className="cf-ac">
+                  <input
+                    value={addr.street}
+                    onChange={e => { setAddrField('street', e.target.value); setShowAddr(true); }}
+                    onFocus={() => { if (addrSug.length) setShowAddr(true); }}
+                    onBlur={() => setTimeout(() => setShowAddr(false), 150)}
+                    onKeyDown={e => e.key === 'Escape' && setShowAddr(false)}
+                    placeholder="Start typing an address…"
+                    autoComplete="off"
+                  />
+                  {showAddr && addrSug.length > 0 && (
+                    <div className="cf-ac-menu">
+                      {addrSug.map(s => (
+                        <button
+                          type="button"
+                          key={s.placeId}
+                          className="cf-ac-item"
+                          onMouseDown={() => chooseAddress(s)}
+                        >
+                          <span className="cf-ac-name">{s.main}</span>
+                          <span className="cf-ac-sub">{s.secondary}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </label>
+              <label className="field-group"><span>Apt / Suite <em>(optional)</em></span>
+                <input
+                  value={addr.line2}
+                  onChange={e => setAddrField('line2', e.target.value)}
+                  placeholder="Apt 4B"
+                  autoComplete="address-line2"
+                />
+              </label>
+              <div className="field-row gf-addr-row">
+                <label className="field-group gf-city"><span>City</span>
+                  <input
+                    value={addr.city}
+                    onChange={e => setAddrField('city', e.target.value)}
+                    placeholder="Columbus"
+                    autoComplete="address-level2"
+                  />
+                </label>
+                <label className="field-group gf-state"><span>State</span>
+                  <input
+                    value={addr.state}
+                    onChange={e => setAddrField('state', e.target.value.toUpperCase().slice(0, 2))}
+                    placeholder="GA"
+                    maxLength={2}
+                    autoComplete="address-level1"
+                  />
+                </label>
+                <label className="field-group gf-zip"><span>ZIP Code</span>
+                  <input
+                    value={addr.zip}
+                    onChange={e => setAddrField('zip', e.target.value.replace(/[^\d-]/g, '').slice(0, 10))}
+                    placeholder="31909"
+                    inputMode="numeric"
+                    autoComplete="postal-code"
+                  />
+                </label>
+              </div>
             </>
           )}
 
@@ -231,6 +343,65 @@ export default function GuestForm({ type, guest, onClose, onSaved }) {
             : <button className="btn-primary" onClick={submit} disabled={saving}>{saving ? 'Saving…' : editing ? 'Save Changes' : 'Add Entry'}</button>}
         </div>
       </div>
+    </div>
+  );
+}
+
+/* School lookup for a family member — Google Places, filtered to schools.
+   The grade list narrows to whatever the chosen school actually serves. */
+function SchoolField({ school, grade, onSchool, onGrade, onRemove }) {
+  const [sug, setSug] = useState([]);
+  const [show, setShow] = useState(false);
+  const skip = useRef(false);   // don't re-query the name we just picked
+
+  useEffect(() => {
+    if (skip.current) { skip.current = false; return; }
+    const q = String(school || '').trim();
+    if (q.length < 3) { setSug([]); return; }
+    const ctrl = new AbortController();
+    const t = setTimeout(() => { placeSuggest(q, ctrl.signal, 'school').then(setSug); }, 350);
+    return () => { clearTimeout(t); ctrl.abort(); };
+  }, [school]);
+
+  function pick(s) {
+    skip.current = true;
+    onSchool(s.main);
+    setSug([]);
+    setShow(false);
+  }
+
+  const grades = gradeOptions(school);
+
+  return (
+    <div className="gf-school-row">
+      <div className="cf-ac gf-school-ac">
+        <input
+          value={school || ''}
+          onChange={e => { onSchool(e.target.value); setShow(true); }}
+          onFocus={() => { if (sug.length) setShow(true); }}
+          onBlur={() => setTimeout(() => setShow(false), 150)}
+          onKeyDown={e => e.key === 'Escape' && setShow(false)}
+          placeholder="Start typing a school…"
+          autoComplete="off"
+        />
+        {show && sug.length > 0 && (
+          <div className="cf-ac-menu">
+            {sug.map(s => (
+              <button type="button" key={s.placeId} className="cf-ac-item" onMouseDown={() => pick(s)}>
+                <span className="cf-ac-name">{s.main}</span>
+                <span className="cf-ac-sub">{s.secondary}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      <select className="gf-grade" value={grade || ''} onChange={e => onGrade(e.target.value)} aria-label="Grade">
+        <option value="">Grade</option>
+        {grades.map(g => <option key={g} value={g}>{g}</option>)}
+      </select>
+      <button type="button" className="gf-family-x" onClick={onRemove} title="Remove school">
+        <Icon d={P.close} size={15} />
+      </button>
     </div>
   );
 }

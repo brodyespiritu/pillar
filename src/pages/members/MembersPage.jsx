@@ -7,10 +7,14 @@ import { useAuth } from '../../context/AuthContext';
 import { normalizeRole } from '../../lib/admin';
 import {
   fetchChurchMembers, saveChurchMember, deleteChurchMember, STATUSES, initials, fileToAvatarDataUrl,
+  readClipboardImage, removeWhiteBackground,
   FAMILY_POSITIONS, GENDERS, MARITAL_STATUSES, MEMBER_STATUSES, RECORD_TYPES, JOINED_HOW_OPTIONS,
   fmtMDY, ageFromBirthday, familyMembers,
   parseCsv, mapIndividualList, importMembers,
+  allGroups, inGroup, assignedToDeacon, deaconOf, DEACON_GROUP, groupByFamily,
 } from '../../lib/members';
+import ManageGroupsModal from './ManageGroupsModal';
+import AddFamilyModal from './AddFamilyModal';
 import '../care/Modal.css';
 import './Members.css';
 
@@ -24,6 +28,8 @@ export default function MembersPage() {
   const [viewing, setViewing] = useState(null);
   const [importing, setImporting] = useState(false);
   const [page, setPage] = useState(0);
+  const [groupFilter, setGroupFilter] = useState('');
+  const [groupsOpen, setGroupsOpen] = useState(false);
   const importRef = useRef(null);
   const openedRef = useRef(false);
   const PAGE_SIZE = 12;
@@ -76,14 +82,17 @@ export default function MembersPage() {
     load();
   }
 
+  const groups = useMemo(() => allGroups(data.rows), [data.rows]);
   const rows = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return data.rows;
-    return data.rows.filter(m => [m.name, m.phone, m.email, m.tags, m.family, m.family_name]
+    let out = data.rows;
+    if (groupFilter) out = out.filter(m => inGroup(m, groupFilter));
+    if (q) out = out.filter(m => [m.name, m.phone, m.email, m.tags, m.family, m.family_name]
       .filter(Boolean).some(v => v.toLowerCase().includes(q)));
-  }, [data.rows, search]);
+    return out;
+  }, [data.rows, search, groupFilter]);
 
-  useEffect(() => { setPage(0); }, [search]);
+  useEffect(() => { setPage(0); }, [search, groupFilter]);
   const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages - 1);
   const pageRows = rows.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE);
@@ -98,6 +107,7 @@ export default function MembersPage() {
               member={viewing}
               allRows={data.rows}
               onOpenMember={m => setViewing(m)}
+              onChanged={load}
               onBack={() => setViewing(null)}
               onEdit={() => setEdit(viewing)}
               onDelete={() => removeMember(viewing)}
@@ -113,11 +123,18 @@ export default function MembersPage() {
                   <Icon d={P.search} size={18} className="mbr-search-icon" />
                   <input placeholder="Search members by name, phone, or email…" value={search} onChange={e => setSearch(e.target.value)} />
                 </div>
+                <div className="mbr-groupfilter">
+                  <Icon d={P.users} size={16} className="mbr-groupfilter-ic" />
+                  <select value={groupFilter} onChange={e => setGroupFilter(e.target.value)} aria-label="Filter by group">
+                    <option value="">All groups</option>
+                    {groups.map(g => <option key={g} value={g}>{g}</option>)}
+                  </select>
+                </div>
                 {isAdmin && (
                   <>
                     <input ref={importRef} type="file" accept=".csv,text/csv" hidden onChange={onImportFile} />
-                    <button className="mbr-import" onClick={() => importRef.current?.click()} disabled={importing}>
-                      <Icon d={P.arrowUp} size={16} />{importing ? 'Importing…' : 'Import CSV'}
+                    <button className="mbr-import" onClick={() => setGroupsOpen(true)}>
+                      <Icon d={P.layers} size={16} />Manage Groups
                     </button>
                   </>
                 )}
@@ -160,6 +177,14 @@ export default function MembersPage() {
       </main>
 
       {edit && <MemberModal member={edit} onClose={() => setEdit(null)} onSaved={() => { setEdit(null); load(); }} onDeleted={() => { setEdit(null); load(); }} />}
+      {groupsOpen && (
+        <ManageGroupsModal
+          rows={data.rows}
+          onClose={() => setGroupsOpen(false)}
+          onChanged={load}
+          onImport={isAdmin ? () => importRef.current?.click() : null}
+        />
+      )}
     </div>
   );
 }
@@ -191,14 +216,17 @@ function MemberCard({ member, onOpen }) {
 /* ── Full member profile ── */
 const PROFILE_TABS = ['Info', 'Notes', 'Groups', 'Attachments'];
 
-function MemberProfile({ member, allRows = [], onOpenMember, onBack, onEdit, onDelete }) {
+function MemberProfile({ member, allRows = [], onOpenMember, onChanged, onBack, onEdit, onDelete }) {
   const [tab, setTab] = useState('Info');
   const [menu, setMenu] = useState(false);
+  const [addFam, setAddFam] = useState(false);
   const tags = (member.tags || '').split(',').map(t => t.trim()).filter(Boolean);
   const fmt = d => d ? new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : null;
   const mapUrl = member.address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(member.address)}` : null;
   const age = ageFromBirthday(member.birthday);
   const family = familyMembers(allRows, member);
+  const myDeacon = deaconOf(allRows, member);
+  const iShepherd = inGroup(member, DEACON_GROUP) ? assignedToDeacon(allRows, member.id) : [];
   const yesNo = v => (v === true ? 'Yes' : v === false ? 'No' : null);
   const trueFalse = v => (v === true ? 'True' : v === false ? 'False' : null);
 
@@ -298,12 +326,41 @@ function MemberProfile({ member, allRows = [], onOpenMember, onBack, onEdit, onD
               ) : (
                 <p className="mp2-side-empty">No family recorded.</p>
               )}
+              <button className="mp2-addfam" onClick={() => setAddFam(true)}>
+                <Icon d={P.plus} size={14} />Add spouse or child
+              </button>
             </div>
             <div className="mp2-sidecard">
               <p className="mp2-side-title">Groups</p>
               {tags.length ? <div className="mbr-card-tags">{tags.map(t => <span key={t} className="mbr-tag">{t}</span>)}</div>
                 : <p className="mp2-side-empty">No groups assigned.</p>}
             </div>
+
+            {(iShepherd.length > 0 || myDeacon) && (
+              <div className="mp2-sidecard">
+                <p className="mp2-side-title">{iShepherd.length > 0 ? 'Shepherding' : 'Your Deacon'}</p>
+                {iShepherd.length > 0 ? (
+                  <div className="mp2-family">
+                    {groupByFamily(iShepherd).map(g => (
+                      <button key={g.key} type="button" className="mp2-family-item" onClick={() => onOpenMember?.(g.head)}>
+                        <span className="mp2-family-avatar">{g.head.photo_url ? <img src={g.head.photo_url} alt={g.label} /> : <span>{initials(g.label)}</span>}</span>
+                        <span className="mp2-family-text">
+                          <span className="mp2-family-name">{g.label}</span>
+                          {g.members.length > 1 && <span className="mp2-family-role">{g.members.length} in household</span>}
+                        </span>
+                        <Icon d={P.chevron} size={16} className="mp2-family-caret" />
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <button type="button" className="mp2-family-item" onClick={() => onOpenMember?.(myDeacon)}>
+                    <span className="mp2-family-avatar">{myDeacon.photo_url ? <img src={myDeacon.photo_url} alt={myDeacon.name} /> : <span>{initials(myDeacon.name)}</span>}</span>
+                    <span className="mp2-family-text"><span className="mp2-family-name">{myDeacon.name}</span><span className="mp2-family-role">Deacon</span></span>
+                    <Icon d={P.chevron} size={16} className="mp2-family-caret" />
+                  </button>
+                )}
+              </div>
+            )}
           </aside>
         </div>
       )}
@@ -323,6 +380,15 @@ function MemberProfile({ member, allRows = [], onOpenMember, onBack, onEdit, onD
       )}
       {tab === 'Attachments' && (
         <div className="mp2-card"><h2 className="mp2-card-title">Attachments</h2><p className="mp2-side-empty">No attachments — file uploads coming soon.</p></div>
+      )}
+
+      {addFam && (
+        <AddFamilyModal
+          current={member}
+          rows={allRows}
+          onClose={() => setAddFam(false)}
+          onAdded={() => { setAddFam(false); onChanged?.(); }}
+        />
       )}
     </div>
   );
@@ -405,6 +471,40 @@ function MemberModal({ member, onClose, onSaved, onDeleted }) {
     setUploading(false);
   }
 
+  // Run a data URL through the white-background knockout and store it.
+  async function applyCleaned(dataUrl) {
+    setUploading(true); setError('');
+    try { set('photo_url', await removeWhiteBackground(dataUrl)); }
+    catch (err) { setError(err.message || 'Could not process that image.'); }
+    setUploading(false);
+  }
+
+  async function onPasteClick() {
+    const dataUrl = await readClipboardImage();
+    if (dataUrl) return applyCleaned(dataUrl);
+    setError('Copy an image, then press ⌘V (Ctrl+V) here to paste it.');
+  }
+
+  async function onRemoveWhite() {
+    if (f.photo_url) applyCleaned(f.photo_url);
+  }
+
+  // Paste an image anywhere in the modal with ⌘V / Ctrl+V.
+  useEffect(() => {
+    function onPaste(e) {
+      const item = [...(e.clipboardData?.items || [])].find(it => it.type.startsWith('image/'));
+      if (!item) return;
+      e.preventDefault();
+      const blob = item.getAsFile();
+      if (!blob) return;
+      const reader = new FileReader();
+      reader.onload = () => applyCleaned(reader.result);
+      reader.readAsDataURL(blob);
+    }
+    document.addEventListener('paste', onPaste);
+    return () => document.removeEventListener('paste', onPaste);
+  }, []);
+
   async function save() {
     if (!f.name.trim()) { setError('Name is required.'); return; }
     setSaving(true); setError('');
@@ -433,11 +533,23 @@ function MemberModal({ member, onClose, onSaved, onDeleted }) {
             </div>
             <div className="mbr-photo-actions">
               <input ref={fileRef} type="file" accept="image/*" hidden onChange={onPhotoFile} />
-              <button type="button" className="btn-ghost sm" onClick={() => fileRef.current?.click()} disabled={uploading}>
-                <Icon d={P.person} size={14} />{uploading ? 'Processing…' : f.photo_url ? 'Change photo' : 'Upload photo'}
-              </button>
-              {f.photo_url && <button type="button" className="mbr-photo-remove" onClick={() => set('photo_url', '')}>Remove</button>}
-              <span className="mbr-photo-hint">JPG or PNG from your computer</span>
+              <div className="mbr-photo-btns">
+                <button type="button" className="btn-ghost sm" onClick={() => fileRef.current?.click()} disabled={uploading}>
+                  <Icon d={P.person} size={14} />{uploading ? 'Processing…' : f.photo_url ? 'Change' : 'Upload'}
+                </button>
+                <button type="button" className="btn-ghost sm" onClick={onPasteClick} disabled={uploading}>
+                  <Icon d={P.paperclip} size={14} />Paste image
+                </button>
+              </div>
+              {f.photo_url && (
+                <div className="mbr-photo-btns">
+                  <button type="button" className="btn-ghost sm" onClick={onRemoveWhite} disabled={uploading}>
+                    <Icon d={P.layers} size={14} />Remove white bg
+                  </button>
+                  <button type="button" className="mbr-photo-remove" onClick={() => set('photo_url', '')}>Remove</button>
+                </div>
+              )}
+              <span className="mbr-photo-hint">Upload, or copy a photo and press ⌘V. White around a circular avatar is removed automatically.</span>
             </div>
           </div>
 

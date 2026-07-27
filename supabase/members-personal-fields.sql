@@ -7,6 +7,8 @@ alter table church_members
   add column if not exists family_name       text,      -- friendly household name (display)
   add column if not exists family_id         text,      -- household grouping key (from import)
   add column if not exists external_id       text,      -- source system id (import idempotency)
+  add column if not exists deacon_id         uuid references church_members(id) on delete set null,  -- shepherding deacon
+
   add column if not exists family_position   text,      -- Head | Spouse | Child | Other
   add column if not exists gender            text,      -- Male | Female
   add column if not exists marital_status    text,      -- Single | Married | Widowed | Divorced | Separated
@@ -21,6 +23,7 @@ alter table church_members
 -- Group everyone in the same household; look up a source row on re-import.
 create index if not exists idx_church_members_family    on church_members(family_id);
 create index if not exists idx_church_members_familyname on church_members(lower(family_name));
+create index if not exists idx_church_members_deacon     on church_members(deacon_id);
 
 -- Unique per source id so re-importing updates instead of duplicating.
 -- (Postgres treats NULLs as distinct, so manually-added members are unaffected.)
