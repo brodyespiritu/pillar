@@ -172,7 +172,22 @@
 /* Test note + check */
 .adm-testnote { display: flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 600; color: var(--yellow); background: var(--yellow-soft); padding: 9px 12px; border-radius: var(--radius-sm); }
 .adm-check { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--text); }
-.adm-check input { width: 16px; height: 16px; accent-color: var(--accent); }
+/* [type] keeps this above ".modal input { width: 100% }" whatever the bundle
+   order — without it the checkbox stretches and shoves its label off to the right. */
+.adm-check input[type="checkbox"] { width: 16px; height: 16px; flex: none; accent-color: var(--accent); }
+.adm-check input[type="checkbox"]:disabled { cursor: not-allowed; }
+.adm-check:has(input:disabled) { color: var(--text-3); cursor: not-allowed; }
+
+/* Opt-in block: checkbox with helper text beneath it */
+.adm-opt { display: flex; flex-direction: column; gap: 6px; }
+.adm-opt-help { font-size: 13px; line-height: 1.5; color: var(--text-2); padding-left: 24px; }
+.adm-opt-warn { display: flex; align-items: flex-start; gap: 7px; font-size: 13px; line-height: 1.5;
+  font-weight: 500; color: var(--yellow); background: var(--yellow-soft);
+  padding: 10px 12px; border-radius: var(--radius-sm); margin-top: 2px; }
+.adm-opt-warn svg { flex-shrink: 0; margin-top: 2px; }
+
+/* span.field-err outranks ".field-group > span", which would grey it out. */
+.field-group > span.field-err { font-size: 13px; color: var(--red); font-weight: 500; }
 
 /* Toast */
 .adm-toast { position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%); z-index: 9999; background: var(--text); color: #fff; padding: 12px 20px; border-radius: var(--radius-sm); font-size: 14px; font-weight: 500; box-shadow: var(--shadow-md); transition: opacity 0.3s; }

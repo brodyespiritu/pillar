@@ -14,6 +14,35 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
+// Carrier-standard opt-out / opt-in keywords (the whole message must be one).
+const STOP_WORDS  = ['stop', 'stopall', 'unsubscribe', 'cancel', 'end', 'quit'];
+const START_WORDS = ['start', 'unstop', 'yes'];
+const keyword = (t: string) => t.trim().toLowerCase().replace(/[^a-z]/g, '');
+
+/*
+ * A staff member texted STOP (or START). Flip their Cares alert preference so
+ * we stop (or resume) texting that number. Matches on the last 10 digits so
+ * formatting differences in the stored number don't cause a miss.
+ */
+async function applyOptOut(supabase: any, fromNumber: string, optOut: boolean) {
+  const last10 = fromNumber.replace(/\D/g, '').slice(-10);
+  if (!last10) return null;
+
+  const { data: staff } = await supabase
+    .from('staff')
+    .select('id, phone, preferences')
+    .ilike('phone', `%${last10}`);
+  if (!staff?.length) return null;
+
+  for (const s of staff) {
+    const prefs = { ...(s.preferences || {}), caresSmsOptIn: !optOut, caresStopOptedOut: optOut };
+    // Resuming means the next message should carry the opt-out notice again.
+    if (!optOut) delete prefs.caresStopNoticeSent;
+    await supabase.from('staff').update({ preferences: prefs }).eq('id', s.id);
+  }
+  return staff.length;
+}
+
 serve(async (req) => {
   if (req.method !== 'POST') return new Response('ok');
 
@@ -59,7 +88,13 @@ serve(async (req) => {
       provider_id: p?.id || null,
     });
 
-    return new Response(JSON.stringify({ ok: true }), {
+    // Honor opt-out/opt-in keywords after logging, so the reply is on record.
+    const kw = keyword(text);
+    let optOutApplied = null;
+    if (STOP_WORDS.includes(kw))       optOutApplied = await applyOptOut(supabase, fromNumber, true);
+    else if (START_WORDS.includes(kw)) optOutApplied = await applyOptOut(supabase, fromNumber, false);
+
+    return new Response(JSON.stringify({ ok: true, keyword: optOutApplied != null ? kw : undefined }), {
       headers: { 'Content-Type': 'application/json' },
     });
   } catch (e) {

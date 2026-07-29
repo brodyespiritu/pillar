@@ -7,6 +7,7 @@ import HomePage  from './pages/home/HomePage';
 import CaresPage from './pages/care/CaresPage';
 import GuestsPage from './pages/guests/GuestsPage';
 import CalendarPage from './pages/calendar/CalendarPage';
+import CalendarWidget from './pages/calendar/CalendarWidget';
 import EmailPage from './pages/email/EmailPage';
 import AdminPage from './pages/admin/AdminPage';
 import SmsPage from './pages/sms/SmsPage';
@@ -69,6 +70,7 @@ export default function App() {
         <Route path="/cares"  element={<CaresPage />} />
         <Route path="/guests"   element={<GuestsPage />} />
         <Route path="/calendar" element={<CalendarPage />} />
+        <Route path="/widget/calendar" element={<CalendarWidget />} />
         <Route path="/email"    element={<EmailPage />} />
         <Route path="/admin"    element={<AdminPage />} />
         <Route path="/sms"      element={<SmsPage />} />

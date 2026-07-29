@@ -1,12 +1,12 @@
-import { confirmDialog } from "../../lib/dialog";
+import { confirmDialog, alertDialog } from "../../lib/dialog";
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import TopNav from '../../components/TopNav';
 import { P, Icon } from '../../lib/icons';
-import { useAuth } from '../../context/AuthContext';
 import {
   fetchMembers, deleteMember, computeStats, buildSummary,
-  CATEGORIES, PRIORITIES, CATEGORY_COLORS, lastContacted,
+  CATEGORIES, PRIORITIES, CATEGORY_COLORS, lastContacted, notifyCareSms,
+  upcomingCareEvents, relativeDayLabel,
 } from '../../lib/care';
 import MemberForm from './MemberForm';
 import MemberProfile from './MemberProfile';
@@ -66,6 +66,9 @@ export default function CaresPage() {
   const stats = useMemo(() => computeStats(members), [members]);
   const summary = useMemo(() => buildSummary(members), [members]);
 
+  // The watcher: surgeries and appointments found in notes + surgery dates.
+  const events = useMemo(() => upcomingCareEvents(members, new Date(), { pastDays: 60, aheadDays: 120 }), [members]);
+
   const filtered = useMemo(() => {
     let list = members;
     if (filter === 'active')     list = list.filter(m => m.status === 'Active');
@@ -86,6 +89,22 @@ export default function CaresPage() {
     setFilter(f => (f === key ? null : key));
     setPriorityF('All'); setCategoryF('All'); setSearch('');
   }
+  /* New care needs page the staff who opted into SMS. Alerting is best-effort:
+     a texting failure must never make a saved record look unsaved. */
+  async function onCareSaved(result) {
+    setFormOpen(false);
+    load();
+    if (!result?.isNew || !result.member) return;
+    const res = await notifyCareSms(result.member);
+    if (res.skipped) return;
+    if (res.sent) {
+      const failed = (res.failed || []).length;
+      if (failed) alertDialog(`Texted ${res.sent} staff. ${failed} could not be reached.`);
+    } else if ((res.failed || []).length) {
+      alertDialog(`Care need saved, but the alert text didn't send: ${res.failed[0]?.error || 'unknown error'}`);
+    }
+  }
+
   function openAdd()   { setEditMember(null); setFormOpen(true); }
   function openEdit(m) { setEditMember(m); setFormOpen(true); setProfileMember(null); }
   function openProfile(m, logging = false) { setProfileMember(m); setProfileLogging(logging); }
@@ -178,6 +197,9 @@ export default function CaresPage() {
             <QB k="notVisited" value={stats.notVisited}     filter={filter} toggle={toggleFilter} />
           </div>
 
+          {/* ── Schedule: one-line calendar week (notes watcher) ── */}
+          {events.length > 0 && <CareWeekStrip events={events} onOpen={openProfile} />}
+
           {/* ── Results ── */}
           {filter ? (
             <section className="cp-results">
@@ -228,7 +250,7 @@ export default function CaresPage() {
       </main>
 
       {formOpen && (
-        <MemberForm member={editMember} onClose={() => setFormOpen(false)} onSaved={() => { setFormOpen(false); load(); }} />
+        <MemberForm member={editMember} onClose={() => setFormOpen(false)} onSaved={onCareSaved} />
       )}
       {profileMember && (
         <MemberProfile member={profileMember} startLogging={profileLogging}
@@ -243,6 +265,69 @@ export default function CaresPage() {
 }
 
 /* ── Colored filter card ── */
+/* One-line calendar week of appointments & surgeries. Sunday-start, arrows
+   page by week, today carries the soft accent tint. */
+function CareWeekStrip({ events, onOpen }) {
+  const [offset, setOffset] = useState(0);
+  const today = new Date();
+  const day0 = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const weekStart = new Date(day0.getTime() - day0.getDay() * 864e5 + offset * 7 * 864e5);
+  const iso = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const todayIso = iso(day0);
+
+  const byDate = useMemo(() => {
+    const m = new Map();
+    for (const ev of events) {
+      if (!m.has(ev.date)) m.set(ev.date, []);
+      m.get(ev.date).push(ev);
+    }
+    return m;
+  }, [events]);
+
+  const days = Array.from({ length: 7 }, (_, i) => new Date(weekStart.getTime() + i * 864e5));
+  const fmt = d => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  const range = `${fmt(days[0])} – ${fmt(days[6])}`;
+
+  return (
+    <section className="cwk">
+      <div className="cwk-head">
+        <span className="cwk-title">Appointments &amp; Surgeries</span>
+        <span className="cwk-range">{range}</span>
+        {offset !== 0 && <button type="button" className="cwk-today" onClick={() => setOffset(0)}>Back to today</button>}
+        <div className="cwk-nav">
+          <button type="button" onClick={() => setOffset(o => o - 1)} aria-label="Previous week"><Icon d={P.chevL} size={17} /></button>
+          <button type="button" onClick={() => setOffset(o => o + 1)} aria-label="Next week"><Icon d={P.chevR} size={17} /></button>
+        </div>
+      </div>
+      <div className="cwk-row">
+        {days.map(d => {
+          const key = iso(d);
+          const list = byDate.get(key) || [];
+          const shown = list.slice(0, 2);
+          return (
+            <div key={key} className={`cwk-day ${key === todayIso ? 'today' : ''}`}>
+              <span className="cwk-dow">{d.toLocaleDateString('en-US', { weekday: 'short' })}</span>
+              <span className="cwk-num">{d.getDate()}</span>
+              <div className="cwk-chips">
+                {shown.map((ev, i) => (
+                  <button key={i} type="button"
+                    className={`cwk-chip ${ev.kind === 'Surgery' ? 'surg' : 'appt'}`}
+                    title={ev.snippet}
+                    onClick={() => onOpen(ev.member)}>
+                    {ev.time && <span className="cwk-chip-time">{ev.time.label}</span>}
+                    <span className="cwk-chip-name">{ev.member.full_name}</span>
+                  </button>
+                ))}
+                {list.length > 2 && <span className="cwk-more">+{list.length - 2}</span>}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 function QB({ k, value, filter, toggle }) {
   const f = FILTERS[k];
   const on = filter === k;

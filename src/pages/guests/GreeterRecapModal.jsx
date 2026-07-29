@@ -162,7 +162,7 @@ export default function GreeterRecapModal({ guests, onBack, onClose }) {
               <Icon d={P.pdf} size={15} />
               <span>The <strong>Weekly Recap PDF</strong> is automatically attached to this email. Preview it before sending:</span>
               <button className="er-pdf-btn" onClick={() => recap && openRecapPdf(recap)} disabled={!recap}>
-                📄 Preview PDF
+                <Icon d={P.pdf} size={14} /> Preview PDF
               </button>
             </div>
 

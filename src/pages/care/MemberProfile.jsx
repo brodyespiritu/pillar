@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { P, Icon } from '../../lib/icons';
 import { useAuth } from '../../context/AuthContext';
-import { LOG_TYPES, CATEGORY_COLORS, addLog, deleteLog } from '../../lib/care';
+import { LOG_TYPES, CATEGORY_COLORS, addLog, deleteLog, notifyCareUpdateSms } from '../../lib/care';
 import { PriorityBadge } from './CaresPage';
 import './Modal.css';
 
@@ -35,8 +35,12 @@ export default function MemberProfile({ member, startLogging, onClose, onEdit, o
       logged_by_name: profile?.name || 'Staff',
     });
     if (data) setLogs(l => [data, ...l]);
+    const note = logNote;
     setLogNote(''); setAdding(false);
     onChanged?.();
+    // Best-effort: a texting failure must never make a saved log look unsaved.
+    notifyCareUpdateSms({ memberName: member.full_name, note })
+      .catch(e => console.warn('Cares update SMS failed:', e));
   }
 
   async function removeLog(id) {

@@ -1,6 +1,7 @@
 import { alertDialog } from "../../lib/dialog";
 import { jsPDF } from 'jspdf';
 import { blockTitle } from './blocks';
+import { printHtml } from '../../lib/printDoc';
 
 const esc = (s = '') => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
@@ -61,11 +62,7 @@ export function buildServiceHtml(plan) {
 }
 
 export function openServicePrint(plan) {
-  const w = window.open('', '_blank');
-  if (!w) { alertDialog('Please allow pop-ups to print the service order.'); return; }
-  w.document.write(buildServiceHtml(plan));
-  w.document.close();
-  setTimeout(() => w.print(), 400);
+  return printHtml(buildServiceHtml(plan), { filename: 'service-order' });
 }
 
 /* ══════════ Real PDF (jsPDF) — download + email attachment ══════════ */

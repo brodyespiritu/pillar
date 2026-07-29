@@ -1,48 +1,64 @@
-import { alertDialog } from "../../lib/dialog";
 import { isProspect } from '../../lib/guests';
+import { printHtml } from '../../lib/printDoc';
+import {
+  esc, card, name, meta, notes, tag, contact,
+  twoCol, metric, docShell, section,
+} from '../../lib/docTheme';
 
-function esc(s = '') {
-  return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-}
+const fmtDate = d => {
+  if (!d) return '';
+  const m = String(d).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  // Date-only values must parse as LOCAL — new Date("2026-07-26") is UTC
+  // midnight, which displays as the previous day in US timezones.
+  const x = m ? new Date(+m[1], +m[2] - 1, +m[3]) : new Date(d);
+  return isNaN(x) ? '' : x.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+};
 
+/*
+ * Guest / prospect export — rendered with the same document theme as the
+ * emailed Weekly Recap, so the printed list and the email look identical.
+ */
 export function exportGuestsPDF(guests, mode = 'guests') {
-  const list = mode === 'prospects' ? guests.filter(isProspect) : guests.filter(g => !isProspect(g));
-  const title = mode === 'prospects' ? 'Prospects — Outreach List' : 'Guest List';
-  const showAddr = mode === 'prospects';
+  const prospects = mode === 'prospects';
+  const list = prospects ? guests.filter(isProspect) : guests.filter(g => !isProspect(g));
+  const heading = prospects ? 'Prospects' : 'Guest List';
+  const today = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
 
-  const rows = list.map(g => `
-    <tr>
-      <td>${esc(g.full_name)}</td>
-      <td>${esc(g.type)}</td>
-      <td>${esc(g.phone || '')}</td>
-      <td>${esc(g.email || '')}</td>
-      ${showAddr ? `<td>${esc(g.address || '')}</td>` : ''}
-      <td>${g.last_visit ? new Date(g.last_visit).toLocaleDateString() : ''}</td>
-      <td>${esc(g.status || '')}</td>
-    </tr>`).join('');
+  const person = g => card(
+    name(esc(g.full_name))
+    + meta(contact(g))
+    + (prospects && g.address ? meta(esc(g.address)) : '')
+    + meta([
+      g.first_visit ? `First visit: ${fmtDate(g.first_visit)}` : '',
+      g.last_visit ? `Last visit: ${fmtDate(g.last_visit)}` : '',
+    ].filter(Boolean).join('   ·   '))
+    + (g.type ? tag(esc(g.type), prospects) : '')
+    + (g.assigned_name ? meta(`Assigned to ${esc(g.assigned_name)}`) : '')
+    + notes(esc(g.notes || '')),
+    prospects ? 'green' : 'gray',
+  );
 
-  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${title}</title>
-    <style>
-      body { font-family: Georgia, 'Times New Roman', serif; margin: 40px; color: #1a1a1a; }
-      h1 { font-size: 22px; margin-bottom: 4px; }
-      .meta { color: #666; font-size: 13px; margin-bottom: 20px; }
-      table { width: 100%; border-collapse: collapse; font-size: 12px; }
-      th { text-align: left; border-bottom: 2px solid #333; padding: 8px 6px; }
-      td { border-bottom: 1px solid #ddd; padding: 8px 6px; vertical-align: top; }
-    </style></head><body>
-      <h1>Bethesda Baptist Church — ${title}</h1>
-      <div class="meta">${list.length} entries · Generated ${new Date().toLocaleString()}</div>
-      <table>
-        <thead><tr>
-          <th>Name</th><th>Type</th><th>Phone</th><th>Email</th>
-          ${showAddr ? '<th>Address</th>' : ''}<th>Last Visit</th><th>Status</th>
-        </tr></thead>
-        <tbody>${rows}</tbody>
-      </table>
-    </body></html>`;
+  // Counts mirror the recap's tile row.
+  const byStatus = s => list.filter(g => (g.status || 'Active') === s).length;
+  const metricsRow = prospects
+    ? metric(list.length, 'Prospects') + metric(byStatus('Active'), 'Active')
+      + metric(byStatus('Followed Up'), 'Followed Up') + metric(byStatus('Converted'), 'Converted')
+    : metric(list.length, 'Guests') + metric(byStatus('Active'), 'Active')
+      + metric(list.filter(g => g.absence_type).length, 'Returning')
+      + metric(list.filter(g => g.type === 'New Member').length, 'New Members');
 
-  const w = window.open('', '_blank');
-  if (!w) { alertDialog('Please allow pop-ups to export the PDF.'); return; }
-  w.document.write(html); w.document.close();
-  setTimeout(() => w.print(), 300);
+  const body = list.length
+    ? section(`${prospects ? 'Prospects' : 'Guests'} (${list.length})`, twoCol(list.map(person)))
+    : `<tr><td style="padding-top:18px;"><p style="color:#999;font-style:italic;margin:0;font-size:9pt;">No ${prospects ? 'prospects' : 'guests'} to show.</p></td></tr>`;
+
+  const html = docShell({
+    docTitle: heading,
+    heading,
+    subheading: prospects ? 'Outreach list' : 'Weekly guest list',
+    today,
+    metricsRow,
+    body,
+  });
+
+  return printHtml(html, { filename: prospects ? 'prospects' : 'guest-list' });
 }

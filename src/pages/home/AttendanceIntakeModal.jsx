@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { P, Icon } from '../../lib/icons';
 import { analyzeScreenshots, saveRead, fileToImagePart, CAPACITY } from '../../lib/attendance';
 
 /*
@@ -51,7 +52,7 @@ export default function AttendanceIntakeModal({ onClose, onSaved }) {
       <div className="hm-modal" onClick={e => e.stopPropagation()}>
         <div className="hm-modal-head">
           <h3>Analyze attendance</h3>
-          <button className="hm-modal-x" onClick={onClose} aria-label="Close">✕</button>
+          <button className="hm-modal-x" onClick={onClose} aria-label="Close"><Icon d={P.close} size={18} /></button>
         </div>
 
         <p className="hm-modal-lede">

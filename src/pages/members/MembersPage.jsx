@@ -5,6 +5,7 @@ import TopNav from '../../components/TopNav';
 import { P, Icon } from '../../lib/icons';
 import { useAuth } from '../../context/AuthContext';
 import { normalizeRole } from '../../lib/admin';
+import { printHtml } from '../../lib/printDoc';
 import {
   fetchChurchMembers, saveChurchMember, deleteChurchMember, STATUSES, initials, fileToAvatarDataUrl,
   readClipboardImage, removeWhiteBackground,
@@ -12,6 +13,7 @@ import {
   fmtMDY, ageFromBirthday, familyMembers,
   parseCsv, mapIndividualList, importMembers,
   allGroups, inGroup, assignedToDeacon, deaconOf, DEACON_GROUP, groupByFamily,
+  markMemberAsProspect, restoreProspectToMember, isHiddenProspect,
 } from '../../lib/members';
 import ManageGroupsModal from './ManageGroupsModal';
 import AddFamilyModal from './AddFamilyModal';
@@ -75,6 +77,26 @@ export default function MembersPage() {
     }
   }
 
+  async function makeProspect(m) {
+    const ok = await confirmDialog({
+      title: 'Mark as prospect',
+      message: `Move ${m.name} out of the member directory and keep them on the prospect list? Their record isn't deleted — view them any time with the "Prospects" filter.`,
+      confirmLabel: 'Mark as prospect',
+    });
+    if (!ok) return;
+    const { error } = await markMemberAsProspect(m.id);
+    if (error) return alertDialog(`Could not update ${m.name}: ${error.message}`);
+    setViewing(null);
+    await load();
+  }
+
+  async function restoreMember(m) {
+    const { error } = await restoreProspectToMember(m.id);
+    if (error) return alertDialog(`Could not restore ${m.name}: ${error.message}`);
+    setViewing(null);
+    await load();
+  }
+
   async function removeMember(m) {
     if (!(await confirmDialog({ message: `Remove ${m.name}? This cannot be undone.` }))) return;
     await deleteChurchMember(m.id);
@@ -82,11 +104,15 @@ export default function MembersPage() {
     load();
   }
 
-  const groups = useMemo(() => allGroups(data.rows), [data.rows]);
+  const groups = useMemo(() => allGroups(data.rows.filter(m => !isHiddenProspect(m))), [data.rows]);
+  const prospectCount = useMemo(() => data.rows.filter(isHiddenProspect).length, [data.rows]);
   const rows = useMemo(() => {
     const q = search.trim().toLowerCase();
-    let out = data.rows;
-    if (groupFilter) out = out.filter(m => inGroup(m, groupFilter));
+    // Prospects live off to the side — only the explicit filter shows them.
+    let out = groupFilter === '__prospects'
+      ? data.rows.filter(isHiddenProspect)
+      : data.rows.filter(m => !isHiddenProspect(m));
+    if (groupFilter && groupFilter !== '__prospects') out = out.filter(m => inGroup(m, groupFilter));
     if (q) out = out.filter(m => [m.name, m.phone, m.email, m.tags, m.family, m.family_name]
       .filter(Boolean).some(v => v.toLowerCase().includes(q)));
     return out;
@@ -110,6 +136,8 @@ export default function MembersPage() {
               onChanged={load}
               onBack={() => setViewing(null)}
               onEdit={() => setEdit(viewing)}
+              onMakeProspect={() => makeProspect(viewing)}
+              onRestoreMember={() => restoreMember(viewing)}
               onDelete={() => removeMember(viewing)}
             />
           ) : (<>
@@ -128,6 +156,7 @@ export default function MembersPage() {
                   <select value={groupFilter} onChange={e => setGroupFilter(e.target.value)} aria-label="Filter by group">
                     <option value="">All groups</option>
                     {groups.map(g => <option key={g} value={g}>{g}</option>)}
+                    {prospectCount > 0 && <option value="__prospects">Prospects ({prospectCount})</option>}
                   </select>
                 </div>
                 {isAdmin && (
@@ -216,7 +245,7 @@ function MemberCard({ member, onOpen }) {
 /* ── Full member profile ── */
 const PROFILE_TABS = ['Info', 'Notes', 'Groups', 'Attachments'];
 
-function MemberProfile({ member, allRows = [], onOpenMember, onChanged, onBack, onEdit, onDelete }) {
+function MemberProfile({ member, allRows = [], onOpenMember, onChanged, onBack, onEdit, onMakeProspect, onRestoreMember, onDelete }) {
   const [tab, setTab] = useState('Info');
   const [menu, setMenu] = useState(false);
   const [addFam, setAddFam] = useState(false);
@@ -250,6 +279,9 @@ function MemberProfile({ member, allRows = [], onOpenMember, onChanged, onBack, 
                 <div className="mp2-menu-backdrop" onClick={() => setMenu(false)} />
                 <div className="mp2-menu">
                   <button onClick={() => { setMenu(false); onEdit(); }}><Icon d={P.edit} size={14} />Edit Member</button>
+                  {isHiddenProspect(member)
+                    ? <button onClick={() => { setMenu(false); onRestoreMember?.(); }}><Icon d={P.person} size={14} />Restore to Members</button>
+                    : <button onClick={() => { setMenu(false); onMakeProspect?.(); }}><Icon d={P.location} size={14} />Mark as Prospect</button>}
                   <button className="danger" onClick={() => { setMenu(false); onDelete(); }}><Icon d={P.trash} size={14} />Remove Member</button>
                 </div>
               </>)}
@@ -420,9 +452,7 @@ function Row({ label, value, extra, last }) {
 
 function printMember(m) {
   const esc = s => String(s || '').replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
-  const w = window.open('', '_blank');
-  if (!w) return alertDialog('Please allow pop-ups to print.');
-  w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${esc(m.name)}</title>
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${esc(m.name)}</title>
     <style>body{font-family:Georgia,serif;margin:40px;color:#1a1a1a}h1{font-size:24px}.r{margin:8px 0}.l{color:#666;display:inline-block;width:130px}</style></head><body>
     <h1>${esc(m.name)}</h1>
     <div class="r"><span class="l">Phone</span> ${esc(m.phone)}</div>
@@ -432,9 +462,8 @@ function printMember(m) {
     <div class="r"><span class="l">Family</span> ${esc(m.family)}</div>
     <div class="r"><span class="l">Groups</span> ${esc(m.tags)}</div>
     <div class="r"><span class="l">Notes</span> ${esc(m.notes)}</div>
-  </body></html>`);
-  w.document.close();
-  setTimeout(() => w.print(), 300);
+  </body></html>`;
+  return printHtml(html, { filename: `member-${esc(m.name).replace(/\s+/g, '-').toLowerCase()}` });
 }
 
 /* ── Add / Edit member ── */

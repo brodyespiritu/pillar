@@ -80,7 +80,7 @@ function LiveStream() {
       <div className="ap-field" style={{ marginTop: 14 }}><label className="ap-label">Notes <span className="ap-hint">(shown when viewers tap Notes)</span></label><textarea className="ap-textarea" rows={3} value={form.liveNotes || ''} onChange={e => set('liveNotes', e.target.value)} /></div>
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 12, marginTop: 18 }}>
-        {saved && <span style={{ fontSize: 13, color: 'var(--green)', fontWeight: 600 }}>Saved ✓</span>}
+        {saved && <span style={{ fontSize: 13, color: 'var(--green)', fontWeight: 600 }}>Saved</span>}
         <button className="ap-btn primary" onClick={() => persist(form)} disabled={saving}>{saving ? <><span className="ap-spinner" />Saving…</> : <><Icon d={P.check} size={15} />Save stream details</>}</button>
       </div>
 

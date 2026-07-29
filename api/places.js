@@ -33,7 +33,9 @@ export default async function handler(req, res) {
   // Google caps includedPrimaryTypes at 5 entries.
   const TYPES = kind === 'school'
     ? ['school', 'primary_school', 'secondary_school', 'preschool', 'university']
-    : ['street_address', 'premise', 'subpremise'];
+    : kind === 'hospital'
+      ? ['hospital']
+      : ['street_address', 'premise', 'subpremise'];
 
   try {
     if (placeId) {

@@ -25,7 +25,7 @@ function badgeText(type, d) {
 
 /* ── interactive bodies (medium / large) ── */
 function CaresBody({ size, d, onQuickLog }) {
-  if (!d.attention.length) return <p className="hw-calm">🌤️ Everyone’s been cared for.</p>;
+  if (!d.attention.length) return <p className="hw-calm">Everyone’s been cared for.</p>;
   const list = d.attention.slice(0, size === 'large' ? 4 : 2);
   return (
     <div className="hw-rows">
@@ -66,9 +66,9 @@ function CalendarBody({ size, d }) {
             </button>
             {isOpen && (
               <div className="hw-cal-detail">
-                {e.start_time && <span>🕑 {fmtTime(e.start_time)}{e.end_time ? `–${fmtTime(e.end_time)}` : ''}</span>}
-                {e.location && <span>📍 {e.location}</span>}
-                {e.category && <span>🏷️ {e.category}</span>}
+                {e.start_time && <span><Icon d={P.clock} size={11} /> {fmtTime(e.start_time)}{e.end_time ? `–${fmtTime(e.end_time)}` : ''}</span>}
+                {e.location && <span><Icon d={P.location} size={11} /> {e.location}</span>}
+                {e.category && <span><Icon d={P.grid} size={11} /> {e.category}</span>}
                 {!e.start_time && !e.location && !e.category && <span className="hw-row-sub">No extra details.</span>}
               </div>
             )}

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { P, Icon } from '../../lib/icons';
 import {
   fetchRecentReads, sampleHistory, SECTION_LABELS, CAPACITY, heatColor,
 } from '../../lib/attendance';
@@ -117,7 +118,7 @@ export default function AttendanceFullScreen({ onClose }) {
       </aside>
 
       <main className="afs-main">
-        <button className="afs-close" onClick={onClose} aria-label="Close">✕</button>
+        <button className="afs-close" onClick={onClose} aria-label="Close"><Icon d={P.close} size={18} /></button>
 
         {view === 'map' ? (
           <div className="afs-mapwrap">

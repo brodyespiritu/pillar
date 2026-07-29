@@ -40,5 +40,8 @@ body {
 #root { height: 100vh; display: flex; flex-direction: column; }
 
 button { cursor: pointer; font-family: inherit; border: none; outline: none; }
-input  { font-family: inherit; outline: none; }
+/* Browsers default textarea to monospace and select to their own UI font —
+   without these, text boxes render in a different typeface than the inputs
+   beside them. */
+input, textarea, select { font-family: inherit; font-size: inherit; outline: none; }
 a      { text-decoration: none; color: inherit; }

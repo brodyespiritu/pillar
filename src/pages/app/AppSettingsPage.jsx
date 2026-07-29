@@ -146,7 +146,7 @@ export default function AppSettingsPage() {
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 12, marginTop: 20 }}>
-              {savedS && <span style={{ fontSize: 13, color: 'var(--green)', fontWeight: 600 }}>Saved ✓</span>}
+              {savedS && <span style={{ fontSize: 13, color: 'var(--green)', fontWeight: 600 }}>Saved</span>}
               <button className="ap-btn primary" onClick={saveSettings_} disabled={savingS}>
                 {savingS ? <><span className="ap-spinner" />Saving…</> : <><Icon d={P.check} size={15} />Save settings</>}
               </button>
@@ -173,7 +173,7 @@ export default function AppSettingsPage() {
               ))}
             </div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 12, marginTop: 18 }}>
-              {savedB && <span style={{ fontSize: 13, color: 'var(--green)', fontWeight: 600 }}>Saved ✓</span>}
+              {savedB && <span style={{ fontSize: 13, color: 'var(--green)', fontWeight: 600 }}>Saved</span>}
               <button className="ap-btn primary" onClick={saveBlocks_} disabled={savingB}>
                 {savingB ? <><span className="ap-spinner" />Saving…</> : <><Icon d={P.check} size={15} />Save layout</>}
               </button>

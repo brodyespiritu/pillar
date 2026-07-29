@@ -134,6 +134,27 @@ export async function removeWhiteBackground(src, { size = 400 } = {}) {
   return canvas.toDataURL('image/png');
 }
 
+/*
+ * Prospects are kept out of the way, not published anywhere.
+ *
+ * Marking someone a prospect flips `record_type` and pulls them from the
+ * member directory — nothing is written to the Guests page and nothing is
+ * deleted, so the record (and every field on it) is still there and can be
+ * restored at any time.
+ */
+export const PROSPECT_RECORD = 'Prospect';
+export const isHiddenProspect = m => (m.record_type || '') === PROSPECT_RECORD;
+
+export async function markMemberAsProspect(id) {
+  return supabase.from('church_members')
+    .update({ record_type: PROSPECT_RECORD }).eq('id', id).select().single();
+}
+
+export async function restoreProspectToMember(id) {
+  return supabase.from('church_members')
+    .update({ record_type: 'Member' }).eq('id', id).select().single();
+}
+
 /* ── Groups (stored as comma-separated tags on each member) ── */
 export const DEACON_GROUP = 'Deacons';
 

@@ -85,7 +85,7 @@ function Layout() {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 12, marginTop: 20 }}>
-          {saved && <span style={{ fontSize: 13, color: 'var(--green)', fontWeight: 600 }}>Saved ✓</span>}
+          {saved && <span style={{ fontSize: 13, color: 'var(--green)', fontWeight: 600 }}>Saved</span>}
           <button className="ap-btn primary" onClick={save} disabled={saving}>{saving ? <><span className="ap-spinner" />Saving…</> : <><Icon d={P.check} size={15} />Save layout</>}</button>
         </div>
       </div>

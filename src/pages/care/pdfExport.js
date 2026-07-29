@@ -1,5 +1,6 @@
 import { alertDialog } from "../../lib/dialog";
 import { lastContacted } from '../../lib/care';
+import { printHtml } from '../../lib/printDoc';
 
 /* Client-side PDF export — opens a print-ready HTML document */
 export function exportMembersPDF(members) {
@@ -37,11 +38,7 @@ export function exportMembersPDF(members) {
       </table>
     </body></html>`;
 
-  const w = window.open('', '_blank');
-  if (!w) { alertDialog('Please allow pop-ups to export the PDF.'); return; }
-  w.document.write(html);
-  w.document.close();
-  setTimeout(() => w.print(), 300);
+  return printHtml(html, { filename: 'care-list' });
 }
 
 function esc(s = '') {

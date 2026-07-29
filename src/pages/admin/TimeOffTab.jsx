@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { P, Icon } from '../../lib/icons';
 import { alertDialog } from '../../lib/dialog';
+import { printHtml } from '../../lib/printDoc';
 import {
   decideTimeOff, createTimeOff, updateStaff, ptoDays, timeAgo,
 } from '../../lib/admin';
@@ -275,9 +276,7 @@ function NewRequestModal({ staff, testMode, onClose, onSaved }) {
 
 /* ── PDF exports (print windows, Georgia serif like other exports) ── */
 function openPrint(title, bodyHtml) {
-  const w = window.open('', '_blank');
-  if (!w) { alertDialog('Please allow pop-ups to export the PDF.'); return; }
-  w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${title}</title>
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${title}</title>
     <style>
       body { font-family: Georgia, 'Times New Roman', serif; margin: 40px; color: #1a1a1a; }
       h1 { font-size: 22px; margin-bottom: 4px; }
@@ -287,9 +286,8 @@ function openPrint(title, bodyHtml) {
       td { border-bottom: 1px solid #ddd; padding: 8px 6px; }
       .row { margin: 8px 0; font-size: 14px; }
       .label { color: #666; }
-    </style></head><body>${bodyHtml}</body></html>`);
-  w.document.close();
-  setTimeout(() => w.print(), 300);
+    </style></head><body>${bodyHtml}</body></html>`;
+  return printHtml(html, { filename: title.toLowerCase().replace(/\s+/g, '-') });
 }
 
 function exportDecisionPDF({ req, status, reason }) {

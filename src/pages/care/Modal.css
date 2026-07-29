@@ -114,9 +114,24 @@
 .field-group { display: flex; flex-direction: column; gap: 6px; }
 .field-group > span { font-size: 13px; font-weight: 500; color: var(--text-2); }
 .field-group > span b { color: var(--red); }
+.field-group > span em { font-style: normal; color: var(--text-3); }
+
+/* Checkbox row inside a modal. [type] keeps it above ".modal input { width: 100% }"
+   whatever the bundle order — without it the box stretches and shoves its label right. */
+.modal-check { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--text); cursor: pointer; }
+.modal-check input[type="checkbox"] { width: 16px; height: 16px; flex: none; accent-color: var(--accent); }
+
+.modal-body > .field-err,
+.field-group > span.field-err { font-size: 13px; font-weight: 500; color: var(--red); }
 
 /* Name autocomplete (Add Care Member → pulls from the member directory) */
 .cf-ac { position: relative; }
+/* In-flow suggestion list (care name lookup) — modal grows, nothing scrolls */
+.cf-ac-list {
+  display: flex; flex-direction: column; gap: 2px;
+  margin-top: -14px; padding: 5px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm);
+}
 .cf-ac-menu {
   position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 30;
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm);
@@ -265,3 +280,98 @@ a.mp-chip:hover svg { color: var(--accent); }
   @keyframes mBottom { from { transform: translateY(100%); } to { transform: translateY(0); } }
   .modal.slideover { width: 100%; }
 }
+
+/* ── Care category tiles (guest-picker style) ── */
+.cp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin-bottom: 4px; }
+.cp-card {
+  display: flex; align-items: center; gap: 8px; padding: 9px 11px;
+  border: 1px solid var(--border); border-radius: 10px; background: var(--surface);
+  cursor: pointer; transition: border-color 0.12s, background 0.12s, transform 0.1s;
+}
+.cp-card:hover { border-color: var(--tc); transform: translateY(-1px); }
+.cp-card.on { border-color: var(--tc); background: color-mix(in srgb, var(--tc) 10%, transparent); box-shadow: inset 0 0 0 1px var(--tc); }
+.cp-icon {
+  width: 26px; height: 26px; border-radius: 8px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--tc); background: color-mix(in srgb, var(--tc) 14%, transparent);
+}
+.cp-name { flex: 1; min-width: 0; text-align: left; font-size: 12.5px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cp-card.on .cp-name { color: var(--tc); }
+.cp-check { color: var(--tc); flex-shrink: 0; }
+
+/* ── "surgery" highlight in care notes ──
+   The backdrop renders the same text with transparent glyphs; only the marks
+   show. The mark carries NO padding/margin so line metrics match the textarea
+   exactly and the glow sits precisely under the typed word. */
+.cp-hl-wrap { position: relative; background: var(--surface); border-radius: var(--radius-sm); }
+/* The backdrop and the textarea must lay out text IDENTICALLY or the caret
+   drifts away from the words. Every metric that affects wrapping is pinned on
+   both: font, size, weight, line-height, letter-spacing, padding, border, wrap
+   mode — and `scrollbar-gutter: stable` so a scrollbar appearing on the
+   textarea can't narrow one layer but not the other. */
+.cp-hl-bg,
+.modal .cp-hl-ta {
+  font-family: inherit; font-size: 14px; font-weight: 400;
+  line-height: 1.5; letter-spacing: normal;
+  padding: 10px 12px; border: 1px solid transparent; border-radius: var(--radius-sm);
+  white-space: pre-wrap; overflow-wrap: break-word; word-break: normal;
+  scrollbar-gutter: stable;
+}
+.cp-hl-bg {
+  position: absolute; inset: 0; overflow-y: auto; overflow-x: hidden;
+  pointer-events: none; color: var(--text);
+}
+.modal .cp-hl-ta {
+  position: relative; background: transparent; overflow-y: auto;
+  border-color: var(--border); color: transparent; caret-color: var(--text);
+  resize: none;
+}
+.modal .cp-hl-ta::placeholder { color: var(--text-3); }
+.modal .cp-hl-ta::selection { background: rgba(0, 107, 255, 0.22); }
+@keyframes cpSurgPulse {
+  0%, 100% { color: #9333EA; text-shadow: 0 0 6px rgba(168, 85, 247, 0.35); }
+  50%      { color: #C084FC; text-shadow: 0 0 14px rgba(168, 85, 247, 0.85); }
+}
+.cp-surg-mark { background: none; font-weight: inherit; animation: cpSurgPulse 1.4s ease-in-out infinite; }
+
+.cp-surg-hint { display: flex; align-items: center; gap: 6px; margin-top: 6px; font-size: 12.5px; font-weight: 600; color: #8B5CF6; }
+
+/* ── Large in-flow date picker ── */
+.cdp-trigger {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 11px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--surface); color: var(--text); font-size: 14px; font-weight: 500;
+  cursor: pointer; transition: border-color 0.14s;
+}
+.cdp-trigger:hover { border-color: #C6D5EC; }
+.cdp-trigger.open { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(0,107,255,0.1); }
+.cdp-trigger > span { flex: 1; text-align: left; }
+.cdp-placeholder { color: var(--text-3); font-weight: 400; }
+.cdp-caret { color: var(--text-3); }
+.cdp-trigger.open .cdp-caret { transform: rotate(180deg); }
+
+.cdp-panel {
+  margin-top: 8px; padding: 14px; border: 1px solid var(--border);
+  border-radius: var(--radius); background: var(--surface);
+}
+.cdp-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.cdp-month { font-size: 15px; font-weight: 700; color: var(--text); }
+.cdp-nav {
+  width: 34px; height: 34px; display: flex; align-items: center; justify-content: center;
+  border-radius: 9px; color: var(--text-2); background: var(--surface-2); cursor: pointer;
+}
+.cdp-nav:hover { color: var(--accent); background: var(--accent-soft); }
+.cdp-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.cdp-dow span { text-align: center; font-size: 11px; font-weight: 700; color: var(--text-3); padding: 4px 0 6px; }
+.cdp-day {
+  height: 38px; display: flex; align-items: center; justify-content: center;
+  border-radius: 10px; font-size: 14px; font-weight: 600; color: var(--text);
+  background: none; cursor: pointer; transition: background 0.1s;
+}
+.cdp-day:hover { background: var(--surface-2); }
+.cdp-day.today { box-shadow: inset 0 0 0 1px var(--accent); color: var(--accent); }
+.cdp-day.sel { background: var(--accent); color: #fff; }
+.cdp-foot { display: flex; justify-content: space-between; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+.cdp-link { font-size: 13px; font-weight: 700; color: var(--accent); background: none; cursor: pointer; }
+.cdp-link:hover { text-decoration: underline; }
+.cdp-link.danger { color: var(--red); }

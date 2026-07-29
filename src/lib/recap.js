@@ -2,6 +2,11 @@ import { alertDialog } from "./dialog";
 import { jsPDF } from 'jspdf';
 import { supabase } from './supabase';
 import { sendMessage } from './email';
+import { printHtml } from './printDoc';
+import {
+  esc, C, FONT, h2, emptyNote, card, name, meta, notes, tag, contact,
+  twoCol, metric, docShell, section,
+} from './docTheme';
 // The recap covers the same window as the guest list — the guest week, which
 // runs Sunday 7:00 AM → the following Sunday 7:00 AM. Gathering happens Sunday
 // morning and the recap goes out that afternoon, so "this week" is exactly what
@@ -116,9 +121,14 @@ export function computeRecap(guests, comments = [], connections = []) {
   const visited = g => inWeek(g.last_visit);
   const ownSection = new Set(['Salvation', 'Baptism', 'New Member']);
 
-  const salvations = guests.filter(g => g.type === 'Salvation' && visited(g));
-  const baptisms   = guests.filter(g => g.type === 'Baptism'   && visited(g));
-  const newMembers = guests.filter(g => g.type === 'New Member' && visited(g));
+  // A decision belongs to the week it was RECORDED, not the last time the
+  // person attended — otherwise someone entered as a Baptism months ago
+  // reappears as this week's baptism the next Sunday they show up.
+  const decided = g => inWeek(g.created_at || g.last_visit);
+
+  const salvations = guests.filter(g => g.type === 'Salvation' && decided(g));
+  const baptisms   = guests.filter(g => g.type === 'Baptism'   && decided(g));
+  const newMembers = guests.filter(g => g.type === 'New Member' && decided(g));
   // Prospects: filtered by when the record was touched (created/last visit) this week
   const prospects  = guests.filter(g => isProspect(g) && (inWeek(g.created_at) || visited(g)));
 
@@ -126,13 +136,13 @@ export function computeRecap(guests, comments = [], connections = []) {
   // The entry type is authoritative: anyone explicitly marked
   // "Returning Guest/Member" belongs in Returning even though the form
   // defaults first_visit to today (which would otherwise read as a first visit).
+  const visitor = g => visited(g) && !ownSection.has(g.type) && !isProspect(g)
+    && g.type !== 'Comment';   // greeter observations aren't visitors
   const firstTimers = guests.filter(g =>
-    visited(g) && !ownSection.has(g.type) && !isProspect(g) &&
-    g.type !== 'Returning Guest/Member' &&
+    visitor(g) && g.type !== 'Returning Guest/Member' &&
     (!g.first_visit || inWeek(g.first_visit)));
   const firstIds = new Set(firstTimers.map(g => g.id));
-  const returning = guests.filter(g =>
-    visited(g) && !ownSection.has(g.type) && !isProspect(g) && !firstIds.has(g.id));
+  const returning = guests.filter(g => visitor(g) && !firstIds.has(g.id));
 
   const guestsThisWeek = guests.filter(visited).length;
 
@@ -197,7 +207,6 @@ export async function sendRecap({ account, recipients, subject, body, senderName
 }
 
 /* ══════════ Weekly Recap "PDF" (HTML → browser print) ══════════ */
-const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const fmtDate = d => {
   if (!d) return '';
   const s = String(d);
@@ -212,152 +221,162 @@ export function buildRecapHtml(recap) {
   const range = weekLabel();
   const today = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
   const m = recap.metrics;
+  const plural = (n, one, many) => (n === 1 ? one : many);
 
-  /* Everything below is table-based with inline styles: flexbox and CSS grid
-     are ignored by Outlook and several webmail clients, so the same markup has
-     to survive both the browser print engine and an email client. */
-  const C = {
-    ink: '#1a1a1a', mute: '#555', faint: '#888', line: '#ddd', rule: '#ccc',
-    gray: '#f0f0f0', soft: '#f7f7f7', green: '#e8f5e9', blue: '#e3f2fd',
-  };
-  const FONT = "-apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
-
-  const h2 = t => `<h2 style="font-size:11pt;margin:0 0 8px;padding-bottom:4px;border-bottom:1px solid ${C.rule};font-family:${FONT};color:${C.ink};">${t}</h2>`;
-  const empty = '<p style="color:#999;font-style:italic;margin:0;font-size:9pt;">None this week.</p>';
-
-  /* A card. `tone` picks the background. */
-  const card = (inner, tone = 'soft') => `<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="border-collapse:separate;margin-bottom:7px;">
-    <tr><td style="background:${C[tone]};border-radius:6px;padding:8px 10px;font-family:${FONT};font-size:9pt;color:${C.ink};">${inner}</td></tr></table>`;
-  const name = t => `<div style="font-weight:700;font-size:9.5pt;">${t}</div>`;
-  const meta = t => (t ? `<div style="color:${C.mute};margin-top:2px;">${t}</div>` : '');
-  const notes = t => (t ? `<div style="font-style:italic;color:#444;margin-top:4px;">${t}</div>` : '');
-  const tag = (t, green) => `<span style="display:inline-block;font-size:7pt;font-weight:600;background:${green ? '#c8e6c9' : '#fff'};border:1px solid ${green ? '#a5d6a7' : C.rule};border-radius:999px;padding:1px 8px;margin-top:5px;">${t}</span>`;
-  const contact = g => [g.phone, g.email].filter(Boolean).map(esc).join(' · ');
-
-  /* Lay a list of cards into two columns, the way the printed recap reads. */
-  const twoCol = items => {
-    if (!items.length) return empty;
-    let out = '<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="border-collapse:collapse;">';
-    for (let i = 0; i < items.length; i += 2) {
-      out += `<tr><td width="50%" valign="top" style="padding-right:4px;">${items[i]}</td>`
-        + `<td width="50%" valign="top" style="padding-left:4px;">${items[i + 1] || ''}</td></tr>`;
-    }
-    return out + '</table>';
-  };
-
-  const metric = (n, label) => `<td width="25%" valign="top" style="padding:0 5px;">
-    <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="border-collapse:separate;">
-      <tr><td align="center" style="border:1px solid ${C.line};border-radius:6px;padding:10px;font-family:${FONT};">
-        <div style="font-size:20pt;font-weight:700;line-height:1;color:${C.ink};">${n}</div>
-        <div style="font-size:7pt;text-transform:uppercase;letter-spacing:0.5px;color:#666;margin-top:5px;">${label}</div>
-      </td></tr></table></td>`;
-
-  const prospectCard = g => {
-    const firstTime = g.first_visit && inWeek(g.first_visit);
-    return card(
-      name(esc(g.full_name) + (firstTime ? ' ' + tag('First visit', true) : ''))
-      + meta(contact(g))
-      + (g.first_visit ? meta(`First visit: ${fmtDate(g.first_visit)}`) : '')
-      + (g.status ? tag(esc(g.status)) : '')
-      + notes(esc(g.notes || '')),
-      firstTime ? 'green' : 'gray',
-    );
-  };
-
-  const absenceLabel = g => {
-    if (g.absence_type === 'Long') return `<div style="font-size:7.5pt;font-weight:700;color:#b00020;margin-top:3px;">Returning after long absence</div>`;
-    if (g.absence_type === 'Brief') return `<div style="font-size:7.5pt;font-weight:700;color:#b26a00;margin-top:3px;">Returning after brief absence</div>`;
+  /* Absence wording comes from the entry type when set, otherwise from the
+     note text — greeters often write it in prose instead of picking a field. */
+  const absence = g => {
+    const t = g.absence_type || (/\blong\s+absence\b/i.test(g.notes || '') ? 'Long'
+      : /\bbrief\s+absence\b/i.test(g.notes || '') ? 'Brief' : '');
+    if (t === 'Long') return `<div class="abs long">Returning after long absence</div>`;
+    if (t === 'Brief') return `<div class="abs brief">Returning after brief absence</div>`;
     return '';
   };
-  const returningCard = g => card(
-    name(esc(g.full_name)) + absenceLabel(g) + meta(contact(g)),
-  );
 
-  /* A person card used for salvations / baptisms / new members / first-timers. */
-  const personCard = (g, tone) => card(
-    name(esc(g.full_name)) + meta(contact(g) || 'No contact on file'),
-    tone,
-  );
+  const line = (t, cls = 'sub') => (t ? `<div class="${cls}">${t}</div>` : '');
+  const contactLines = g => line(esc(g.phone || '')) + line(esc(g.email || ''));
 
-  const commentCard = c => card(
-    name(esc(c.person_name || 'Someone'))
-    + notes(esc(c.comment || ''))
-    + (c.submitted_by ? meta(`— ${esc(c.submitted_by)} · ${fmtDate(c.created_at)}`) : ''),
-    'gray',
-  );
+  /* Greeter comments matched to a returning guest by name. */
+  const commentsFor = full => (recap.comments || []).filter(c =>
+    (c.person_name || '').trim().toLowerCase() === String(full || '').trim().toLowerCase());
 
-  /* Connections carry the member's contact details when we have them. */
-  const connectionCard = c => {
-    const mem = c.church_members || c.member || null;
-    return card(
-      name(esc(c.person_name || mem?.name || 'Someone'))
-      + meta([mem?.phone, mem?.email].filter(Boolean).map(esc).join(' · '))
-      + (c.ministry ? tag(esc(c.ministry), true) : '')
-      + (c.submitted_by ? meta(`— ${esc(c.submitted_by)}`) : ''),
-      'green',
-    );
+  const prospectCard = g => `<div class="card ${(g.return_count || 0) === 0 ? 'green' : ''}">
+      <div class="nm">${esc(g.full_name)}</div>
+      ${contactLines(g)}
+      ${g.first_visit ? line(`First: ${fmtDate(g.first_visit)}`) : ''}
+      ${g.status ? `<div class="status">${esc(g.status)}</div>` : ''}
+      ${g.notes ? `<div class="note">${esc(g.notes)}</div>` : ''}
+    </div>`;
+
+  const returningCard = g => {
+    const n = g.return_count || 0;
+    const cs = commentsFor(g.full_name).map(c => `<div class="gc">
+        &ldquo;${esc(c.comment || '')}&rdquo;${c.submitted_by ? ` <span class="gc-by">&mdash; ${esc(c.submitted_by)}</span>` : ''}
+      </div>`).join('');
+    return `<div class="card roomy">
+      <div class="nm">${esc(g.full_name)}${n > 1 ? `<span class="pill">x${n}</span>` : ''}</div>
+      ${absence(g)}
+      ${g.notes ? `<div class="note">${esc(g.notes)}</div>` : ''}
+      ${cs}
+    </div>`;
   };
 
-  const section = (title, inner) => inner
-    ? `<tr><td style="padding-top:18px;">${h2(title)}${inner}</td></tr>` : '';
+  const emptyCard = t => `<div class="card"><div class="sub">${t}</div></div>`;
+  const grid = cards => `<div class="grid">${cards.join('')}</div>`;
+  const sec = (title, count, inner) => (inner
+    ? `<div class="sec"><div class="sec-h">${title} (${count})</div>${inner}</div>` : '');
 
-  const prospectsInner = recap.prospects.length ? recap.prospects.map(prospectCard).join('') : empty;
-  const returningInner = recap.returning.length ? recap.returning.map(returningCard).join('') : empty;
+  const personCard = (g, cls = '') => `<div class="card ${cls}">
+      <div class="nm">${esc(g.full_name)}</div>
+      ${contactLines(g)}
+    </div>`;
 
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width">
-  <title>Weekly Recap</title>
-  <style>@page { size: letter portrait; margin: 0.5in; }</style></head>
-  <body style="margin:0;padding:0;background:#fff;">
-  <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="border-collapse:collapse;max-width:760px;margin:0 auto;font-family:${FONT};font-size:9pt;color:${C.ink};">
+  const pathway = (recap.comments || []).map(c => `<div class="card">
+      <div class="nm">${esc(c.person_name || 'Someone')}</div>
+      <div class="note">${esc(c.comment || '')}</div>
+      ${line(`${esc(c.submitted_by || '')}${c.submitted_by && c.created_at ? ' · ' : ''}${c.created_at ? fmtDate(c.created_at) : ''}`)}
+    </div>`);
 
-    <tr><td style="border-bottom:2px solid #111;padding-bottom:10px;">
-      <table role="presentation" cellpadding="0" cellspacing="0" width="100%"><tr>
-        <td valign="bottom"><div style="font-size:24pt;font-weight:700;letter-spacing:-0.5px;">Weekly Recap</div>
-          <div style="font-size:9pt;color:${C.mute};margin-top:2px;">Week of ${range}</div></td>
-        <td valign="bottom" align="right" style="font-size:9pt;color:#444;line-height:1.5;">
-          <b style="color:#111;">Bethesda Baptist Church</b><br>${today}</td>
-      </tr></table>
-    </td></tr>
+  const connections = (recap.connections || []).map(c => {
+    const mem = c.church_members || c.member || null;
+    return `<div class="card">
+      <div class="nm">${esc(c.person_name || mem?.name || 'Someone')}</div>
+      ${line(esc(mem?.phone || ''))}${line(esc(mem?.email || ''))}
+      ${c.ministry ? `<div class="status">${esc(c.ministry)}</div>` : ''}
+    </div>`;
+  });
 
-    <tr><td style="padding-top:14px;">
-      <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="border-collapse:collapse;"><tr>
-        ${metric(m.salvations, 'Salvations')}
-        ${metric(m.baptisms, 'Baptisms')}
-        ${metric(m.newMembers, 'New Members')}
-        ${metric(m.guests, 'Guests This Week')}
-      </tr></table>
-    </td></tr>
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Weekly Recap</title>
+  <style>
+    @page { size: letter portrait; margin: 0.5in; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; font-size: 9pt; line-height: 1.4; color: #1a1a1a;
+      font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    }
 
-    <tr><td style="padding-top:18px;">
-      <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="border-collapse:collapse;"><tr>
-        <td width="50%" valign="top" style="padding-right:8px;">
-          ${h2(`Prospects (${recap.prospects.length})`)}${prospectsInner}</td>
-        <td width="50%" valign="top" style="padding-left:8px;">
-          ${h2(`Returning Guests / Members (${recap.returning.length})`)}${returningInner}</td>
-      </tr></table>
-    </td></tr>
+    .head { display: flex; justify-content: space-between; align-items: flex-end;
+            border-bottom: 2px solid #000; padding-bottom: 8px; }
+    .head h1 { margin: 0; font-size: 18pt; font-weight: 800; letter-spacing: -0.03em; }
+    .head .wk { font-size: 8pt; color: #666; }
+    .head .right { text-align: right; font-size: 8pt; color: #666; }
 
-    ${section(`First-Time Visitors (${recap.firstTimers.length})`, recap.firstTimers.length ? twoCol(recap.firstTimers.map(g => personCard(g, 'green'))) : '')}
-    ${section(`Pathway To Belonging (${recap.comments.length})`, recap.comments.length ? twoCol(recap.comments.map(commentCard)) : '')}
-    ${section(`Connections (${(recap.connections || []).length})`, (recap.connections || []).length ? twoCol(recap.connections.map(connectionCard)) : '')}
-    ${section(`Salvations (${recap.salvations.length})`, recap.salvations.length ? twoCol(recap.salvations.map(g => personCard(g, 'soft'))) : '')}
-    ${section(`Baptisms (${recap.baptisms.length})`, recap.baptisms.length ? twoCol(recap.baptisms.map(g => personCard(g, 'blue'))) : '')}
-    ${section(`New Members (${recap.newMembers.length})`, recap.newMembers.length ? twoCol(recap.newMembers.map(g => personCard(g, 'gray'))) : '')}
+    .metrics { display: flex; gap: 20px; margin: 14px 0 4px; }
+    .metric .n { font-size: 20pt; font-weight: 800; letter-spacing: -0.03em; line-height: 1.1; }
+    .metric .l { font-size: 6.5pt; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: #888; }
 
-    <tr><td style="padding-top:22px;">
-      <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="border-top:1px solid ${C.line};font-size:7.5pt;color:${C.faint};">
-        <tr><td style="padding-top:8px;">Confidential</td><td align="right" style="padding-top:8px;">${today}</td></tr>
-      </table>
-    </td></tr>
+    .cols { display: flex; gap: 20px; margin-top: 14px; }
+    .col { flex: 1; min-width: 0; }
+    .col-h, .sec-h {
+      font-size: 11pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
+      border-bottom: 1px solid #ccc; padding-bottom: 3px; margin-bottom: 6px;
+    }
 
-  </table></body></html>`;
+    .card { background: #f0f0f0; border-radius: 5px; padding: 7px 10px; margin-bottom: 5px;
+            page-break-inside: avoid; }
+    .card.roomy { padding: 8px 12px; }
+    .card.green { background: #e8f5e9; }
+    .card.blue  { background: #e3f2fd; }
+    .nm { font-size: 9pt; font-weight: 600; color: #1a1a1a; }
+    .sub { font-size: 7.5pt; color: #666; }
+    .status { font-size: 6.5pt; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; color: #888; }
+    .note { font-size: 7.5pt; color: #777; font-style: italic; }
+    .pill { display: inline-block; margin-left: 5px; font-size: 6.5pt; font-weight: 600;
+            background: #e3e3e3; color: #555; border-radius: 8px; padding: 0 5px; }
+    .abs { font-size: 7.5pt; font-weight: 600; }
+    .abs.long  { color: #b71c1c; }
+    .abs.brief { color: #e65100; }
+    .gc { background: #e8eaf6; border-radius: 3px; padding: 3px 6px; margin-top: 3px;
+          font-size: 7pt; font-style: italic; color: #555; }
+    .gc-by { font-style: normal; color: #888; }
+
+    .sec { margin-top: 18px; page-break-inside: avoid; }
+    .grid { display: flex; flex-wrap: wrap; gap: 5px; }
+    .grid > .card { width: 48%; margin-bottom: 0; }
+
+    .foot { display: flex; justify-content: space-between; border-top: 1px solid #ddd;
+            margin-top: 20px; padding-top: 6px; font-size: 7pt; color: #bbb; }
+  </style></head><body>
+
+    <div class="head">
+      <div>
+        <h1>Weekly Recap</h1>
+        <div class="wk">Week of ${range}</div>
+      </div>
+      <div class="right">Bethesda Baptist Church<br>${today}</div>
+    </div>
+
+    <div class="metrics">
+      <div class="metric"><div class="n">${m.salvations}</div><div class="l">${plural(m.salvations, 'Salvation', 'Salvations')}</div></div>
+      <div class="metric"><div class="n">${m.baptisms}</div><div class="l">${plural(m.baptisms, 'Baptism', 'Baptisms')}</div></div>
+      <div class="metric"><div class="n">${m.newMembers}</div><div class="l">${plural(m.newMembers, 'New Member', 'New Members')}</div></div>
+      <div class="metric"><div class="n">${m.guests}</div><div class="l">${plural(m.guests, 'Guest This Week', 'Guests This Week')}</div></div>
+    </div>
+
+    <div class="cols">
+      <div class="col">
+        <div class="col-h">Prospects (${recap.prospects.length})</div>
+        ${recap.prospects.length ? recap.prospects.map(prospectCard).join('') : emptyCard('No prospects this week')}
+      </div>
+      <div class="col">
+        <div class="col-h">Returning Guests / Members (${recap.returning.length})</div>
+        ${recap.returning.length ? recap.returning.map(returningCard).join('') : emptyCard('No returning guests this week')}
+      </div>
+    </div>
+
+    ${sec('Pathway To Belonging', pathway.length, pathway.length ? grid(pathway) : '')}
+    ${sec('Connections', connections.length, connections.length ? grid(connections) : '')}
+    ${sec('First-Time Visitors', recap.firstTimers.length, recap.firstTimers.length ? grid(recap.firstTimers.map(g => personCard(g, 'green'))) : '')}
+    ${sec('Salvations', recap.salvations.length, recap.salvations.length ? grid(recap.salvations.map(g => personCard(g))) : '')}
+    ${sec('Baptisms', recap.baptisms.length, recap.baptisms.length ? grid(recap.baptisms.map(g => personCard(g, 'blue'))) : '')}
+    ${sec('New Members', recap.newMembers.length, recap.newMembers.length ? grid(recap.newMembers.map(g => personCard(g))) : '')}
+
+    <div class="foot"><span>Confidential</span><span>${today}</span></div>
+  </body></html>`;
 }
+
 export function openRecapPdf(recap) {
-  const w = window.open('', '_blank');
-  if (!w) { alertDialog('Please allow pop-ups to open the Recap PDF.'); return; }
-  w.document.write(buildRecapHtml(recap));
-  w.document.close();
-  setTimeout(() => w.print(), 500);
+  return printHtml(buildRecapHtml(recap), { filename: 'weekly-recap' });
 }
 
 /* ══════════ Real PDF file (jsPDF) — for auto-attaching to the email ══════════ */
@@ -502,37 +521,16 @@ export function buildRecapPdf(recap) {
     badge: g.absence_type === 'Long' ? { text: 'Returning after long absence', color: [176, 0, 32] }
       : g.absence_type === 'Brief' ? { text: 'Returning after brief absence', color: [178, 106, 0] } : null,
     meta: contact(g),
+    notes: g.notes,          // comments entered on the guest
   });
 
-  // Row-paired drawing so long lists page-break instead of running off the
-  // bottom: row i holds prospect[i] on the left and returning[i] on the right,
-  // ensure()d as a unit. A plain per-column forEach drew everything past
-  // ~7 cards off-page — silently missing from the emailed PDF.
-  ensure(60);
-  const topY = y;
-  headingAt(`Prospects (${recap.prospects.length})`, M, COLW, topY);
-  y = headingAt(`Returning Guests / Members (${recap.returning.length})`, M + COLW + GAP, COLW, topY);
-  const emptyNote = (x, yy) => {
-    font('italic', 9); doc.setTextColor(150, 150, 150); doc.text('None this week.', x, yy + 8);
-  };
-  if (!recap.prospects.length) emptyNote(M, y);
-  if (!recap.returning.length) emptyNote(M + COLW + GAP, y);
-  const topRows = Math.max(recap.prospects.length, recap.returning.length);
-  for (let i = 0; i < topRows; i++) {
-    const a = i < recap.prospects.length ? prospectOpts(recap.prospects[i]) : null;
-    const b = i < recap.returning.length ? returningOpts(recap.returning[i]) : null;
-    const h = Math.max(a ? cardHeight(a, COLW) : 0, b ? cardHeight(b, COLW) : 0);
-    ensure(h);
-    if (a) drawCard(a, M, y, COLW);
-    if (b) drawCard(b, M + COLW + GAP, y, COLW);
-    y += h + 7;
-  }
-  if (!topRows) y += 18;   // just the empty notes
-  y += 12;
+  /* ── Every group is its own full-width section, two cards per row ── */
+  twoColSection('Prospects', recap.prospects || [], prospectOpts);
+  twoColSection('Returning Guests / Members', recap.returning || [], returningOpts);
 
   /* ── Remaining sections, two columns each ── */
   twoColSection('First-Time Visitors', recap.firstTimers || [], g => ({
-    name: g.full_name, meta: contact(g) || 'No contact on file', bg: [232, 245, 233],
+    name: g.full_name, meta: contact(g) || 'No contact on file', notes: g.notes, bg: [232, 245, 233],
   }));
   twoColSection('Pathway To Belonging', recap.comments || [], c => ({
     name: c.person_name || 'Someone', notes: c.comment,
@@ -548,13 +546,13 @@ export function buildRecapPdf(recap) {
     };
   });
   twoColSection('Salvations', recap.salvations || [], g => ({
-    name: g.full_name, meta: contact(g) || 'No contact on file',
+    name: g.full_name, meta: contact(g) || 'No contact on file', notes: g.notes,
   }));
   twoColSection('Baptisms', recap.baptisms || [], g => ({
-    name: g.full_name, meta: contact(g) || 'No contact on file', bg: [227, 242, 253],
+    name: g.full_name, meta: contact(g) || 'No contact on file', notes: g.notes, bg: [227, 242, 253],
   }));
   twoColSection('New Members', recap.newMembers || [], g => ({
-    name: g.full_name, meta: contact(g) || 'No contact on file', bg: [240, 240, 240],
+    name: g.full_name, meta: contact(g) || 'No contact on file', notes: g.notes, bg: [240, 240, 240],
   }));
 
   /* ── Footer on every page ── */

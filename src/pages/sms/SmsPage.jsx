@@ -445,8 +445,8 @@ function Contacts({ owner, contacts, groups, members, reload }) {
                 <td className="adm-muted">{c.phone}</td>
                 <td>{groupsFor(c.id).map(g => <span key={g} className="sms-chip">{g}</span>)}</td>
                 <td className="adm-actions-cell">
-                  <button className="adm-menu-btn" title="Edit" onClick={() => setEdit(c)} style={{ fontSize: 15 }}>✎</button>
-                  <button className="adm-menu-btn" title="Remove" onClick={() => remove(c)} style={{ fontSize: 15 }}>×</button>
+                  <button className="adm-menu-btn" title="Edit" onClick={() => setEdit(c)}><Icon d={P.edit} size={14} /></button>
+                  <button className="adm-menu-btn" title="Remove" onClick={() => remove(c)}><Icon d={P.close} size={14} /></button>
                 </td>
               </tr>
             ))}

@@ -156,7 +156,7 @@ export default function SendServiceModal({ plan, onClose }) {
             <div className="er-pdfnote">
               <Icon d={P.pdf} size={15} />
               <span>The formatted <strong>service order PDF</strong> is attached automatically.</span>
-              <button className="er-pdf-btn" onClick={() => openServicePrint(plan)}>📄 Preview</button>
+              <button className="er-pdf-btn" onClick={() => openServicePrint(plan)}><Icon d={P.pdf} size={14} /> Preview</button>
             </div>
 
             {!account && (

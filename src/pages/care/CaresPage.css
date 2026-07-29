@@ -273,3 +273,50 @@
   .cp-filters { grid-template-columns: 1fr 1fr; }
   .cp-cards { grid-template-columns: 1fr; }
 }
+
+/* ── Appointments & Surgeries: one-line calendar week ── */
+.cwk {
+  margin-bottom: 32px; padding: 28px 32px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg);
+}
+.cwk-head { display: flex; align-items: center; gap: 16px; margin-bottom: 20px; }
+.cwk-title { font-size: 19px; font-weight: 700; color: var(--text); letter-spacing: -0.3px; }
+.cwk-range { font-size: 14px; font-weight: 600; color: var(--text-3); }
+.cwk-today { font-size: 13.5px; font-weight: 700; color: var(--accent); background: none; cursor: pointer; }
+.cwk-today:hover { text-decoration: underline; }
+.cwk-nav { margin-left: auto; display: flex; gap: 8px; }
+.cwk-nav button {
+  width: 36px; height: 36px; display: flex; align-items: center; justify-content: center;
+  border-radius: 10px; color: var(--text-2); background: var(--surface-2); cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.cwk-nav button:hover { color: var(--accent); background: var(--accent-soft); }
+
+.cwk-row { display: grid; grid-template-columns: repeat(7, 1fr); gap: 10px; }
+.cwk-day {
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  padding: 16px 10px 14px; border-radius: 16px; min-height: 112px;
+  transition: background 0.12s;
+}
+.cwk-day.today { background: var(--accent-soft); }
+.cwk-dow { font-size: 11.5px; font-weight: 700; letter-spacing: 0.6px; text-transform: uppercase; color: var(--text-3); }
+.cwk-day.today .cwk-dow { color: var(--accent); }
+.cwk-num { font-size: 18px; font-weight: 800; color: var(--text); }
+.cwk-day.today .cwk-num { color: var(--accent); }
+.cwk-chips { display: flex; flex-direction: column; gap: 6px; width: 100%; margin-top: 6px; }
+.cwk-chip {
+  --evc: #3B82F6;
+  display: flex; flex-direction: column; gap: 1px; width: 100%; text-align: left;
+  padding: 8px 11px; border-radius: 11px; cursor: pointer;
+  background: color-mix(in srgb, var(--evc) 10%, transparent);
+  transition: background 0.12s;
+}
+.cwk-chip.surg { --evc: #E5484D; }
+.cwk-chip:hover { background: color-mix(in srgb, var(--evc) 18%, transparent); }
+.cwk-chip-time { font-size: 10.5px; font-weight: 700; color: var(--evc); letter-spacing: 0.2px; }
+.cwk-chip-name { font-size: 12.5px; font-weight: 700; color: var(--text); line-height: 1.3; overflow-wrap: break-word; }
+.cwk-more { font-size: 11.5px; font-weight: 700; color: var(--text-3); text-align: center; }
+
+@media (max-width: 860px) {
+  .cwk-row { grid-template-columns: repeat(7, minmax(96px, 1fr)); overflow-x: auto; }
+}

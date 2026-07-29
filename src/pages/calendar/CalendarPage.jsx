@@ -1,4 +1,4 @@
-import { alertDialog } from "../../lib/dialog";
+import { alertDialog, confirmDialog } from "../../lib/dialog";
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import TopNav from '../../components/TopNav';
@@ -6,10 +6,14 @@ import { P, Icon } from '../../lib/icons';
 import {
   fetchEvents, CATEGORIES, catColor, monthGrid, monthLabel, dayLabel,
   WEEKDAYS, addMonths, addDays, startOfWeek, iso, parseISO, sameDay, isToday,
-  eventCoversDay, fmtTime, upcomingEvents,
+  eventCoversDay, fmtTime, upcomingEvents, saveEvent, deleteEvent, downloadICS,
 } from '../../lib/calendar';
+import { templateToEvent } from '../../lib/eventTemplates';
+import { isDesktop } from '../../lib/email';
 import EventWizard from './EventWizard';
 import EventProfile from './EventProfile';
+import TemplatePalette from './TemplatePalette';
+import ContextMenu from './ContextMenu';
 import './Calendar.css';
 
 const VIEWS = ['Month', 'Week', 'Day'];
@@ -71,8 +75,48 @@ export default function CalendarPage() {
     : view === 'Week' ? `Week of ${startOfWeek(cursor).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
     : dayLabel(cursor);
 
+  /* Right-click an event → open/edit/delete without going through the profile. */
+  const [menu, setMenu] = useState(null);        // { x, y, event }
+  function openMenu(e, ev) {
+    e.preventDefault();
+    e.stopPropagation();
+    setMenu({ x: e.clientX, y: e.clientY, event: ev });
+  }
+
+  async function removeEvent(ev, mode) {
+    const what = mode === 'single' ? `"${ev.title}"`
+      : mode === 'future' ? `"${ev.title}" and every later occurrence`
+      : `the entire "${ev.title}" series`;
+    if (!(await confirmDialog({ message: `Delete ${what}? This cannot be undone.` }))) return;
+    const { error } = await deleteEvent(ev, mode);
+    if (error) return alertDialog(`Could not delete the event: ${error.message}`);
+    load();
+  }
+
+  /* Template dropped on a day → create that event there. */
+  async function dropTemplate(tpl, dateISO, hour) {
+    const { error } = await saveEvent(templateToEvent(tpl, dateISO, calendar, hour));
+    if (error) return alertDialog(`Could not add ${tpl.title}: ${error.message}`);
+    load();
+  }
+
+  /* Desktop only: pop the calendar out into a small always-on-top window.
+     The web app auto-updates but the native shell does not, so installs older
+     than 1.2 reach this menu item without the command behind it. */
+  async function openWidget() {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('open_calendar_widget');
+    } catch (e) {
+      const missing = /not found|not allowed|unknown command/i.test(String(e?.message || e));
+      alertDialog(missing
+        ? 'The calendar widget needs Pillar 1.2 or newer. Download the latest installer from the Pillar releases page, then reopen this menu.'
+        : `Could not open the calendar widget: ${e?.message || e}`);
+    }
+  }
+
   const TOOLS = [
-    { icon: P.layers,  label: 'Templates',       act: () => alertDialog('Drag & Drop templates — coming soon.') },
+    isDesktop() && { icon: P.grid, label: 'Open Calendar Widget', act: openWidget },
     { icon: P.planner, label: 'Service Planner',  act: () => alertDialog('Service Planner — coming soon.') },
     { icon: P.clock,   label: 'Time Off Request', act: () => alertDialog('Time Off Request — coming soon.') },
     { icon: P.print,   label: 'Print / Export',   act: () => alertDialog('Gantt PDF export — coming soon.') },
@@ -115,7 +159,7 @@ export default function CalendarPage() {
               <>
                 <div className="cal-tools-backdrop" onClick={() => setToolsOpen(false)} />
                 <div className="cal-tools-menu">
-                  {TOOLS.map(t => (
+                  {TOOLS.filter(Boolean).map(t => (
                     <button key={t.label} onClick={() => { setToolsOpen(false); t.act(); }}>
                       <Icon d={t.icon} size={16} />{t.label}
                     </button>
@@ -130,9 +174,9 @@ export default function CalendarPage() {
       <div className="cal-body">
         {/* Main calendar */}
         <main className="cal-main">
-          {view === 'Month' && <MonthView cursor={cursor} events={events} onDay={d => setWizard({ date: iso(d) })} onEvent={setProfile} />}
-          {view === 'Week'  && <WeekView cursor={cursor} events={events} onSlot={(d) => setWizard({ date: iso(d) })} onEvent={setProfile} />}
-          {view === 'Day'   && <DayView cursor={cursor} events={events} onSlot={() => setWizard({ date: iso(cursor) })} onEvent={setProfile} />}
+          {view === 'Month' && <MonthView cursor={cursor} events={events} onDay={d => setWizard({ date: iso(d) })} onEvent={setProfile} onMenu={openMenu} />}
+          {view === 'Week'  && <WeekView cursor={cursor} events={events} onSlot={(d) => setWizard({ date: iso(d) })} onEvent={setProfile} onMenu={openMenu} />}
+          {view === 'Day'   && <DayView cursor={cursor} events={events} onSlot={() => setWizard({ date: iso(cursor) })} onEvent={setProfile} onMenu={openMenu} />}
         </main>
 
         {/* Upcoming sidebar */}
@@ -148,6 +192,8 @@ export default function CalendarPage() {
           ) : (
             <div className="cal-next-empty">No upcoming events</div>
           )}
+
+          <TemplatePalette onDrop={dropTemplate} />
 
           <p className="cal-up-label">Upcoming</p>
           <div className="cal-up-list">
@@ -168,6 +214,21 @@ export default function CalendarPage() {
         </aside>
       </div>
 
+      {menu && (
+        <ContextMenu x={menu.x} y={menu.y} onClose={() => setMenu(null)} items={[
+          { icon: P.calendar, label: 'Open details', act: () => setProfile(menu.event) },
+          { icon: P.edit,     label: 'Edit event',
+            act: () => setWizard({ event: menu.event, date: menu.event.start_date }) },
+          { icon: P.doc,      label: 'Add to my calendar', act: () => downloadICS(menu.event) },
+          { icon: P.trash,    label: menu.event.series_id ? 'Delete this event' : 'Delete', danger: true,
+            act: () => removeEvent(menu.event, 'single') },
+          menu.event.series_id && { icon: P.trash, label: 'Delete this & future', danger: true,
+            act: () => removeEvent(menu.event, 'future') },
+          menu.event.series_id && { icon: P.trash, label: 'Delete entire series', danger: true,
+            act: () => removeEvent(menu.event, 'series') },
+        ]} />
+      )}
+
       {wizard && (
         <EventWizard calendar={calendar} initialDate={wizard.date} event={wizard.event}
           onClose={() => setWizard(null)} onSaved={() => { setWizard(null); load(); }} />
@@ -183,7 +244,7 @@ export default function CalendarPage() {
 }
 
 /* ── Month view (week-row spanning bars) ── */
-function MonthView({ cursor, events, onDay, onEvent }) {
+function MonthView({ cursor, events, onDay, onEvent, onMenu }) {
   const grid = monthGrid(cursor);
   const weeks = Array.from({ length: 6 }, (_, i) => grid.slice(i * 7, i * 7 + 7));
   const curMonth = cursor.getMonth();
@@ -194,13 +255,13 @@ function MonthView({ cursor, events, onDay, onEvent }) {
         {WEEKDAYS.map(d => <div key={d} className="mv-weekday">{d}</div>)}
       </div>
       <div className="mv-weeks">
-        {weeks.map((week, wi) => <MonthWeek key={wi} week={week} events={events} curMonth={curMonth} onDay={onDay} onEvent={onEvent} />)}
+        {weeks.map((week, wi) => <MonthWeek key={wi} week={week} events={events} curMonth={curMonth} onDay={onDay} onEvent={onEvent} onMenu={onMenu} />)}
       </div>
     </div>
   );
 }
 
-function MonthWeek({ week, events, curMonth, onDay, onEvent }) {
+function MonthWeek({ week, events, curMonth, onDay, onEvent, onMenu }) {
   const weekStart = week[0], weekEnd = week[6];
   const wsISO = iso(weekStart), weISO = iso(weekEnd);
 
@@ -229,7 +290,8 @@ function MonthWeek({ week, events, curMonth, onDay, onEvent }) {
     <div className="mw">
       <div className="mw-days">
         {week.map(d => (
-          <div key={iso(d)} className={`mw-day ${d.getMonth() === curMonth ? '' : 'out'}`} onClick={() => onDay(d)}>
+          <div key={iso(d)} data-drop-date={iso(d)}
+            className={`mw-day ${d.getMonth() === curMonth ? '' : 'out'}`} onClick={() => onDay(d)}>
             <span className={`mw-num ${isToday(d) ? 'today' : ''}`}>{d.getDate()}</span>
           </div>
         ))}
@@ -242,7 +304,8 @@ function MonthWeek({ week, events, curMonth, onDay, onEvent }) {
               gridRow: seg.lane + 1,
               '--cc': catColor(seg.ev.category),
             }}
-            onClick={e => { e.stopPropagation(); onEvent(seg.ev); }}>
+            onClick={e => { e.stopPropagation(); onEvent(seg.ev); }}
+            onContextMenu={e => onMenu(e, seg.ev)}>
             {seg.ev.start_time && <span className="mw-bar-dot" />}
             <span className="mw-bar-title">{seg.ev.title}</span>
           </button>
@@ -258,7 +321,7 @@ function MonthWeek({ week, events, curMonth, onDay, onEvent }) {
 }
 
 /* ── Week view ── */
-function WeekView({ cursor, events, onSlot, onEvent }) {
+function WeekView({ cursor, events, onSlot, onEvent, onMenu }) {
   const start = startOfWeek(cursor);
   const days = Array.from({ length: 7 }, (_, i) => addDays(start, i));
   return (
@@ -267,7 +330,7 @@ function WeekView({ cursor, events, onSlot, onEvent }) {
         const dayEvents = events.filter(ev => eventCoversDay(ev, d))
           .sort((a, b) => (a.start_time || '').localeCompare(b.start_time || ''));
         return (
-          <div key={iso(d)} className="wv-col" onClick={() => onSlot(d)}>
+          <div key={iso(d)} className="wv-col" data-drop-date={iso(d)} onClick={() => onSlot(d)}>
             <div className={`wv-head ${isToday(d) ? 'today' : ''}`}>
               <span className="wv-dow">{WEEKDAYS[d.getDay()]}</span>
               <span className="wv-num">{d.getDate()}</span>
@@ -275,7 +338,8 @@ function WeekView({ cursor, events, onSlot, onEvent }) {
             <div className="wv-events">
               {dayEvents.map(ev => (
                 <button key={ev.id} className="wv-event" style={{ '--cc': catColor(ev.category) }}
-                  onClick={e => { e.stopPropagation(); onEvent(ev); }}>
+                  onClick={e => { e.stopPropagation(); onEvent(ev); }}
+                  onContextMenu={e => onMenu(e, ev)}>
                   {ev.start_time && <span className="wv-event-time">{fmtTime(ev.start_time)}</span>}
                   <span className="wv-event-title">{ev.title}</span>
                 </button>
@@ -289,7 +353,7 @@ function WeekView({ cursor, events, onSlot, onEvent }) {
 }
 
 /* ── Day view (vertical hours) ── */
-function DayView({ cursor, events, onSlot, onEvent }) {
+function DayView({ cursor, events, onSlot, onEvent, onMenu }) {
   const hours = Array.from({ length: 17 }, (_, i) => i + 6); // 6am–10pm
   const dayEvents = events.filter(ev => eventCoversDay(ev, cursor));
   const timed = dayEvents.filter(e => e.start_time);
@@ -302,7 +366,8 @@ function DayView({ cursor, events, onSlot, onEvent }) {
           <span className="dv-allday-label">All day</span>
           <div className="dv-allday-events">
             {allDay.map(ev => (
-              <button key={ev.id} className="dv-allday-ev" style={{ '--cc': catColor(ev.category) }} onClick={() => onEvent(ev)}>{ev.title}</button>
+              <button key={ev.id} className="dv-allday-ev" style={{ '--cc': catColor(ev.category) }}
+                onClick={() => onEvent(ev)} onContextMenu={e => onMenu(e, ev)}>{ev.title}</button>
             ))}
           </div>
         </div>
@@ -311,12 +376,13 @@ function DayView({ cursor, events, onSlot, onEvent }) {
         {hours.map(h => {
           const hourEvents = timed.filter(e => Number(e.start_time.split(':')[0]) === h);
           return (
-            <div key={h} className="dv-hour" onClick={onSlot}>
+            <div key={h} className="dv-hour" data-drop-date={iso(cursor)} data-drop-hour={h} onClick={onSlot}>
               <span className="dv-time">{h % 12 || 12}{h < 12 ? 'am' : 'pm'}</span>
               <div className="dv-slot">
                 {hourEvents.map(ev => (
                   <button key={ev.id} className="dv-event" style={{ '--cc': catColor(ev.category) }}
-                    onClick={e => { e.stopPropagation(); onEvent(ev); }}>
+                    onClick={e => { e.stopPropagation(); onEvent(ev); }}
+                    onContextMenu={e => onMenu(e, ev)}>
                     <span className="dv-event-time">{fmtTime(ev.start_time)}{ev.end_time ? ` – ${fmtTime(ev.end_time)}` : ''}</span>
                     <span className="dv-event-title">{ev.title}</span>
                     {ev.location && <span className="dv-event-loc">{ev.location}</span>}

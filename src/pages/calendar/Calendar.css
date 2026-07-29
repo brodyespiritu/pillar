@@ -112,6 +112,82 @@
 .cal-next-loc { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--text-3); margin-top: 2px; }
 .cal-next-empty, .cal-up-none { font-size: 13px; color: var(--text-3); padding: 8px 0; }
 
+/* ── Right-click menu ── */
+.cal-ctx-backdrop { position: fixed; inset: 0; z-index: 9998; }
+.cal-ctx {
+  position: fixed; z-index: 9999; min-width: 208px;
+  display: flex; flex-direction: column; gap: 2px; padding: 6px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); box-shadow: var(--shadow-md);
+}
+.cal-ctx button {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 12px; border-radius: var(--radius-sm);
+  background: none; text-align: left;
+  font-size: 13.5px; font-weight: 500; color: var(--text);
+  transition: background 0.1s, color 0.1s;
+}
+.cal-ctx button svg { color: var(--text-3); flex-shrink: 0; }
+.cal-ctx button:hover { background: var(--surface-2); }
+.cal-ctx button.danger { color: var(--red); }
+.cal-ctx button.danger svg { color: var(--red); }
+.cal-ctx button.danger:hover { background: var(--red-soft); }
+
+/* ── Drag & drop templates ── */
+.cal-tpl-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.cal-tpl-head .cal-up-label { margin-bottom: 10px; }
+.cal-tpl-new {
+  display: flex; align-items: center; gap: 5px;
+  padding: 5px 10px; margin-bottom: 10px; border-radius: var(--radius-sm);
+  background: none; border: 1px solid var(--border);
+  font-size: 12.5px; font-weight: 600; color: var(--text-2);
+  transition: border-color 0.12s, color 0.12s, background 0.12s;
+}
+.cal-tpl-new:hover { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+.cal-tpl-hint { font-size: 12.5px; line-height: 1.5; color: var(--text-3); margin: -4px 0 12px; }
+.cal-tpl-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 22px; }
+.cal-tpl {
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 12px; border-radius: var(--radius-sm);
+  background: var(--surface); border: 1px solid var(--border);
+  cursor: grab; touch-action: none;              /* let us own the gesture on touch */
+  user-select: none; -webkit-user-select: none;
+  transition: border-color 0.12s, background 0.12s, box-shadow 0.12s;
+}
+.cal-tpl:hover { border-color: color-mix(in srgb, var(--cc) 45%, var(--border)); background: var(--surface-2); }
+.cal-tpl:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.cal-tpl.dragging { opacity: 0.45; cursor: grabbing; }
+.cal-tpl-grip { color: var(--text-3); flex-shrink: 0; }
+.cal-tpl-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--cc); flex-shrink: 0; }
+.cal-tpl-info { display: flex; flex-direction: column; min-width: 0; }
+.cal-tpl-title { font-size: 14px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cal-tpl-meta { font-size: 12px; color: var(--text-3); }
+
+/* Ghost that follows the pointer */
+.cal-drag-ghost {
+  position: fixed; z-index: 10000; pointer-events: none;
+  transform: translate(12px, 12px);
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 14px; border-radius: var(--radius-sm);
+  background: var(--surface); color: var(--text);
+  font-size: 13.5px; font-weight: 600;
+  border: 1px solid color-mix(in srgb, var(--cc) 40%, var(--border));
+  box-shadow: var(--shadow-md);
+  opacity: 0.6;
+}
+.cal-drag-ghost.over { opacity: 1; border-color: var(--cc); }
+
+/* Day under the pointer, tinted with the dragged template's category colour */
+.cal-drop-on {
+  background: color-mix(in srgb, var(--drop-cc) 12%, var(--surface)) !important;
+  box-shadow: inset 0 0 0 2px var(--drop-cc);
+}
+/* Event bars would otherwise swallow the hit test mid-drag */
+body.cal-dragging { cursor: grabbing; }
+body.cal-dragging .mw-bar,
+body.cal-dragging .wv-event,
+body.cal-dragging .dv-event { pointer-events: none; }
+
 .cal-up-list { display: flex; flex-direction: column; gap: 2px; }
 .cal-up-item { display: flex; align-items: center; gap: 10px; padding: 10px 8px; border-radius: var(--radius-sm); background: none; text-align: left; transition: background 0.1s; }
 .cal-up-item:hover { background: var(--surface-2); }
