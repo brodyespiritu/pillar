@@ -15,14 +15,31 @@ export function formatPhone(p) {
 }
 
 /** All threads (grouped by number), newest activity first. */
+/*
+ * PostgREST caps a response at 1000 rows. This query is ordered OLDEST first,
+ * so once the log passed a thousand messages the cap returned the oldest
+ * thousand and silently dropped everything newer — every reply vanished and
+ * Refresh kept re-fetching the same stale page. Page through instead.
+ */
+const PAGE = 1000;
+
 export async function fetchThreads() {
-  const { data, error } = await supabase
-    .from('sms_messages')
-    .select('*')
-    .order('created_at', { ascending: true });
-  if (error) {
-    return { rows: [], missing: /relation|column|does not exist/i.test(error.message || '') };
+  const all = [];
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await supabase
+      .from('sms_messages')
+      .select('*')
+      .order('created_at', { ascending: true })
+      .order('id')                     // stable tiebreak so paging can't skip rows
+      .range(from, from + PAGE - 1);
+    if (error) {
+      if (all.length) break;           // keep what we have rather than showing nothing
+      return { rows: [], missing: /relation|column|does not exist/i.test(error.message || '') };
+    }
+    all.push(...(data || []));
+    if (!data || data.length < PAGE) break;
   }
+  const data = all;
 
   const map = new Map();
   for (const m of data || []) {
@@ -52,4 +69,12 @@ export async function sendText({ number, name, body }) {
 export async function markRead(ids) {
   if (!ids?.length) return;
   await supabase.from('sms_messages').update({ read_at: new Date().toISOString() }).in('id', ids);
+}
+
+/* A person's decision about one reply's headcount. `count` null with
+   excluded false hands it back to the automatic reading. */
+export async function setRsvp(id, { count = null, excluded = false } = {}) {
+  return supabase.from('sms_messages')
+    .update({ rsvp_count: count, rsvp_excluded: excluded })
+    .eq('id', id);
 }

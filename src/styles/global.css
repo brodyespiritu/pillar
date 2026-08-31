@@ -44,4 +44,105 @@ button { cursor: pointer; font-family: inherit; border: none; outline: none; }
    without these, text boxes render in a different typeface than the inputs
    beside them. */
 input, textarea, select { font-family: inherit; font-size: inherit; outline: none; }
+
+/*
+ * Every <select>, one look. Without appearance:none a select falls back to the
+ * OS control, which is why dropdowns differed between macOS, Windows and the
+ * desktop webview. The chevron is a background image so no markup changes are
+ * needed. Scoped to `select` ONLY — appearance:none on an input strips
+ * checkboxes and radios of their box entirely.
+ *
+ * !important because page rules set the `background` SHORTHAND, which resets
+ * background-image to none. Background COLOUR is left alone.
+ */
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%238FA5BB'%3E%3Cpath d='M7 10l5 5 5-5z'/%3E%3C/svg%3E") !important;
+  background-repeat: no-repeat !important;
+  background-position: right 10px center !important;
+  background-size: 18px 18px !important;
+  padding-right: 34px;
+  cursor: pointer;
+}
+select:disabled { cursor: not-allowed; opacity: 0.6; }
+/* Options render in the OS menu — keep them legible in dark UI chrome. */
+select option { color: var(--text); background: var(--surface); }
 a      { text-decoration: none; color: inherit; }
+
+
+/*
+ * The bottom inset a sheet actually needs.
+ *
+ * --pillar-safe-bottom is the home indicator's strip, injected by the native
+ * shell (and env() in a browser PWA). While the keyboard is open the indicator
+ * is *underneath the keyboard*, so reserving space for it leaves a dead band of
+ * card between the last button and the keys. Whatever the keyboard already
+ * covers is subtracted, which is all of it on every current phone.
+ */
+:root {
+  --safe-b: max(0px, calc(var(--pillar-safe-bottom, env(safe-area-inset-bottom, 0px)) - var(--kb, 0px)));
+}
+
+/* ══════════ Phones ══════════
+   The app is used on a phone as often as a desktop now, so these are the
+   defaults that stop a laid-out page from misbehaving on a small screen. */
+@media (max-width: 767px) {
+  /*
+   * Room for the floating menu button and the home indicator beneath it. Applied to
+   * the scrolling element of every page shell rather than to body, because
+   * each page scrolls its own region.
+   */
+  .hp2-scroll, .sms-scroll, .cares-scroll, .guests-scroll, .pb-scroll,
+  .cal-scroll, .adm-scroll, .mem-scroll, .rp-scroll, .em-scroll,
+  main[class$="-scroll"] {
+    padding-bottom: calc(96px + var(--pillar-safe-bottom, env(safe-area-inset-bottom, 0px)));
+  }
+
+  /*
+   * 16px is the threshold below which iOS zooms the page in when a field takes
+   * focus, then leaves it zoomed. Every text control clears it.
+   */
+  input, textarea, select { font-size: 16px; }
+
+  /* Nothing should scroll sideways on a phone. */
+  html, body { overflow-x: hidden; }
+
+  /* Sheets and dialogs reach the bottom of the screen, clear of the indicator. */
+  /* Lift the sheet clear of the keyboard. */
+  .modal-overlay { align-items: flex-end; padding-bottom: var(--kb, 0px); }
+  /*
+   * The overlay already reserves the keyboard with its padding, so the sheet's
+   * containing block *is* the space above the keys — 100% of it. Subtracting
+   * --kb again here charged for the keyboard twice and left the sheet far
+   * shorter than the gap it was sitting in. 88vh only caps it when the keyboard
+   * is closed, so a little of the page still shows above a short sheet.
+   *
+   * No padding-bottom: the footer carries the inset, and having both meant the
+   * home indicator was cleared twice over.
+   */
+  /*
+   * Qualified by the overlay on purpose. Modal.css states `.modal.sheet` at the
+   * same specificity and is imported by the route chunks, so it loads after
+   * this file and its plain `max-height: calc(100vh - 60px)` won — the sheet
+   * kept sizing itself for a full screen and hung below the keyboard. The extra
+   * class puts this ahead on specificity, so load order stops deciding it.
+   */
+  .modal-overlay .modal.sheet {
+    width: 100%; max-width: 100%;
+    border-radius: 30px 30px 0 0;
+    corner-shape: squircle;
+    /* Never under the status bar: the overlay's box reaches the top of the
+       screen, so with a tall keyboard the sheet would fill it completely and
+       put the title behind the clock. */
+    max-height: min(calc(100% - var(--pillar-safe-top, env(safe-area-inset-top, 0px)) - 10px), 88vh);
+    padding-bottom: 0;
+  }
+
+  /* A tap target below 44px is one a thumb misses. */
+  button, .btn-primary, .btn-ghost { min-height: 44px; }
+  button.modal-x, button.adm-menu-btn { min-height: 40px; min-width: 40px; }
+}
+
+/* Tapping should not flash a grey box on iOS. */
+* { -webkit-tap-highlight-color: transparent; }

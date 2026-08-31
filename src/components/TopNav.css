@@ -1,7 +1,7 @@
 .tn-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(11, 53, 88, 0.18);
+  background: rgba(11,53,88, 0.18);
   z-index: 50;
   pointer-events: none;
   animation: tnFade 0.15s ease;
@@ -271,3 +271,12 @@
 .tn-profile-item.danger svg { color: var(--red); }
 .tn-profile-item.danger:hover { background: var(--red-soft); }
 .tn-profile-div { height: 1px; background: var(--border); margin: 6px 8px; }
+
+
+/*
+ * A hover mega-menu has no touch equivalent, and its panels are wider than a
+ * phone. Below 768px the bottom tab bar in MobileNav takes over entirely.
+ */
+@media (max-width: 767px) {
+  .tn-nav, .tn-backdrop { display: none; }
+}

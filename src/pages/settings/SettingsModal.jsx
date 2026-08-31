@@ -4,6 +4,7 @@ import { P, Icon } from '../../lib/icons';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { enableDesktopNotifications, notificationPermission, getPermission, blockedHelpText, unsupportedHelpText } from '../../lib/notify';
+import { enablePush as subscribePush, pushSupported } from '../../lib/push';
 import { fetchEmailGroups, createGroup as createEmailGroup, addGroupEmail, removeGroupEmail, deleteGroup } from '../../lib/emailGroups';
 import './Settings.css';
 
@@ -120,6 +121,7 @@ const NOTIF = [
 const NOTIF_DEFAULT = Object.fromEntries(NOTIF.flatMap(g => g.rows).map(r => [r.key, { email: true, desktop: false }]));
 
 function Notifications() {
+  const { user } = useAuth();
   const [prefs, setPrefs] = useLocalState('notif', NOTIF_DEFAULT);
   const [perm, setPerm]   = useState(notificationPermission());
 
@@ -134,8 +136,20 @@ function Notifications() {
   async function enablePush() {
     const res = await enableDesktopNotifications();
     setPerm(res);
-    if (res === 'denied') alertDialog(blockedHelpText());
-    else if (res === 'unsupported') alertDialog(unsupportedHelpText());
+    if (res === 'denied')      { alertDialog(blockedHelpText()); return; }
+    if (res === 'unsupported') { alertDialog(unsupportedHelpText()); return; }
+
+    /*
+     * Permission alone only covers notifications raised by a page that is
+     * already open. Subscribing as well is what lets one arrive when Pillar is
+     * closed. Failing here is not fatal — in-app alerts still work — but the
+     * reason is worth saying out loud, because on iPhone it is usually "add it
+     * to the Home Screen first" and nothing on screen would otherwise explain
+     * the silence.
+     */
+    if (!pushSupported()) return;
+    const sub = await subscribePush(user?.id);
+    if (!sub.ok) alertDialog(sub.reason);
   }
 
   return (

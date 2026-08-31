@@ -10,11 +10,14 @@ import { fetchChurchMembers } from '../../lib/members';
 import { fetchRecentReads, sampleHistory } from '../../lib/attendance';
 import { fetchEvents, eventCoversDay } from '../../lib/calendar';
 import { useGlobalSearch } from '../../lib/globalSearch';
+import { useIsMobile } from '../../lib/useIsMobile';
+import HomeMobile from './HomeMobile';
 import './HomePage.css';
 
 export default function HomePage() {
   const { profile } = useAuth();
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
 
   const [members, setMembers] = useState([]);
   const [guests, setGuests]   = useState([]);
@@ -76,6 +79,19 @@ export default function HomePage() {
     e.preventDefault();
     if (hits.length) goSearch(hits[0]);
   };
+
+  if (isMobile) {
+    return (
+      <>
+        <HomeMobile
+          greeting={greeting} firstName={firstName} profile={profile}
+          care={care}
+          memberCount={memberCount} events={events}
+        />
+        {mapOpen && <AttendanceFullScreen onClose={() => setMapOpen(false)} />}
+      </>
+    );
+  }
 
   return (
     <div className="hp2-wrap">

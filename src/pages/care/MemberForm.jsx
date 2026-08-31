@@ -32,8 +32,10 @@ const STEP_LABELS = {
   procedure: 'Surgery', stay: 'Stay',
 };
 const STEP_QUESTIONS = {
-  who: 'Who needs care?', contact: 'How do we reach them?', type: 'What kind of care?',
-  notes: 'Care notes', procedure: 'Surgery details', stay: 'Hospital stay',
+  who: 'Who needs care?', reach: 'How do we reach them?', contact: 'Where do they live?',
+  type: 'What kind of care?', notes: 'Care notes', procedure: 'Surgery details',
+  where: 'Which hospital?',
+  stay: 'Where are they staying?', room: 'Whereabouts in the building?',
 };
 
 export default function MemberForm({ member, onClose, onSaved }) {
@@ -55,11 +57,15 @@ export default function MemberForm({ member, onClose, onSaved }) {
   const surgeryFlow = form.category === 'Surgery' || SURGERY_RE.test(form.care_notes || '');
   const medicalFlow = surgeryFlow || form.category === 'Hospitalized';
 
-  // Steps appear/disappear with the flow — 2–3 fields each, guest-form style.
+  /*
+   * Steps appear and disappear with the flow, and none carries more than two
+   * fields — three at a time meant the last one sat under the keyboard on a
+   * phone, which is where people stopped filling the form in.
+   */
   const KEYS = useMemo(() => [
-    'who', 'contact', 'type', 'notes',
-    ...(surgeryFlow ? ['procedure'] : []),
-    ...(medicalFlow ? ['stay'] : []),
+    'who', 'reach', 'contact', 'type', 'notes',
+    ...(surgeryFlow ? ['procedure', 'where'] : []),
+    ...(medicalFlow ? ['stay', 'room'] : []),
   ], [surgeryFlow, medicalFlow]);
   const key = KEYS[Math.min(step, KEYS.length - 1)];
   const isLast = step >= KEYS.length - 1;
@@ -95,7 +101,13 @@ export default function MemberForm({ member, onClose, onSaved }) {
   const suggestions = useMemo(() => {
     const q = form.full_name.trim().toLowerCase();
     if (!q) return [];
-    return directory.filter(m => (m.name || '').toLowerCase().includes(q)).slice(0, 5);
+    /* Matches the start of any part of the name, not any position in it.
+       Substring-anywhere meant two letters like "Te" returned Abby Ya-te-s and
+       four more unrelated people - not what a name lookup means, and a list too
+       long to sit in a sheet with the keyboard up. \b covers spaces, hyphens
+       and apostrophes, so "anne" still finds Mary-Anne. */
+    const re = new RegExp('\\b' + q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+    return directory.filter(m => re.test(m.name || '')).slice(0, 5);
   }, [directory, form.full_name]);
 
   function pickDirectory(m) {
@@ -173,11 +185,14 @@ export default function MemberForm({ member, onClose, onSaved }) {
                 ))}
               </div>
             )}
-            <Row>
-              <Field label="Phone"><input value={form.phone || ''} onChange={e => set('phone', e.target.value)} placeholder="(555) 123-4567" /></Field>
-              <Field label="Email"><input value={form.email || ''} onChange={e => set('email', e.target.value)} placeholder="jane@email.com" /></Field>
-            </Row>
           </>)}
+
+          {key === 'reach' && (
+            <Row>
+                <Field label="Phone"><input value={form.phone || ''} onChange={e => set('phone', e.target.value)} placeholder="(555) 123-4567" /></Field>
+                <Field label="Email"><input value={form.email || ''} onChange={e => set('email', e.target.value)} placeholder="jane@email.com" /></Field>
+            </Row>
+          )}
 
           {key === 'contact' && (<>
             <Field label="Address">
@@ -222,20 +237,21 @@ export default function MemberForm({ member, onClose, onSaved }) {
           </>)}
 
           {key === 'procedure' && (<>
+            <Field label={autoType && form.surgery_type ? 'Surgery Type · detected from notes' : 'Surgery Type'}>
+              <input
+                value={form.surgery_type || ''}
+                onChange={e => { autoRef.current = e.target.value === ''; setAutoType(false); set('surgery_type', e.target.value); }}
+                placeholder="Auto-fills from care notes"
+              />
+            </Field>
+            <CareDatePicker label="Surgery Date" value={form.surgery_date || ''} onChange={v => set('surgery_date', v)} />
+          </>)}
+
+          {key === 'where' && (
             <Field label="Hospital">
               <HospitalField value={form.hospital_name || ''} onChange={v => set('hospital_name', v)} />
             </Field>
-            <Row>
-              <Field label={autoType && form.surgery_type ? 'Surgery Type · detected from notes' : 'Surgery Type'}>
-                <input
-                  value={form.surgery_type || ''}
-                  onChange={e => { autoRef.current = e.target.value === ''; setAutoType(false); set('surgery_type', e.target.value); }}
-                  placeholder="Auto-fills from care notes"
-                />
-              </Field>
-            </Row>
-            <CareDatePicker label="Surgery Date" value={form.surgery_date || ''} onChange={v => set('surgery_date', v)} />
-          </>)}
+          )}
 
           {key === 'stay' && (<>
             {!surgeryFlow && (
@@ -243,12 +259,15 @@ export default function MemberForm({ member, onClose, onSaved }) {
                 <HospitalField value={form.hospital_name || ''} onChange={v => set('hospital_name', v)} />
               </Field>
             )}
+            <CareDatePicker label="Admission Date" value={form.admission_date || ''} onChange={v => set('admission_date', v)} />
+          </>)}
+
+          {key === 'room' && (
             <Row>
               <Field label="Room #"><input value={form.room_number || ''} onChange={e => set('room_number', e.target.value)} /></Field>
               <Field label="Floor"><input value={form.floor || ''} onChange={e => set('floor', e.target.value)} /></Field>
             </Row>
-            <CareDatePicker label="Admission Date" value={form.admission_date || ''} onChange={v => set('admission_date', v)} />
-          </>)}
+          )}
 
 
           {error && <p className="modal-error">{error}</p>}
@@ -260,7 +279,7 @@ export default function MemberForm({ member, onClose, onSaved }) {
             : <button className="btn-ghost" onClick={onClose}>Cancel</button>}
           {isLast
             ? <button className="btn-primary" onClick={submit} disabled={saving}>{saving ? 'Saving…' : member ? 'Save Changes' : 'Add Member'}</button>
-            : <button className="btn-primary" onClick={next}>Continue</button>}
+            : <button className="btn-primary" onClick={next}>Next</button>}
         </div>
       </div>
     </div>

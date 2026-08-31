@@ -1,73 +1,117 @@
-.sms-wrap { display: flex; flex-direction: column; height: 100vh; overflow: hidden; background: var(--bg); }
-.sms-scroll { flex: 1; overflow-y: auto; }
-.sms-container { max-width: 1120px; margin: 0 auto; padding: 40px 32px 56px; }
+/*
+ * The dark reaches the very top of the window, not just the top of the scroll
+ * area — the nav floats in it rather than sitting on a pale strip above it.
+ * The scroll area carries the page colour so only the band stays dark.
+ */
+.sms-wrap { display: flex; flex-direction: column; height: 100vh; overflow: hidden; background: #2C3A4B; }
+.sms-scroll { flex: 1; overflow-y: auto; background: var(--bg); }
+/*
+ * Only the composer straddles the band. Every other tab opens with plain text
+ * and panels, which on a dark ground would be unreadable — so the overlap, and
+ * the extra height in the band that makes room for it, belong to Broadcast
+ * alone. Half the composer's settled height is a known number, so the seam
+ * lands mid-box without measuring anything at runtime.
+ */
+:root { --compose-half: 110px; }
+.sms-container { max-width: 1120px; margin: 26px auto 0; padding: 0 32px 64px; position: relative; z-index: 1; }
+.sms-container.overlap { margin-top: calc(var(--compose-half) * -1); }
 
-/* Hero */
-.sms-hero { text-align: center; display: flex; flex-direction: column; align-items: center; margin-bottom: 28px; }
-.sms-pill { display: inline-block; background: var(--accent-soft); color: var(--accent); font-size: 13px; font-weight: 600; padding: 6px 16px; border-radius: 999px; margin-bottom: 18px; }
-.sms-title { font-size: 46px; font-weight: 800; color: var(--text); letter-spacing: -1.2px; line-height: 1.05; margin-bottom: 14px; }
-.sms-subtitle { font-size: 16px; line-height: 1.6; color: var(--text-2); max-width: 540px; }
+/* The coloured band behind the top of the page, matching the home dashboard. */
+/*
+ * A dark blue-grey band. The composer is white and sits across its lower edge,
+ * so the contrast is the point — everything above the seam is on dark and has
+ * to be light enough to read against it.
+ */
+.sms-band {
+  background: linear-gradient(180deg, #2C3A4B 0%, #38485B 100%);
+  padding: 34px 32px 26px;
+}
+.sms-band.tall { padding-bottom: 132px; }
+.sms-band-inner { max-width: 1120px; margin: 0 auto; text-align: center; }
+.sms-title { font-size: 26px; font-weight: 700; color: #FFFFFF; letter-spacing: -0.5px; line-height: 1.2; }
 
 /* Tabs (underline, like Guests) */
-.sms-tabs { display: flex; justify-content: center; gap: 4px; margin-bottom: 24px; border-bottom: 1px solid var(--border); }
+/* No rule under the tabs — the band's own edge is the divider, and a second
+   line inside it only added weight. The active tab keeps its underline. */
+.sms-tabs { display: flex; justify-content: center; gap: 2px; margin: 22px 0 0; }
 .sms-tab {
-  display: flex; align-items: center; gap: 8px;
-  padding: 12px 4px; margin-right: 24px;
-  background: none; font-size: 15px; font-weight: 600; color: var(--text-2);
-  border-bottom: 2px solid transparent; margin-bottom: -1px;
+  padding: 11px 14px; background: none;
+  font-size: 14.5px; font-weight: 600; color: rgba(255,255,255,0.72);
+  border-bottom: 2px solid transparent;
   transition: color 0.12s, border-color 0.12s;
 }
-.sms-tab:hover { color: var(--text); }
-.sms-tab.on { color: var(--accent); border-bottom-color: var(--accent); }
-.sms-tab.on svg { color: var(--accent); }
-.sms-tab svg { color: var(--text-3); }
-.sms-tab-count:not(:empty) { font-size: 12px; font-weight: 700; padding: 1px 9px; border-radius: 999px; background: var(--surface-2); color: var(--text-2); }
-.sms-tab.on .sms-tab-count:not(:empty) { background: var(--accent-soft); color: var(--accent); }
+.sms-tab:hover { color: #FFFFFF; }
+/* On a dark band the accent blue is unreadable; white carries the selection. */
+.sms-tab.on { color: #FFFFFF; border-bottom-color: #FFFFFF; }
 
 /* ── Broadcast ── */
-.sms-broadcast { display: grid; grid-template-columns: 1fr 320px; gap: 16px; align-items: start; }
-.sms-compose { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px; display: flex; flex-direction: column; gap: 20px; }
-.sms-field { display: flex; flex-direction: column; gap: 10px; }
-.sms-field > label { font-size: 13px; font-weight: 600; color: var(--text-2); }
-
-.sms-targets { display: flex; flex-wrap: wrap; gap: 8px; }
-.sms-target {
-  display: flex; align-items: center; gap: 8px;
-  padding: 9px 14px; border-radius: 999px;
+/* One column. The message box is its own preview, so there is nothing to
+   set beside it; the cap keeps lines at a readable length instead. */
+.sms-broadcast { max-width: 660px; margin: 0 auto; }
+.sms-compose {
   background: var(--surface); border: 1px solid var(--border);
-  font-size: 13.5px; font-weight: 600; color: var(--text-2);
-  transition: border-color 0.12s, color 0.12s, background 0.12s;
+  border-radius: 22px; overflow: visible;
+  box-shadow: 0 14px 38px rgba(20,28,38,0.28);
 }
-.sms-target svg { color: var(--text-3); }
-.sms-target span { font-size: 12px; font-weight: 700; background: var(--surface-2); color: var(--text-3); padding: 1px 8px; border-radius: 999px; }
-.sms-target:hover { border-color: var(--text-3); }
-.sms-target.on { background: var(--accent); color: #fff; border-color: var(--accent); }
-.sms-target.on svg { color: #fff; }
-.sms-target.on span { background: rgba(255,255,255,0.25); color: #fff; }
 
-.sms-field textarea {
-  width: 100%; padding: 14px 16px;
-  border: 1px solid var(--border); border-radius: var(--radius-sm);
-  background: var(--surface); color: var(--text);
-  font-size: 15px; line-height: 1.55; resize: vertical; font-family: inherit;
+/* The message. No box of its own — the sheet is the box. */
+.sms-body {
+  display: block; width: 100%; padding: 20px 22px 6px; border: none; background: none;
+  color: var(--text); font-family: inherit; font-size: 16px; line-height: 1.6;
+  resize: none; min-height: 132px;
 }
-.sms-field textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(0,107,255,0.1); outline: none; }
-.sms-meta { display: flex; justify-content: space-between; font-size: 12.5px; color: var(--text-3); }
-.sms-reccount { font-weight: 600; color: var(--accent); }
+.sms-body:focus { outline: none; }
+.sms-body::placeholder { color: var(--text-3); }
+
+/* One bar of controls, and the only round thing on the page is Send. */
+.sms-bar { display: flex; align-items: center; gap: 8px; padding: 10px 12px 12px; }
+.sms-bar-gap { flex: 1; }
+
+.pill-wrap { position: relative; display: inline-flex; }
+.pill {
+  display: inline-flex; align-items: center; gap: 7px; min-height: 38px;
+  padding: 0 12px; border: 1px solid var(--border); border-radius: 999px;
+  background: var(--surface); font-size: 13.5px; font-weight: 600; color: var(--text-2);
+}
+.pill:hover, .pill.open { border-color: var(--text-3); color: var(--text); }
+.pill svg { color: var(--text-3); }
+.pill em { font-style: normal; font-weight: 500; color: var(--text-3); }
+.pill-chev { margin-left: 1px; }
+
+.pill-menu {
+  position: absolute; bottom: calc(100% + 8px); left: 0; z-index: 60; min-width: 210px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+  box-shadow: 0 18px 44px rgba(11,53,88,0.20); padding: 6px;
+}
+.pill-item {
+  display: flex; align-items: center; gap: 10px; width: 100%; min-height: 40px;
+  padding: 0 10px; border: none; border-radius: 9px; background: none;
+  font-size: 14px; font-weight: 500; color: var(--text); text-align: left;
+}
+.pill-item span { flex: 1; }
+.pill-item em { font-style: normal; font-size: 12.5px; color: var(--text-3); }
+.pill-item svg { color: var(--accent); }
+.pill-item:hover { background: var(--surface-2); }
+.pill-item.on { font-weight: 600; }
+
+.sms-round {
+  display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+  width: 42px; height: 42px; border-radius: 50%; border: none;
+}
+.sms-round.ghost { background: var(--surface-2); color: var(--text-2); }
+.sms-round.ghost:hover:not(:disabled) { color: var(--text); }
+.sms-round.send { background: var(--accent); color: #fff; }
+.sms-round.send:hover:not(:disabled) { background: var(--accent-hover); }
+.sms-round:disabled { opacity: 0.4; }
+
+.sms-meta { margin: 12px 4px 0; font-size: 12.5px; line-height: 1.5; color: var(--text-3); }
+.sms-dinner { margin-top: 14px; padding: 0 4px; }
 
 .sms-result { display: flex; align-items: center; gap: 8px; padding: 11px 14px; border-radius: var(--radius-sm); font-size: 14px; font-weight: 600; }
 .sms-result.ok { background: var(--green-soft); color: var(--green); }
 .sms-result.warn { background: var(--yellow-soft); color: var(--yellow); }
 .sms-result-err { font-weight: 400; font-size: 12.5px; }
 .sms-send-row { display: flex; justify-content: flex-end; align-items: center; gap: 14px; }
-.sms-schedule-link {
-  display: inline-flex; align-items: center; gap: 6px;
-  font-size: 14px; font-weight: 600; color: var(--accent);
-  background: none; padding: 10px 6px; border-radius: 8px;
-  transition: color 0.12s, background 0.12s;
-}
-.sms-schedule-link:hover:not(:disabled) { background: var(--accent-soft); }
-.sms-schedule-link:disabled { color: var(--text-3); cursor: default; }
 
 /* ── Schedule modal ── */
 .sms-sched-summary { display: flex; flex-direction: column; gap: 8px; margin-bottom: 18px; }
@@ -123,10 +167,6 @@
 .sms-lib-actions { display: flex; align-items: center; gap: 8px; }
 
 /* Preview */
-.sms-preview { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; display: flex; flex-direction: column; gap: 10px; }
-.sms-preview-label { font-size: 11px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; color: var(--text-3); }
-.sms-bubble { align-self: flex-end; max-width: 100%; background: #007AFF; color: #fff; border-radius: 18px; border-bottom-right-radius: 5px; padding: 12px 16px; font-size: 14px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
-.sms-preview-note { font-size: 12px; color: var(--text-3); line-height: 1.5; margin-top: 4px; }
 
 /* Chips + group checks */
 .sms-chip { display: inline-block; font-size: 12px; font-weight: 600; color: var(--accent); background: var(--accent-soft); padding: 2px 9px; border-radius: 999px; margin-right: 5px; }
@@ -145,10 +185,12 @@
 .sms-group-icon { width: 40px; height: 40px; border-radius: 11px; background: var(--accent-soft); color: var(--accent); box-shadow: inset 0 0 8px rgba(184,220,255,0.75); display: flex; align-items: center; justify-content: center; }
 .sms-group-note { font-size: 13px; color: var(--text-3); padding: 16px 20px; }
 
-@media (max-width: 860px) {
-  .sms-broadcast { grid-template-columns: 1fr; }
-  .sms-preview { display: none; }
+/* Section heading on the Responses tab. */
+.rsp-head-lbl {
+  margin: 0; font-size: 11px; font-weight: 700; letter-spacing: 0.5px;
+  text-transform: uppercase; color: var(--text-3);
 }
+
 
 /* ── Add-from-Members picker ── */
 .mp-modal {
@@ -186,3 +228,420 @@
 .mp-right-title { font-size: 12px; font-weight: 700; letter-spacing: 0.6px; text-transform: uppercase; color: var(--text-3); margin: 4px 0 10px; }
 .mp-right-title span { color: var(--accent); margin-left: 4px; }
 @media (max-width: 640px) { .mp-body { flex-direction: column; } .mp-right { border-left: none; border-top: 1px solid var(--border); } }
+
+/* ── Responses ── */
+.rsp-head-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.rsp-sub { font-size: 13px; color: var(--text-2); margin: 4px 0 0; }
+.rsp-refresh { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.rsp-checked { font-size: 12px; color: var(--text-3); white-space: nowrap; }
+.rsp-search { width: 100%; }
+.rsp-empty {
+  padding: 44px 20px; text-align: center; font-size: 14px; color: var(--text-2);
+  border: 1px dashed var(--border); border-radius: 12px;
+}
+
+/* Boxes styled after the home page cards. */
+/* min() so the track never exceeds the container — a bare minmax(400px)
+   forces a 400px column on a phone narrower than that and pushes the card
+   off the side of the screen. */
+.rsp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(400px, 100%), 1fr)); gap: 12px; }
+.rsp-box {
+  grid-column: span 1; display: flex; flex-direction: column;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 18px;
+  transition: border-color 0.14s, box-shadow 0.16s;
+}
+.rsp-box:hover { border-color: #C6D5EC; box-shadow: var(--shadow-md); }
+.rsp-box.open { grid-column: 1 / -1; }
+
+/*
+ * Unread is a dot, not a coloured card. Washing the whole card in green made
+ * every waiting message shout as loudly as the headcount it was competing
+ * with — the way mail apps do it, one small mark is enough.
+ */
+.rsp-box-dot {
+  display: inline-block; width: 8px; height: 8px; margin-right: 9px;
+  border-radius: 50%; background: var(--green); vertical-align: middle;
+}
+.rsp-box.fresh .rsp-box-title { font-weight: 700; }
+
+.rsp-box-head {
+  display: flex; align-items: flex-start; gap: 20px;
+  padding: 22px 22px 0; width: 100%;
+}
+.rsp-box-main {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 7px;
+  flex: 1; min-width: 0; background: none; text-align: left; padding: 0; border: none;
+}
+.rsp-box-title {
+  font-size: 16.5px; font-weight: 600; letter-spacing: -0.2px; line-height: 1.4; color: var(--text);
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+/* Everything countable on one quiet line instead of a pill and three labels. */
+.rsp-box-sub { font-size: 13px; line-height: 1.5; color: var(--text-2); }
+
+/* The one bold element on the card. */
+.rsp-box-tally {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  flex-shrink: 0; min-width: 92px; padding: 14px 16px;
+  border-radius: 14px; background: var(--green); color: #fff;
+}
+.rsp-box-tally-num { font-size: 34px; font-weight: 700; line-height: 1; letter-spacing: -1px; }
+.rsp-box-tally-lbl { font-size: 12px; font-weight: 500; margin-top: 4px; color: rgba(255,255,255,0.9); }
+
+/* Actions as text, in reading order, out of the number's way. */
+.rsp-box-foot { display: flex; flex-wrap: wrap; gap: 2px; padding: 6px 9px 9px; }
+.rsp-act {
+  /* 44px is the smallest target a thumb reliably hits. */
+  display: inline-flex; align-items: center; min-height: 44px;
+  padding: 0 13px; border: none; border-radius: 10px; background: none;
+  font-size: 13.5px; font-weight: 600; color: var(--text-2);
+}
+.rsp-act.lead { color: var(--accent); }
+.rsp-act:hover:not(:disabled) { background: var(--surface-2); }
+.rsp-act:disabled { opacity: 0.5; }
+
+@media (max-width: 620px) {
+  .rsp-box-head { gap: 14px; }
+  .rsp-box-tally { min-width: 78px; padding: 12px 13px; }
+  .rsp-box-tally-num { font-size: 29px; }
+}
+
+.rsp-box-body { padding: 0 24px 20px; display: flex; flex-direction: column; gap: 10px; }
+.rsp-item { padding: 14px 16px; border-radius: 12px; background: var(--surface-2); }
+.rsp-item-top { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.rsp-item-who { font-size: 14.5px; font-weight: 600; color: var(--text); }
+.rsp-item-when { font-size: 12px; color: var(--text-3); white-space: nowrap; }
+.rsp-item-body { margin: 6px 0 0; font-size: 14px; color: var(--text); line-height: 1.5; white-space: pre-wrap; }
+.rsp-item-reply {
+  display: inline-flex; align-items: center; gap: 6px; margin-top: 8px;
+  font-size: 13px; font-weight: 600; color: var(--accent); background: none;
+}
+.rsp-item-reply:hover { text-decoration: underline; }
+
+.rsp-reply { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.rsp-reply textarea {
+  width: 100%; resize: vertical; min-height: 58px; padding: 10px 12px;
+  border: 1px solid var(--border); border-radius: 10px;
+  background-color: var(--surface); color: var(--text);
+  font: inherit; font-size: 14px; line-height: 1.5;
+}
+.rsp-reply textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(0,107,255,0.1); }
+.rsp-reply-foot { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+.rsp-segs { font-size: 12px; color: var(--text-3); margin-right: auto; }
+.rsp-err { margin: 0; font-size: 13px; color: var(--red); }
+
+/* ── A reply the counter could not read ── */
+/* The count itself is the control, so nothing else on the row needs a label. */
+.rsp-item { display: flex; align-items: flex-start; gap: 14px; }
+.rsp-item-main { flex: 1; min-width: 0; }
+/* The amber badge on the row already says it needs a look; a stripe as well
+   was one mark too many, and the unread rows carry no stripe either. */
+.rsp-item.unsure { background: var(--yellow-soft); }
+.rsp-item.off { background: var(--surface-2); opacity: 0.55; }
+.rsp-item.off .rsp-item-body { text-decoration: line-through; text-decoration-color: var(--text-3); }
+
+.rsp-count-wrap { position: relative; flex-shrink: 0; }
+.rsp-count {
+  width: 38px; height: 38px; border-radius: 11px;
+  display: flex; align-items: center; justify-content: center;
+  border: 1px solid var(--border); background: var(--surface);
+  font-size: 16px; font-weight: 700; color: var(--text-2);
+  transition: border-color 0.12s, background 0.12s, color 0.12s;
+}
+.rsp-count:hover { border-color: var(--accent); color: var(--accent); }
+/* Needs a person: the one state that should catch the eye. */
+.rsp-count.unsure { background: var(--yellow); border-color: var(--yellow); color: #fff; }
+.rsp-count.manual { background: var(--accent-soft); border-color: var(--accent-soft); color: var(--accent); }
+.rsp-count.off { color: var(--text-3); }
+
+.rsp-picker-backdrop { position: fixed; inset: 0; z-index: 30; }
+.rsp-picker {
+  position: absolute; top: calc(100% + 6px); right: 0; z-index: 31;
+  display: flex; align-items: center; gap: 4px; padding: 6px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 12px; box-shadow: 0 16px 40px rgba(11,53,88,0.18);
+}
+.rsp-pick {
+  min-width: 32px; height: 32px; padding: 0 6px; border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  background: none; font-size: 14px; font-weight: 600; color: var(--text);
+}
+.rsp-pick:hover:not(:disabled) { background: var(--accent-soft); color: var(--accent); }
+.rsp-pick.on { background: var(--accent); color: #fff; }
+.rsp-pick.icon { color: var(--text-3); }
+.rsp-pick:disabled { opacity: 0.5; }
+.rsp-pick-div { width: 1px; height: 20px; background: var(--border); margin: 0 2px; }
+
+/* ── Public reservation link ──────────────────────────────────────────────
+   "Create link" mints the address of the web form for one dinner. In the
+   Responses grid it is the same block as the headcount so the two read as a
+   pair; under the composer it is an outline button on its own. */
+
+.rsp-link-modal { width: 520px; max-width: 94vw; }
+.rsp-link-lead { font-size: 14px; line-height: 1.6; color: var(--text-2); margin: 0 0 16px; }
+.rsp-link-note { font-size: 12.5px; color: var(--text-3); margin: 14px 0 0; }
+.rsp-link-err { font-size: 14px; color: var(--red); margin: 0; }
+
+/* The link itself, shared by both places. */
+.rsvp-link { display: flex; gap: 8px; margin-top: 12px; }
+.rsvp-link-url {
+  flex: 1; min-width: 0; padding: 12px 14px; font: inherit; font-size: 13.5px;
+  color: var(--text); background: var(--surface-2);
+  border: 1px solid var(--border); border-radius: 10px;
+}
+.rsvp-link-url:focus { outline: none; border-color: var(--accent); }
+.rsvp-link-copy {
+  display: flex; align-items: center; gap: 6px; flex-shrink: 0;
+  padding: 12px 16px; border-radius: 10px; font-size: 13.5px; font-weight: 700;
+  background: var(--accent); color: #fff; border: none;
+}
+.rsvp-link-copy.done { background: var(--green); }
+
+/* Composer */
+.sms-link-btn {
+  /* The modal body is a flex column, which would stretch it edge to edge. */
+  display: inline-flex; align-self: flex-start; align-items: center; gap: 7px; margin-top: 12px;
+  padding: 11px 16px; font-size: 13.5px; font-weight: 700;
+  color: var(--accent); background: none;
+  border: 1.5px solid var(--accent); border-radius: 10px;
+}
+.sms-link-btn:hover:not(:disabled) { background: var(--accent-soft); }
+.sms-link-btn:disabled { opacity: 0.45; border-color: var(--border); color: var(--text-3); }
+.sms-link-err { font-size: 13px; color: var(--red); margin: 10px 0 0; }
+
+/* Menu editor — one field, a green plus for another. */
+.sms-menu { margin-top: 12px; }
+.sms-menu-lbl {
+  display: block; margin-bottom: 8px; font-size: 12px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-2);
+}
+.sms-menu-row { display: flex; gap: 8px; margin-bottom: 8px; }
+.sms-menu-row input {
+  flex: 1; min-width: 0; padding: 11px 14px; font: inherit; font-size: 14px;
+  color: var(--text); background: var(--surface-2);
+  border: 1px solid var(--border); border-radius: 10px;
+}
+.sms-menu-row input:focus { outline: none; border-color: var(--accent); background: var(--surface); }
+.sms-menu-add, .sms-menu-del {
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  width: 42px; border-radius: 10px; border: none;
+}
+.sms-menu-add { background: var(--green); color: #fff; }
+.sms-menu-del { background: var(--surface-2); border: 1px solid var(--border); color: var(--text-3); }
+.sms-menu-del:hover { color: var(--red); border-color: var(--red); }
+
+/* A reply that had not been seen before this list was opened. The wash sits on
+   a layer of its own so nothing shifts as it goes — padding on the row itself
+   would move every line the moment the highlight cleared. */
+.rsp-item { position: relative; }
+.rsp-item > * { position: relative; z-index: 1; }
+.rsp-item.fresh::before {
+  content: ''; position: absolute; inset: -9px -12px; border-radius: 12px;
+  background: var(--green-soft); pointer-events: none; z-index: 0;
+  animation: rsp-fresh 2.8s ease-out forwards;
+}
+@keyframes rsp-fresh {
+  0%, 30% { opacity: 1; }
+  100%    { opacity: 0; }
+}
+/* Someone who would rather not have movement still gets the highlight; it just
+   stays put instead of animating away. */
+@media (prefers-reduced-motion: reduce) {
+  .rsp-item.fresh::before { animation: none; opacity: 0.55; }
+}
+
+/* Two actions where there was one — stacked, together filling the height the
+   headcount block sets. */
+
+/* What the reminder will actually say, shown before anything is sent. */
+
+/* People a send skips because of the hour where they live. */
+
+/* People a send skips because their household already answered. */
+
+/* ── Remind: a review screen ───────────────────────────────────────────────
+   How many, what they get, who is left out, then the action. */
+.rsp-remind { width: 460px; max-width: 94vw; }
+.rsp-remind .modal-body { padding-top: 22px; }
+
+.rsp-remind-num {
+  margin: 0; font-size: 46px; font-weight: 700; line-height: 1;
+  letter-spacing: -1.6px; color: var(--text);
+}
+.rsp-remind-cap { margin: 7px 0 0; font-size: 15px; color: var(--text-2); }
+
+/* Shown as a message, because that is what it is — and as an outgoing one,
+   since the church is the sender. */
+/* Modal.css styles every textarea inside a .modal as a form field, which beats
+   a single class. This one is a message bubble, so it says so specifically. */
+.modal .rsp-remind-msg {
+  display: block; width: 88%; margin: 20px 0 0 auto; padding: 14px 17px;
+  background: var(--accent); color: #fff; border: none;
+  border-radius: 18px; border-bottom-right-radius: 6px;
+  font-family: inherit; font-size: 14.5px; line-height: 1.55;
+  resize: none; overflow: hidden; min-height: 0;
+}
+.modal .rsp-remind-msg:focus { outline: 2px solid var(--accent); outline-offset: 2px; border: none; }
+.modal .rsp-remind-msg::selection { background: rgba(255,255,255,0.3); }
+
+.rsp-remind-msg-meta {
+  display: flex; align-items: center; justify-content: flex-end; gap: 10px;
+  margin-top: 7px; font-size: 12px; color: var(--text-3);
+}
+.rsp-remind-msg-meta .warn { color: var(--yellow); font-weight: 600; }
+.rsp-remind-reset {
+  padding: 4px 8px; border: none; border-radius: 7px; background: none;
+  font-size: 12px; font-weight: 600; color: var(--accent);
+}
+.rsp-remind-reset:hover { background: var(--accent-soft); }
+
+/* Exclusions read as a list, not as three notices competing with the message. */
+.rsp-remind-skip {
+  margin: 20px 0 0; padding: 16px 0 0; list-style: none;
+  border-top: 1px solid var(--border);
+}
+.rsp-remind-skip li {
+  font-size: 13.5px; line-height: 1.5; color: var(--text-2); padding: 3px 0;
+}
+.rsp-remind-skip b { color: var(--text); font-weight: 700; margin-right: 6px; }
+
+.rsp-remind-note { margin: 14px 0 0; font-size: 12.5px; line-height: 1.55; color: var(--text-3); }
+.rsp-remind-none { margin: 0; font-size: 15px; line-height: 1.6; color: var(--text-2); }
+
+.rsp-remind-foot {
+  display: flex; align-items: center; justify-content: flex-end; gap: 8px;
+  padding: 12px 14px 14px; border-top: 1px solid var(--border);
+}
+
+/* Sent */
+.rsp-remind-done { text-align: center; padding: 8px 0 6px; }
+.rsp-remind-tick {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 58px; height: 58px; margin-bottom: 16px; border-radius: 50%;
+  color: var(--green); background: var(--green-soft);
+}
+.rsp-remind-err { margin: 12px 0 0; font-size: 13px; color: var(--red); }
+
+/* What a repeating schedule will actually do, said in words. */
+.sms-sched-repeat {
+  display: block; margin-top: 10px; padding: 11px 13px;
+  background: var(--accent-soft); border-radius: 10px;
+  font-size: 12.5px; line-height: 1.55; color: var(--text-2);
+}
+
+/* ══════════ Under the composer ══════════ */
+.sms-overview { max-width: 660px; margin: 34px auto 0; display: flex; flex-direction: column; gap: 30px; }
+
+.ov-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 12px; }
+.ov-head h2 { font-size: 16px; font-weight: 700; color: var(--text); letter-spacing: -0.2px; }
+.ov-count {
+  margin-left: 8px; font-size: 12px; font-weight: 600; color: var(--text-3);
+}
+.ov-more {
+  display: inline-flex; align-items: center; gap: 5px; min-height: 34px; padding: 0 4px;
+  background: none; border: none; font-size: 13.5px; font-weight: 600; color: var(--accent);
+}
+.ov-more:hover { text-decoration: underline; }
+.ov-empty { font-size: 13.5px; color: var(--text-3); padding: 4px 2px 2px; }
+
+.ov-list { display: flex; flex-direction: column; gap: 2px; }
+.ov-row {
+  display: flex; align-items: center; gap: 14px; width: 100%;
+  padding: 11px 12px; border: none; border-radius: 10px; background: none; text-align: left;
+}
+.ov-row:hover { background: var(--surface-2); }
+.ov-row-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.ov-row-title {
+  font-size: 14.5px; font-weight: 600; color: var(--text); line-height: 1.35;
+  display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden;
+}
+.ov-row-sub { font-size: 12.5px; color: var(--text-3); }
+.ov-dot {
+  display: inline-block; width: 7px; height: 7px; margin-right: 8px;
+  border-radius: 50%; background: var(--green); vertical-align: middle;
+}
+.ov-tally {
+  flex-shrink: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  min-width: 62px; padding: 8px 10px; border-radius: 10px;
+  background: var(--green); color: #fff; font-size: 20px; font-weight: 700; line-height: 1;
+}
+.ov-tally em { font-style: normal; font-size: 10px; font-weight: 500; margin-top: 3px; opacity: 0.9; }
+
+/* Folders — the glyph is the folder; the label sits under it. */
+.ov-folders { display: grid; grid-template-columns: repeat(auto-fill, minmax(124px, 1fr)); gap: 10px; }
+.ov-folder {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 1px;
+  padding: 10px 10px 12px; border: none; border-radius: 12px; background: none; text-align: left;
+}
+.ov-folder > svg { color: #7B93F5; margin-bottom: 6px; }
+.ov-folder:hover { background: var(--surface-2); }
+.ov-folder-name { font-size: 14px; font-weight: 700; color: var(--text); }
+.ov-folder-n {
+  font-size: 12.5px; font-weight: 500; color: var(--accent);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;
+}
+.ov-folder-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.ov-folder.scheduled > svg { color: #9AA6B8; }
+
+@media (max-width: 620px) {
+  .sms-container { padding-left: 18px; padding-right: 18px; }
+  .sms-band { padding: 26px 18px 22px; }
+  .sms-band.tall { padding-bottom: 124px; }
+
+  /*
+   * Five tabs do not fit across a phone. Rather than shrink them below a
+   * readable size, the row scrolls — and it starts at the left edge so the
+   * first tab is not half off-screen the way centring left it.
+   */
+  .sms-band-inner { overflow: hidden; }
+  .sms-tabs {
+    justify-content: flex-start;
+    overflow-x: auto; scrollbar-width: none;
+    margin-left: -18px; margin-right: -18px; padding: 0 18px;
+    scroll-padding-inline: 18px;
+  }
+  .sms-tabs::-webkit-scrollbar { display: none; }
+  .sms-tab { flex-shrink: 0; }
+}
+
+/* Approval — telling somebody they are on the text list. */
+.sms-approve-btn {
+  display: inline-flex; align-items: center; gap: 7px; min-height: 36px;
+  margin-left: auto; margin-right: 10px; padding: 0 14px;
+  border: 1px solid var(--accent); border-radius: 999px; background: var(--surface);
+  font-size: 13.5px; font-weight: 600; color: var(--accent);
+}
+.sms-approve-btn:hover:not(:disabled) { background: var(--accent-soft); }
+.sms-approve-btn:disabled { opacity: 0.45; border-color: var(--border); color: var(--text-3); }
+
+/* The part of the message nobody can edit away. */
+.sms-stop-line {
+  display: flex; align-items: center; gap: 7px;
+  margin: 8px 0 0 auto; width: 88%; padding: 10px 14px;
+  background: var(--surface-2); border: 1px dashed var(--border); border-radius: 12px;
+  font-size: 13px; color: var(--text-2);
+}
+.sms-stop-line svg { color: var(--text-3); flex-shrink: 0; }
+
+/* Said on the add form, so the New group is not a surprise. */
+.sms-new-note {
+  display: flex; align-items: flex-start; gap: 8px;
+  margin-top: 14px; padding: 11px 13px;
+  background: var(--accent-soft); border-radius: 10px;
+  font-size: 12.5px; line-height: 1.55; color: var(--text-2);
+}
+.sms-new-note svg { color: var(--accent); flex-shrink: 0; margin-top: 2px; }
+.sms-new-note span { flex: 1; min-width: 0; }
+
+/* ── Opted out ──────────────────────────────────────────
+   Dimmed rather than hidden. A name that quietly receives nothing is a support
+   question waiting to happen; a name marked "Opted out" answers it. */
+.sms-optedout { opacity: 0.55; }
+.sms-optedout .sms-ctable-phone { text-decoration: line-through; }
+.sms-stop-tag {
+  display: inline-block; margin-left: 8px; padding: 2px 8px;
+  border-radius: 8px;
+  background: var(--red-soft); color: var(--red);
+  font-size: 11.5px; font-weight: 700; letter-spacing: 0.01em;
+  vertical-align: middle;
+}

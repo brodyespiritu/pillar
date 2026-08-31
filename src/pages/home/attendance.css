@@ -174,3 +174,5 @@
   .afs-rail { border-right: none; border-bottom: 1px solid var(--border); max-height: 42vh; }
   .afs-stats { grid-template-columns: 1fr 1fr; }
 }
+
+.afs-select select { padding-right: 36px; }   /* room for the global chevron */

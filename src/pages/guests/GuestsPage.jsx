@@ -4,9 +4,10 @@ import { useLocation } from 'react-router-dom';
 import TopNav from '../../components/TopNav';
 import { P, Icon } from '../../lib/icons';
 import {
-  fetchGuests, deleteGuests, computeGuestStats,
+  fetchGuests, deleteGuests, saveGuest, computeGuestStats,
   isProspect, TYPE_COLORS, STATUS_COLORS,
   guestWeekStart, guestWeekLabel, inGuestWeek, listGuestWeeks, msUntilNextReset,
+  fetchGreeterComments,
 } from '../../lib/guests';
 import GuestTypePicker from './GuestTypePicker';
 import GuestForm from './GuestForm';
@@ -15,7 +16,10 @@ import NewConnectionModal from './NewConnectionModal';
 import TextProspectsModal from './TextProspectsModal';
 import ConversationsModal from './ConversationsModal';
 import EmailTemplatePicker from './EmailTemplatePicker';
-import { exportGuestsPDF } from './guestPdf';
+import { buildGuestsDoc, buildProspectsDoc } from './guestPdf';
+import { buildCareDoc } from '../care/pdfExport';
+import { fetchMembers as fetchCareMembers } from '../../lib/care';
+import DocPreviewModal from '../../components/DocPreviewModal';
 import './Guests.css';
 
 const SUB_MIDDLE = [
@@ -56,6 +60,9 @@ export default function GuestsPage() {
   const [commentOpen, setCommentOpen] = useState(false);
   const [connectOpen, setConnectOpen] = useState(false);
   const [weekView, setWeekView] = useState(null);   // null = this week, else a past week's start
+  const [preview, setPreview] = useState(null);     // { html, filename, heading }
+  const [exportPick, setExportPick] = useState(false);   // which export?
+  const [building, setBuilding] = useState('');
   const [resetTick, setResetTick] = useState(0);    // bumps when 7:00 AM Sunday passes
 
   async function load() {
@@ -86,11 +93,17 @@ export default function GuestsPage() {
   const history = useMemo(() => listGuestWeeks(guests), [guests, resetTick]);
   const guestCount    = useMemo(() => guests.filter(g => !isProspect(g) && inGuestWeek(g, activeWeek)).length, [guests, activeWeek]);
   const prospectCount = useMemo(() => guests.filter(g => isProspect(g) && inGuestWeek(g, activeWeek)).length, [guests, activeWeek]);
+  const allProspectCount = useMemo(() => guests.filter(isProspect).length, [guests]);
+  const isProspectTab = tab === 'prospects' || tab === 'all';
 
   const rows = useMemo(() => {
-    // Both tabs are scoped to one guest week — the whole list resets Sunday 7:00 AM.
-    let list = guests.filter(g => inGuestWeek(g, activeWeek)
-      && (tab === 'prospects' ? isProspect(g) : !isProspect(g)));
+    /* Guests and Weekly Prospects are scoped to one guest week — that list
+       resets Sunday 7:00 AM. All Prospects deliberately ignores the window:
+       someone who first visited in June is still worth following up. */
+    let list = tab === 'all'
+      ? guests.filter(isProspect)
+      : guests.filter(g => inGuestWeek(g, activeWeek)
+          && (tab === 'prospects' ? isProspect(g) : !isProspect(g)));
     if (search.trim()) {
       const q = search.toLowerCase();
       list = list.filter(g => [g.full_name, g.phone, g.email, g.type, g.status, g.assigned_name]
@@ -121,9 +134,83 @@ export default function GuestsPage() {
     load();
   }
 
+  /*
+   * Export shows exactly what the list shows: only the week being viewed.
+   * It used to hand the whole `guests` array straight to the PDF, so every
+   * previous week's guests printed too.
+   */
+  async function openPreview() {
+    setExportPick(false);
+    /* The prospect sheet is the care-list table, not the card layout — the two
+       are printed side by side in a meeting and should match. */
+    /* The prospect sheet prints whichever list is on screen. */
+    if (isProspectTab) {
+      setPreview(buildProspectsDoc(tab === 'all'
+        ? guests.filter(isProspect)
+        : guests.filter(g => isProspect(g) && inGuestWeek(g, activeWeek))));
+      return;
+    }
+    const weekGuests = guests.filter(g => inGuestWeek(g, activeWeek));
+    // Greeter comments live in their own table and share the same week window.
+    const allComments = await fetchGreeterComments();
+    const weekComments = allComments.filter(c => inGuestWeek(c, activeWeek));
+    setPreview(buildGuestsDoc(weekGuests, 'guests', guestWeekLabel(activeWeek), weekComments));
+  }
+
+  /*
+   * Meeting Flow — the three sheets a Sunday meeting runs on, as one document:
+   * the week's recap, the prospect list, then the care list. The care sheet is
+   * landscape and the other two are portrait, so they are stacked as separate
+   * documents rather than forced into one page size.
+   */
+  async function openMeetingFlow() {
+    setBuilding('flow');
+    try {
+      const weekGuests = guests.filter(g => inGuestWeek(g, activeWeek));
+      const label = guestWeekLabel(activeWeek);
+      const allComments = await fetchGreeterComments();
+      const weekComments = allComments.filter(c => inGuestWeek(c, activeWeek));
+      const careMembers = await fetchCareMembers();
+
+      const recap     = buildGuestsDoc(weekGuests, 'guests', label, weekComments);
+      const prospects = buildProspectsDoc(guests.filter(isProspect));
+      const care      = buildCareDoc(careMembers);
+
+      setExportPick(false);
+      setPreview({
+        heading: 'Meeting Flow',
+        filename: 'meeting-flow',
+        docs: [
+          { title: 'Recap',     html: recap.html },
+          { title: 'Prospects', html: prospects.html, landscape: true },
+          { title: 'Cares',     html: care.html, landscape: true },
+        ],
+      });
+    } catch (e) {
+      alertDialog(`Could not build the meeting flow: ${e.message}`);
+    } finally { setBuilding(''); }
+  }
+
+  /*
+   * Move a guest onto the prospect list. `not_prospect` is cleared too — that
+   * flag is what excludes someone from the prospect views, so leaving it set
+   * would change their type but keep them out of the Prospects tab.
+   */
+  async function makeProspect(g) {
+    const ok = await confirmDialog({
+      title: 'Move to prospects',
+      message: `Move ${g.full_name} to the prospect list? Nothing is deleted — they stay on this week's sheet, under Prospects.`,
+      confirmLabel: 'Move to prospects',
+    });
+    if (!ok) return;
+    const { error } = await saveGuest({ ...g, type: 'Prospect', not_prospect: false });
+    if (error) return alertDialog(`Could not move ${g.full_name}: ${error.message}`);
+    load();
+  }
+
   function handleAction(key) {
     if (key === 'new') setPicker(true);
-    else if (key === 'pdf') exportGuestsPDF(guests, tab === 'prospects' ? 'prospects' : 'guests');
+    else if (key === 'pdf') setExportPick(true);
     else if (key === 'text') setTextOpen(true);
     else if (key === 'convo') setConvoOpen(true);
     else if (key === 'email') setEmailOpen(true);
@@ -140,7 +227,7 @@ export default function GuestsPage() {
   }
   function openEdit(g) { setEditGuest(g); setFormType(g.type); }
 
-  const showAddress = tab === 'prospects';
+  const showAddress = isProspectTab;
   const cols = COLUMNS.filter(c => !(c.key === 'first_visit' && showAddress));
 
   return (
@@ -205,9 +292,15 @@ export default function GuestsPage() {
                 Guests <span className="gp-tab-count">{guestCount}</span>
               </button>
               <button className={`gp-tab ${tab === 'prospects' ? 'active' : ''}`} onClick={() => { setTab('prospects'); setSelected(new Set()); }}>
-                Prospects <span className="gp-tab-count">{prospectCount}</span>
+                Weekly Prospects <span className="gp-tab-count">{prospectCount}</span>
+              </button>
+              <button className={`gp-tab ${tab === 'all' ? 'active' : ''}`} onClick={() => { setTab('all'); setSelected(new Set()); }}>
+                All Prospects <span className="gp-tab-count">{allProspectCount}</span>
               </button>
             </div>
+            {/* All Prospects spans every week, so a week picker there would
+                promise filtering that does not apply. */}
+            {tab !== 'all' && (
             <div className="gp-week">
               <Icon d={P.clock} size={15} className="gp-week-ic" />
               <select
@@ -223,6 +316,7 @@ export default function GuestsPage() {
                 ))}
               </select>
             </div>
+            )}
             <div className="gp-search">
               <Icon d={P.search} size={16} />
               <input placeholder="Search entries…" value={search} onChange={e => setSearch(e.target.value)} />
@@ -252,8 +346,10 @@ export default function GuestsPage() {
             ) : rows.length === 0 ? (
               <div className="gp-empty">
                 {weekView
-                  ? <>No {tab === 'prospects' ? 'prospects' : 'guests'} were recorded in {guestWeekLabel(weekView)}.</>
-                  : <>No {tab === 'prospects' ? 'prospects' : 'guests'} this week yet — the list cleared at 7:00 AM Sunday. Click <strong>New Entry</strong> to add one.</>}
+                  ? <>No {isProspectTab ? 'prospects' : 'guests'} were recorded in {guestWeekLabel(weekView)}.</>
+                  : tab === 'all'
+                  ? <>No prospects yet. Move a guest to the prospect list from their card.</>
+                  : <>No {isProspectTab ? 'prospects' : 'guests'} this week yet — the list cleared at 7:00 AM Sunday. Click <strong>New Entry</strong> to add one.</>}
               </div>
             ) : (
               <table className="gp-table">
@@ -288,6 +384,11 @@ export default function GuestsPage() {
                       {showAddress && <td className="gp-muted">{g.address || '—'}</td>}
                       <td className="gp-row-actions" onClick={e => e.stopPropagation()}>
                         <button title="Edit" onClick={() => openEdit(g)}><Icon d={P.edit} size={15} /></button>
+                        {!isProspect(g) && (
+                          <button title="Move to prospects" onClick={() => makeProspect(g)}>
+                            <Icon d={P.location} size={15} />
+                          </button>
+                        )}
                         <button title="Delete" onClick={async () => { if (await confirmDialog({ message: `Delete ${g.full_name}?` })) { await deleteGuests([g.id]); load(); } }}>
                           <Icon d={P.trash} size={15} />
                         </button>
@@ -300,7 +401,8 @@ export default function GuestsPage() {
           </div>
 
           <div className="gp-footer">
-            {rows.length} {tab === 'prospects' ? 'prospects' : 'guests'} · {selected.size} selected · {guestWeekLabel(activeWeek)}
+            {rows.length} {isProspectTab ? 'prospects' : 'guests'} · {selected.size} selected
+            {tab === 'all' ? ' · all weeks' : ` · ${guestWeekLabel(activeWeek)}`}
           </div>
         </div>
       </main>
@@ -310,6 +412,41 @@ export default function GuestsPage() {
         <GuestForm type={formType} guest={editGuest}
           onClose={() => { setFormType(null); setEditGuest(null); }}
           onSaved={() => { setFormType(null); setEditGuest(null); load(); }} />
+      )}
+      {exportPick && (
+        <div className="modal-overlay" onClick={() => setExportPick(false)}>
+          <div className="modal sheet xp-pick" onClick={e => e.stopPropagation()}>
+            <div className="modal-head">
+              <h2>Export</h2>
+              <button className="modal-x" onClick={() => setExportPick(false)}><Icon d={P.close} size={20} /></button>
+            </div>
+            <div className="modal-body">
+              <button className="xp-opt" onClick={openPreview} disabled={!!building}>
+                <span className="xp-opt-ic"><Icon d={P.pdf} size={20} /></span>
+                <span className="xp-opt-text">
+                  <span className="xp-opt-name">Recap PDF</span>
+                  <span className="xp-opt-sub">This week's guests, prospects and greeter comments.</span>
+                </span>
+              </button>
+              <button className="xp-opt" onClick={openMeetingFlow} disabled={!!building}>
+                <span className="xp-opt-ic"><Icon d={P.layers} size={20} /></span>
+                <span className="xp-opt-text">
+                  <span className="xp-opt-name">{building === 'flow' ? 'Building…' : 'Meeting Flow'}</span>
+                  <span className="xp-opt-sub">Recap, the full prospect list, and the care list — one document.</span>
+                </span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {preview && (
+        <DocPreviewModal
+          html={preview.html}
+          docs={preview.docs}
+          filename={preview.filename}
+          title={`${preview.heading} — ${guestWeekLabel(activeWeek)}`}
+          onClose={() => setPreview(null)}
+        />
       )}
       {textOpen && <TextProspectsModal guests={guests} onClose={() => setTextOpen(false)} />}
       {convoOpen && <ConversationsModal guests={guests} onClose={() => setConvoOpen(false)} />}

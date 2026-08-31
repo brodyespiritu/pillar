@@ -15,6 +15,9 @@ export default function ManageGroupsModal({ rows, onClose, onChanged, onImport }
   const [selected, setSelected] = useState(groups[0] || DEACON_GROUP);
   const [addQuery, setAddQuery] = useState('');
   const [busy, setBusy] = useState(false);
+  /* Which deacon the assignment panel is showing. Picked by clicking a name in
+     the list rather than a separate dropdown — the list was already there. */
+  const [deaconId, setDeaconId] = useState('');
 
   const displayGroups = useMemo(
     () => [...new Set([...groups, selected].filter(Boolean))].sort((a, b) => a.localeCompare(b)),
@@ -52,7 +55,8 @@ export default function ManageGroupsModal({ rows, onClose, onChanged, onImport }
             <button className="mg-new" onClick={newGroup}><Icon d={P.plus} size={14} />New group</button>
             {displayGroups.length === 0 && <p className="mg-empty">No groups yet.</p>}
             {displayGroups.map(g => (
-              <button key={g} className={`mg-group ${g === selected ? 'on' : ''}`} onClick={() => { setSelected(g); setAddQuery(''); }}>
+              <button key={g} className={`mg-group ${g === selected ? 'on' : ''}`}
+                onClick={() => { setSelected(g); setAddQuery(''); setDeaconId(''); }}>
                 <span className="mg-group-name">{g}</span>
                 <span className="mg-group-count">{rows.filter(m => inGroup(m, g)).length}</span>
               </button>
@@ -88,10 +92,23 @@ export default function ManageGroupsModal({ rows, onClose, onChanged, onImport }
                   {groupMembers.length === 0
                     ? <p className="mg-empty">No one in this group yet — search above to add people.</p>
                     : groupMembers.map(m => (
-                      <div key={m.id} className="mg-row">
+                      <div key={m.id}
+                        className={`mg-row ${isDeacons ? 'pick' : ''} ${isDeacons && m.id === deaconId ? 'on' : ''}`}
+                        onClick={isDeacons ? () => setDeaconId(id => (id === m.id ? '' : m.id)) : undefined}
+                        role={isDeacons ? 'button' : undefined}
+                        tabIndex={isDeacons ? 0 : undefined}
+                        onKeyDown={isDeacons ? e => {
+                          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setDeaconId(id => (id === m.id ? '' : m.id)); }
+                        } : undefined}>
                         <span className="mg-avatar">{m.photo_url ? <img src={m.photo_url} alt="" /> : <span>{initials(m.name)}</span>}</span>
                         <span className="mg-row-name">{m.name}</span>
-                        <button className="mg-remove" disabled={busy} onClick={() => run(() => removeFromGroup(m, selected))} title="Remove from group"><Icon d={P.close} size={15} /></button>
+                        {isDeacons && assignedToDeacon(rows, m.id).length > 0 && (
+                          <span className="mg-row-count">{groupByFamily(assignedToDeacon(rows, m.id)).length}</span>
+                        )}
+                        <button className="mg-remove" disabled={busy} title="Remove from group"
+                          onClick={e => { e.stopPropagation(); run(() => removeFromGroup(m, selected)); }}>
+                          <Icon d={P.close} size={15} />
+                        </button>
                       </div>
                     ))}
                 </div>
@@ -99,7 +116,8 @@ export default function ManageGroupsModal({ rows, onClose, onChanged, onImport }
 
               {isDeacons && groupMembers.length > 0 && (
                 <div className="mg-col mg-col-assign">
-                  <DeaconAssignments rows={rows} deacons={groupMembers} busy={busy} run={run} />
+                  <DeaconAssignments rows={rows} deacons={groupMembers}
+                    deaconId={deaconId} busy={busy} run={run} />
                 </div>
               )}
             </div>
@@ -115,9 +133,9 @@ export default function ManageGroupsModal({ rows, onClose, onChanged, onImport }
   );
 }
 
-/* Assign households to each deacon (sets deacon_id for the whole family). */
-function DeaconAssignments({ rows, deacons, busy, run }) {
-  const [deaconId, setDeaconId] = useState(deacons[0]?.id || '');
+/* Households shepherded by the deacon picked in the list. */
+function DeaconAssignments({ rows, deacons, deaconId, busy, run }) {
+  const [adding, setAdding] = useState(false);
   const [query, setQuery] = useState('');
   const deacon = deacons.find(d => d.id === deaconId);
   const assignedFamilies = useMemo(() => groupByFamily(assignedToDeacon(rows, deaconId)), [rows, deaconId]);
@@ -127,44 +145,58 @@ function DeaconAssignments({ rows, deacons, busy, run }) {
     return rows.filter(m => (m.name || '').toLowerCase().includes(q) && m.id !== deaconId && m.deacon_id !== deaconId).slice(0, 8);
   }, [rows, query, deaconId]);
 
+  // Nothing picked yet — say so instead of silently showing the first deacon.
+  if (!deacon) {
+    return (
+      <div className="mg-assign mg-assign-none">
+        <Icon d={P.person} size={24} />
+        <p>Pick a deacon on the left to see and add the households they shepherd.</p>
+      </div>
+    );
+  }
+
   return (
     <div className="mg-assign">
-      <div className="mg-assign-head">
-        <h4>Deacon assignments</h4>
-        <select value={deaconId} onChange={e => setDeaconId(e.target.value)}>
-          {deacons.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-        </select>
-      </div>
+      <h4>{deacon.name}</h4>
+      <p className="mg-assign-sub">
+        Assigning one person adds their whole household.
+      </p>
 
-      {deacon && (
-        <>
-          <p className="mg-assign-sub">Households shepherded by <strong>{deacon.name}</strong> — assigning one person adds their whole family. Shows on both profiles.</p>
-          <div className="mg-add">
-            <Icon d={P.search} size={16} className="mg-add-ic" />
-            <input value={query} onChange={e => setQuery(e.target.value)} placeholder={`Assign a household to ${deacon.name}…`} />
-            {candidates.length > 0 && (
-              <div className="mg-add-menu">
-                {candidates.map(m => (
-                  <button key={m.id} className="mg-add-item" disabled={busy} onClick={() => { setQuery(''); run(() => setDeaconForFamily(rows, m, deaconId)); }}>
-                    <span>{m.name}</span><Icon d={P.plus} size={14} />
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-          <div className="mg-list">
-            {assignedFamilies.length === 0
-              ? <p className="mg-empty">No households assigned to {deacon.name} yet.</p>
-              : assignedFamilies.map(g => (
-                <div key={g.key} className="mg-row">
-                  <span className="mg-avatar">{g.head.photo_url ? <img src={g.head.photo_url} alt="" /> : <span>{initials(g.label)}</span>}</span>
-                  <span className="mg-row-name">{g.label}{g.members.length > 1 && <span className="mg-row-count"> · {g.members.length}</span>}</span>
-                  <button className="mg-remove" disabled={busy} onClick={() => run(() => setDeaconForFamily(rows, g.head, null))} title="Unassign household"><Icon d={P.close} size={15} /></button>
-                </div>
+      {adding ? (
+        <div className="mg-add">
+          <Icon d={P.search} size={16} className="mg-add-ic" />
+          <input autoFocus value={query} onChange={e => setQuery(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Escape') { setAdding(false); setQuery(''); } }}
+            placeholder="Search a name…" />
+          {candidates.length > 0 && (
+            <div className="mg-add-menu">
+              {candidates.map(m => (
+                <button key={m.id} className="mg-add-item" disabled={busy}
+                  onClick={() => { setQuery(''); setAdding(false); run(() => setDeaconForFamily(rows, m, deaconId)); }}>
+                  <span>{m.name}</span><Icon d={P.plus} size={14} />
+                </button>
               ))}
-          </div>
-        </>
+            </div>
+          )}
+        </div>
+      ) : (
+        <button className="mg-bigadd" onClick={() => setAdding(true)} disabled={busy}>
+          <Icon d={P.plus} size={22} />
+          Add household
+        </button>
       )}
+
+      <div className="mg-list">
+        {assignedFamilies.length === 0
+          ? <p className="mg-empty">No households yet.</p>
+          : assignedFamilies.map(g => (
+            <div key={g.key} className="mg-row">
+              <span className="mg-avatar">{g.head.photo_url ? <img src={g.head.photo_url} alt="" /> : <span>{initials(g.label)}</span>}</span>
+              <span className="mg-row-name">{g.label}{g.members.length > 1 && <span className="mg-row-count"> · {g.members.length}</span>}</span>
+              <button className="mg-remove" disabled={busy} onClick={() => run(() => setDeaconForFamily(rows, g.head, null))} title="Unassign household"><Icon d={P.close} size={15} /></button>
+            </div>
+          ))}
+      </div>
     </div>
   );
 }

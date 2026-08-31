@@ -2,13 +2,24 @@ import { useState, useEffect } from 'react';
 import { P, Icon } from '../../lib/icons';
 import { supabase } from '../../lib/supabase';
 import { CATEGORIES, RECURRENCE, catColor, saveEvent, iso } from '../../lib/calendar';
+import { fetchLocations } from '../../lib/locations';
+import LocationPicker from './LocationPicker';
 import { useAuth } from '../../context/AuthContext';
+import { useIsMobile } from '../../lib/useIsMobile';
 import '../care/Modal.css';
 import './Calendar.css';
+import './locations.css';
 
 export default function EventWizard({ calendar, initialDate, event, onClose, onSaved }) {
   const { user } = useAuth();
   const editing = !!event;
+  /*
+   * On a phone the four steps become one scrolling form. A wizard exists to
+   * keep a wide screen from feeling empty; on a narrow one it just adds three
+   * Continue taps and a progress bar to an event that is usually a title, a
+   * date and a time.
+   */
+  const oneForm = useIsMobile();
   const [step, setStep] = useState(1);
   const [f, setF] = useState(() => ({
     title: event?.title || '',
@@ -28,6 +39,11 @@ export default function EventWizard({ calendar, initialDate, event, onClose, onS
   }));
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState('');
+  /* Locations are a short list, so load once and filter in memory rather than
+     querying per keystroke. A failed load leaves the picker as a plain text
+     field — the wizard must never block on it. */
+  const [locations, setLocations] = useState([]);
+  useEffect(() => { fetchLocations().then(r => setLocations(r.rows)); }, []);
 
   const set = (k, v) => setF(p => ({ ...p, [k]: v }));
   const multiDay = f.end_date && f.end_date !== f.start_date;
@@ -69,7 +85,7 @@ export default function EventWizard({ calendar, initialDate, event, onClose, onS
         </div>
 
         <div className="modal-body">
-          {step === 1 && (<>
+          {(oneForm || step === 1) && (<>
             <p className="gf-q">Event basics</p>
             <label className="field-group"><span>Title <b>*</b></span>
               <input value={f.title} onChange={e => set('title', e.target.value)} placeholder="Sunday Service" autoFocus />
@@ -85,7 +101,7 @@ export default function EventWizard({ calendar, initialDate, event, onClose, onS
             {multiDay && <div className="cw-multiday"><Icon d={P.calendar} size={14} />Multi-day event</div>}
           </>)}
 
-          {step === 2 && (<>
+          {(oneForm || step === 2) && (<>
             <p className="gf-q">Timing & location</p>
             <div className="field-row">
               <label className="field-group"><span>Start Time</span>
@@ -95,15 +111,20 @@ export default function EventWizard({ calendar, initialDate, event, onClose, onS
                 <input type="time" value={f.end_time} onChange={e => set('end_time', e.target.value)} />
               </label>
             </div>
-            <label className="field-group"><span>Room / Location</span>
-              <input value={f.location} onChange={e => set('location', e.target.value)} placeholder="Main Sanctuary" />
-            </label>
+            <div className="field-group"><span>Room / Location</span>
+              <LocationPicker
+                value={f.location}
+                locations={locations}
+                onChange={v => set('location', v)}
+                onCreated={loc => setLocations(ls => [...ls, loc].sort((a, b) => a.name.localeCompare(b.name)))}
+              />
+            </div>
             <label className="field-group"><span>Organizer</span>
               <input value={f.organizer} onChange={e => set('organizer', e.target.value)} placeholder="Pastor Mike" />
             </label>
           </>)}
 
-          {step === 3 && (<>
+          {(oneForm || step === 3) && (<>
             <p className="gf-q">Event category</p>
             <div className="cw-cats">
               {CATEGORIES.map(c => (
@@ -115,7 +136,7 @@ export default function EventWizard({ calendar, initialDate, event, onClose, onS
             </div>
           </>)}
 
-          {step === 4 && (<>
+          {(oneForm || step === 4) && (<>
             <p className="gf-q">Notes & extras</p>
             <label className="field-group"><span>Description</span>
               <textarea rows={3} value={f.description} onChange={e => set('description', e.target.value)} placeholder="Event details…" />
@@ -152,12 +173,25 @@ export default function EventWizard({ calendar, initialDate, event, onClose, onS
         </div>
 
         <div className="modal-foot">
-          {step > 1
-            ? <button className="btn-ghost" onClick={() => setStep(step - 1)}>Back</button>
-            : <button className="btn-ghost" onClick={onClose}>Cancel</button>}
-          {step < 4
-            ? <button className="btn-primary" onClick={() => setStep(step + 1)}>Continue</button>
-            : <button className="btn-primary" onClick={submit} disabled={saving}>{saving ? 'Saving…' : editing ? 'Save Changes' : 'Create Event'}</button>}
+          {/* One form means one button. Back and Continue only exist to move
+              between steps that are no longer there. */}
+          {oneForm ? (
+            <>
+              <button className="btn-ghost" onClick={onClose}>Cancel</button>
+              <button className="btn-primary" onClick={submit} disabled={saving}>
+                {saving ? 'Saving…' : editing ? 'Save Changes' : 'Create Event'}
+              </button>
+            </>
+          ) : (
+            <>
+              {step > 1
+                ? <button className="btn-ghost" onClick={() => setStep(step - 1)}>Back</button>
+                : <button className="btn-ghost" onClick={onClose}>Cancel</button>}
+              {step < 4
+                ? <button className="btn-primary" onClick={() => setStep(step + 1)}>Next</button>
+                : <button className="btn-primary" onClick={submit} disabled={saving}>{saving ? 'Saving…' : editing ? 'Save Changes' : 'Create Event'}</button>}
+            </>
+          )}
         </div>
       </div>
     </div>

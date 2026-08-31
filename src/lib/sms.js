@@ -42,8 +42,9 @@ export async function getLastMassTexts(numbers = []) {
 }
 
 /* ── Send (via Supabase Edge Function → Telnyx) ── */
-export async function sendProspectSms(messages) {
-  const { data, error } = await supabase.functions.invoke('send-prospect-sms', { body: { messages } });
+export async function sendProspectSms(messages, status, campaign) {
+  const { data, error } = await supabase.functions.invoke('send-prospect-sms',
+    { body: { messages, ...(status ? { status } : {}), ...(campaign ? { campaign } : {}) } });
   if (error) {
     // Function not deployed / not configured → report all as failed with a clear reason.
     const reason = /not found|Failed to fetch|non-2xx/i.test(error.message || '')

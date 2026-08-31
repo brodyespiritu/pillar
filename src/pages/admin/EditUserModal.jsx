@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { P, Icon } from '../../lib/icons';
-import { ROLES, normalizeRole } from '../../lib/admin';
+import { ROLES, normalizeRole, MODULES, ACCESS, permsForRole } from '../../lib/admin';
 import { toE164, formatAsTyped, formatUsPhone, isValidUsPhone, phoneKey } from '../../lib/phone';
 import '../care/Modal.css';
+import './addUser.css';
 
 export default function EditUserModal({ user, testMode, onClose, onSave }) {
   const [name, setName]   = useState(user.name || '');
@@ -13,6 +14,18 @@ export default function EditUserModal({ user, testMode, onClose, onSave }) {
   const [phone, setPhone] = useState(formatUsPhone(user.phone || ''));
   const [caresSms, setCaresSms] = useState(user.preferences?.caresSmsOptIn === true);
   const [phoneErr, setPhoneErr] = useState('');
+  /* Permissions were only settable when creating a user — an existing person's
+     access could never be changed without deleting and re-adding them. */
+  const [perms, setPerms] = useState(() => ({
+    ...permsForRole(user.role), ...(user.permissions || {}),
+  }));
+  const setPerm = (mod, lvl) => setPerms(p => ({ ...p, [mod]: lvl }));
+
+  /* Changing the role re-applies that role's defaults, the way Add User does. */
+  function chooseRole(next) {
+    setRole(next);
+    setPerms(permsForRole(next));
+  }
   const [saving, setSaving] = useState(false);
 
   const canOptIn = isValidUsPhone(phone);
@@ -34,7 +47,8 @@ export default function EditUserModal({ user, testMode, onClose, onSave }) {
       delete prefs.caresStopNoticeSent;
       delete prefs.caresStopOptedOut;
     }
-    await onSave({ name, email, role, department: dept, active, phone: e164, preferences: prefs });
+    await onSave({ name, email, role, department: dept, active, phone: e164,
+      permissions: perms, preferences: prefs });
     setSaving(false);
   }
 
@@ -55,7 +69,7 @@ export default function EditUserModal({ user, testMode, onClose, onSave }) {
           </label>
           <div className="field-row">
             <label className="field-group"><span>Role</span>
-              <select value={role} onChange={e => setRole(e.target.value)}>
+              <select value={role} onChange={e => chooseRole(e.target.value)}>
                 {ROLES.map(r => <option key={r}>{r}</option>)}
               </select>
             </label>
@@ -95,6 +109,21 @@ export default function EditUserModal({ user, testMode, onClose, onSave }) {
                 This number replied STOP. Turning alerts back on requires their permission.
               </p>
             )}
+          </div>
+
+          <div className="eu-perms">
+            <div className="au-perm-head"><span>Module access</span><span>Access</span></div>
+            {MODULES.map(m => (
+              <div key={m.key} className="au-perm-row">
+                <span className="au-perm-mod">{m.label}</span>
+                <div className="au-seg sm">
+                  {ACCESS.map(a => (
+                    <button key={a} type="button" className={perms[m.key] === a ? 'on' : ''}
+                      onClick={() => setPerm(m.key, a)}>{a}</button>
+                  ))}
+                </div>
+              </div>
+            ))}
           </div>
 
           <label className="adm-check">

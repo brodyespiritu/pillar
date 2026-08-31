@@ -155,6 +155,27 @@ export async function restoreProspectToMember(id) {
     .update({ record_type: 'Member' }).eq('id', id).select().single();
 }
 
+/*
+ * Inactive works the same way: the row is never deleted, it just stops showing
+ * in the directory. Everything on the profile is kept, and Reports → Inactive
+ * finds them again.
+ */
+export const INACTIVE = 'Inactive';
+export const isInactive = m => (m.status || 'Active') === INACTIVE;
+
+export async function markMemberInactive(id) {
+  return supabase.from('church_members')
+    .update({ status: INACTIVE }).eq('id', id).select().single();
+}
+
+export async function reactivateMember(id) {
+  return supabase.from('church_members')
+    .update({ status: 'Active' }).eq('id', id).select().single();
+}
+
+/* Anyone parked out of the directory — prospects and inactive alike. */
+export const isArchived = m => isHiddenProspect(m) || isInactive(m);
+
 /* ── Groups (stored as comma-separated tags on each member) ── */
 export const DEACON_GROUP = 'Deacons';
 
@@ -314,10 +335,32 @@ export async function importMembers(rows) {
   return { data };
 }
 
+/*
+ * PostgREST caps a single response at 1000 rows and says nothing about it — an
+ * explicit .range() past that is silently clamped. The directory passed 1000,
+ * so everyone sorting after ~"Sarah Sherrill" stopped loading: adding them
+ * appeared to do nothing, because the new row was fetched away.
+ *
+ * Page until a short page comes back. The .order('id') tiebreak is load-bearing
+ * — the directory has duplicate names, and ordering by a non-unique column
+ * alone lets rows shift between pages, so some get fetched twice and others
+ * skipped entirely.
+ */
+const FETCH_PAGE = 1000;
+
 export async function fetchChurchMembers() {
-  const { data, error } = await supabase.from('church_members').select('*').order('name');
-  if (error) return { rows: [], missing: true };
-  return { rows: data || [], missing: false };
+  const rows = [];
+  for (let from = 0; ; from += FETCH_PAGE) {
+    const { data, error } = await supabase
+      .from('church_members').select('*')
+      .order('name').order('id')
+      .range(from, from + FETCH_PAGE - 1);
+    // Failing mid-way would silently truncate again, which is the bug itself.
+    if (error) return rows.length ? { rows, missing: false, partial: true } : { rows: [], missing: true };
+    rows.push(...(data || []));
+    if (!data || data.length < FETCH_PAGE) break;
+  }
+  return { rows, missing: false };
 }
 
 export async function saveChurchMember(member) {

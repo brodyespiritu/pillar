@@ -1,0 +1,358 @@
+/*
+ * SMS on a phone. White page, soft grey groups, squircles — the same language
+ * as Home and Cares.
+ */
+
+.sm-wrap {
+  display: flex; flex-direction: column;
+  height: 100vh; height: 100dvh;
+  overflow: hidden; background: #FFFFFF;
+}
+.sm-scroll { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+
+.sm-head { padding: calc(20px + var(--pillar-safe-top, env(safe-area-inset-top, 0px))) 22px 4px; }
+.sm-title { margin: 0; font-size: 34px; font-weight: 800; letter-spacing: -0.03em; color: var(--text); }
+
+/* ═══ Compose ═══ */
+
+.sm-compose {
+  margin: 16px 22px 0; padding: 16px;
+  border-radius: 26px;
+  corner-shape: squircle;
+  background: var(--surface-2);
+}
+.sm-input {
+  width: 100%; border: none; outline: none; background: none; resize: none;
+  font-family: inherit; font-size: 17px; line-height: 1.45; color: var(--text);
+}
+.sm-input::placeholder { color: var(--text-3); }
+
+.sm-types { display: flex; gap: 8px; margin-top: 8px; }
+.sm-type {
+  min-height: 40px; padding: 0 16px;
+  border: none; border-radius: 14px;
+  corner-shape: squircle;
+  background: #FFFFFF; color: var(--text-2);
+  font-size: 14.5px; font-weight: 700;
+}
+.sm-type.on { background: var(--accent); color: #FFFFFF; }
+
+
+
+/* ── The row: settings on the left, clock and send on the right ── */
+.sm-row-actions { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
+.sm-row-spacer { flex: 1; }
+
+.sm-icon {
+  flex-shrink: 0; width: 52px; height: 52px;
+  display: flex; align-items: center; justify-content: center;
+  border: none; border-radius: 18px;
+  corner-shape: squircle;
+  background: #FFFFFF; color: var(--text-2);
+}
+.sm-icon:active:not(:disabled) { background: #E5EDF7; }
+.sm-icon:disabled { opacity: 0.4; }
+
+/* Who it reaches, said in words — the controls are behind a button now, so
+   without this nothing on screen names the recipients. */
+.sm-summary {
+  display: flex; align-items: center; gap: 8px;
+  margin: 12px 2px 0;
+  font-size: 13.5px; font-weight: 600; color: var(--text-3);
+}
+.sm-tag {
+  padding: 2px 8px;
+  border-radius: 8px;
+  corner-shape: squircle;
+  background: var(--accent-soft); color: var(--accent);
+  font-size: 12px; font-weight: 800;
+}
+
+.sm-queued {
+  margin: 16px 22px 0; padding: 14px 18px;
+  border-radius: 18px;
+  corner-shape: squircle;
+  background: var(--green-soft); color: #0B6B4F;
+  font-size: 14.5px; font-weight: 600;
+}
+
+.sm-send {
+  flex-shrink: 0;
+  width: 52px; height: 52px;
+  display: flex; align-items: center; justify-content: center;
+  border: none; border-radius: 20px;
+  corner-shape: squircle;
+  background: var(--accent); color: #FFFFFF;
+  font-size: 17px; font-weight: 700;
+}
+.sm-send:disabled { opacity: 0.4; }
+.sm-send:active:not(:disabled) { background: var(--accent-hover); }
+
+/* Only shown once a message costs more than one text. */
+.sm-seg { margin: 10px 2px 0; font-size: 13px; font-weight: 600; color: var(--text-3); }
+
+/* ═══ Replies ═══ */
+
+.sm-replies-head {
+  display: flex; align-items: center; gap: 10px;
+  margin: 34px 22px 0;
+}
+.sm-h { margin: 0; font-size: 24px; font-weight: 800; letter-spacing: -0.025em; color: var(--text); }
+.sm-unread {
+  padding: 3px 10px;
+  border-radius: 10px;
+  corner-shape: squircle;
+  background: var(--accent-soft); color: var(--accent);
+  font-size: 13px; font-weight: 700;
+}
+
+.sm-empty {
+  margin: 16px 22px 0; padding: 28px 22px; text-align: center;
+  border-radius: 26px;
+  corner-shape: squircle;
+  background: var(--surface-2); color: var(--text-3); font-size: 15.5px;
+}
+
+.sm-list { display: flex; flex-direction: column; padding: 10px 22px 0; }
+.sm-row {
+  display: flex; align-items: flex-start; gap: 13px; width: 100%;
+  min-height: 74px; padding: 13px 8px;
+  border: none; background: none; text-align: left;
+  border-radius: 20px;
+  corner-shape: squircle;
+}
+.sm-row + .sm-row { box-shadow: inset 0 1px 0 var(--border); }
+.sm-row:active { background: var(--surface-2); }
+
+/* Unread, in the place iOS puts it. Invisible rather than absent when read, so
+   the text lines up down the column either way. */
+.sm-dot {
+  flex-shrink: 0; width: 10px; height: 10px; margin-top: 6px;
+  border-radius: 50%; background: transparent;
+}
+.sm-dot.on { background: var(--accent); }
+
+.sm-row-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.sm-row-top { display: flex; align-items: baseline; gap: 10px; }
+.sm-row-name {
+  flex: 1; min-width: 0;
+  font-size: 17px; font-weight: 700; color: var(--text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.sm-row-when { flex-shrink: 0; font-size: 13px; font-weight: 600; color: var(--text-3); }
+.sm-row-last {
+  font-size: 15px; color: var(--text-2);
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+
+/* ── A campaign card ── */
+.sm-camp {
+  display: flex; align-items: flex-start; gap: 13px; width: 100%;
+  min-height: 74px; padding: 14px 8px;
+  border: none; background: none; text-align: left;
+  border-radius: 20px;
+  corner-shape: squircle;
+}
+.sm-camp + .sm-camp { box-shadow: inset 0 1px 0 var(--border); }
+.sm-camp:active { background: var(--surface-2); }
+
+.sm-camp-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.sm-camp-top { display: flex; align-items: baseline; gap: 10px; }
+.sm-camp-name {
+  flex: 1; min-width: 0;
+  font-size: 16.5px; font-weight: 700; color: var(--text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.sm-camp-meta {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 14.5px; color: var(--text-3);
+}
+.sm-camp-meta strong { font-size: 17px; font-weight: 800; color: var(--text); }
+.sm-unclear {
+  padding: 2px 8px;
+  border-radius: 8px;
+  corner-shape: squircle;
+  background: var(--yellow-soft); color: #8A5A00;
+  font-size: 12px; font-weight: 700;
+}
+
+/* ── Inside a campaign ── */
+.sm-camp-head { padding: 4px 48px 8px 4px; }
+.sm-camp-head .sm-sheet-h { margin-bottom: 4px; }
+.sm-total { margin: 0; font-size: 15px; color: var(--text-3); }
+.sm-total strong { font-size: 20px; font-weight: 800; color: var(--text); }
+
+.sm-camp-list { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; }
+.sm-reply-row {
+  display: flex; align-items: center; gap: 12px; width: 100%;
+  min-height: 72px; padding: 12px 6px;
+  border: none; background: none; text-align: left;
+  border-radius: 18px;
+  corner-shape: squircle;
+}
+.sm-reply-row + .sm-reply-row { box-shadow: inset 0 1px 0 var(--border); }
+.sm-reply-row:active { background: var(--surface-2); }
+.sm-reply-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.sm-reply-go { flex-shrink: 0; color: var(--text-3); }
+
+/* ═══ Sheets ═══ */
+
+.sm-scrim {
+  position: fixed; inset: 0; z-index: 350;
+  display: flex; align-items: flex-end;
+  background: rgba(11, 27, 45, 0.44);
+  backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px);
+  animation: sm-fade 0.18s ease-out;
+  /* Lift clear of the keyboard. */
+  padding-bottom: var(--kb, 0px);
+}
+.sm-sheet {
+  position: relative;
+  width: 100%; max-height: min(100%, 84vh);
+  display: flex; flex-direction: column;
+  background: #FFFFFF;
+  border-radius: 34px 34px 0 0;
+  corner-shape: squircle;
+  padding: 10px 20px calc(20px + var(--safe-b, 0px));
+  box-shadow: 0 -12px 44px rgba(11, 33, 60, 0.20);
+  animation: sm-rise 0.30s cubic-bezier(0.32, 0.72, 0, 1);
+}
+.sm-sheet.tall { height: min(100%, 84vh); }
+/* The card's colour continues behind the keyboard. */
+.sm-sheet::after {
+  content: ''; position: absolute; top: 100%; left: 0; right: 0;
+  height: var(--kb, 0px); background: #FFFFFF; pointer-events: none;
+}
+
+.sm-grab {
+  display: block; width: 40px; height: 5px; margin: 8px auto 14px;
+  border-radius: 3px; background: #D3DDE9;
+}
+.sm-sheet-h {
+  margin: 0 0 12px;
+  font-size: 22px; font-weight: 800; letter-spacing: -0.025em; color: var(--text);
+}
+.sm-x {
+  position: absolute; top: 14px; right: 16px;
+  width: 40px; height: 40px; min-height: 40px;
+  display: flex; align-items: center; justify-content: center;
+  border: none; border-radius: 50%;
+  background: var(--surface-2); color: var(--text-2);
+}
+
+/* ── Inside the sheets ── */
+.sm-sheet-scroll { flex: 1; min-height: 0; overflow-y: auto; }
+.sm-sub {
+  margin: 16px 2px 10px;
+  font-size: 13px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--text-3);
+}
+.sm-sheet-scroll > .sm-sub:first-child { margin-top: 4px; }
+.sm-hint { margin: 10px 2px 0; font-size: 14px; color: var(--text-3); }
+.sm-warn { margin: 14px 2px 0; font-size: 14.5px; font-weight: 600; color: var(--red); }
+
+.sm-when { display: flex; gap: 10px; }
+.sm-field {
+  flex: 1; min-width: 0;
+  display: flex; flex-direction: column; gap: 3px;
+  padding: 13px 16px;
+  border-radius: 20px;
+  corner-shape: squircle;
+  background: var(--surface-2);
+}
+.sm-field > span { font-size: 13px; font-weight: 600; color: var(--text-3); }
+.sm-field input {
+  width: 100%; border: none; outline: none; background: none; padding: 0;
+  font-family: inherit; font-size: 17px; font-weight: 500; color: var(--text);
+}
+.sm-field:focus-within { box-shadow: inset 0 0 0 2px var(--accent); }
+
+/* The sheet's bottom edge, so it stays put above the keyboard. */
+.sm-done {
+  flex-shrink: 0;
+  width: 100%; min-height: 56px; margin-top: 16px;
+  display: flex; align-items: center; justify-content: center;
+  border: none; border-radius: 28px;
+  corner-shape: squircle;
+  background: var(--surface-2); color: var(--text);
+  font-size: 17px; font-weight: 700;
+}
+.sm-done.primary { background: var(--accent); color: #FFFFFF; }
+.sm-done:disabled { opacity: 0.45; }
+
+.sm-picks { display: flex; flex-direction: column; gap: 8px; overflow-y: auto; }
+.sm-pick {
+  display: flex; align-items: center; gap: 12px; width: 100%;
+  min-height: 60px; padding: 0 18px;
+  border: 2px solid transparent;
+  border-radius: 20px;
+  corner-shape: squircle;
+  background: var(--surface-2); text-align: left;
+}
+.sm-pick.on { border-color: var(--accent); background: var(--accent-soft); }
+.sm-pick-name { flex: 1; min-width: 0; font-size: 16.5px; font-weight: 700; color: var(--text); }
+.sm-pick.on .sm-pick-name { color: var(--accent); }
+.sm-pick-n { font-size: 14px; font-weight: 700; color: var(--text-3); }
+
+/* ── One conversation ── */
+.sm-thread-head {
+  display: flex; align-items: center; gap: 12px;
+  padding: 4px 48px 0 4px;
+}
+.sm-thread-head .sm-sheet-h { flex: 1; min-width: 0; }
+.sm-call {
+  flex-shrink: 0; width: 42px; height: 42px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 15px;
+  corner-shape: squircle;
+  background: var(--accent); color: #FFFFFF;
+}
+
+.sm-bubbles {
+  flex: 1; min-height: 0; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 10px;
+  padding: 6px 0 14px;
+}
+.sm-bub {
+  max-width: 82%;
+  display: flex; flex-direction: column; gap: 3px;
+  padding: 11px 15px;
+  border-radius: 20px;
+  corner-shape: squircle;
+}
+.sm-bub.out { align-self: flex-end; background: var(--accent); }
+.sm-bub.out .sm-bub-body { color: #FFFFFF; }
+.sm-bub.out .sm-bub-when { color: rgba(255, 255, 255, 0.72); }
+.sm-bub.in { align-self: flex-start; background: var(--surface-2); }
+.sm-bub.in .sm-bub-body { color: var(--text); }
+.sm-bub-body { font-size: 16px; line-height: 1.4; white-space: pre-wrap; }
+.sm-bub-when { font-size: 11.5px; font-weight: 600; color: var(--text-3); }
+
+.sm-reply {
+  flex-shrink: 0;
+  display: flex; align-items: center; gap: 10px;
+  padding-top: 10px;
+}
+.sm-reply input {
+  flex: 1; min-width: 0; min-height: 52px; padding: 0 18px;
+  border: none; outline: none;
+  border-radius: 20px;
+  corner-shape: squircle;
+  background: var(--surface-2);
+  font-size: 17px; color: var(--text);
+}
+.sm-reply button {
+  flex-shrink: 0; width: 52px; height: 52px;
+  display: flex; align-items: center; justify-content: center;
+  border: none; border-radius: 18px;
+  corner-shape: squircle;
+  background: var(--accent); color: #FFFFFF;
+}
+.sm-reply button:disabled { opacity: 0.4; }
+
+@keyframes sm-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes sm-rise { from { transform: translateY(100%); } to { transform: translateY(0); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .sm-scrim, .sm-sheet { animation: none; }
+}

@@ -18,6 +18,7 @@ import { confirmDialog, promptDialog } from '../../lib/dialog';
 import { supabase } from '../../lib/supabase';
 import { fetchAccounts, sendMessage } from '../../lib/email';
 import { genInviteCode, buildInviteHtml } from '../../lib/invite';
+import LocationsPanel from '../calendar/LocationsPanel';
 import './Admin.css';
 
 const TABS = [
@@ -86,6 +87,12 @@ export default function AdminPage() {
             </>)}
             {tab === 'email' && (<>
               <RemindersTab staff={staff} testMode={testMode} />
+              <div className="adm-panel">
+                <div className="adm-panel-head"><h2>Event Locations &amp; Photos</h2></div>
+                {/* The panel carries its own description, including a live
+                    "N of M have a photo" count. */}
+                <LocationsPanel />
+              </div>
               <div className="adm-cards">
                 <FeatureCard icon={P.mail} title="Email Settings" desc="Daily summary digest with time picker & subscribers, instant alert triggers, and per-category alert thresholds." />
                 <FeatureCard icon={P.grid} title="Email Designer" desc="Drag-and-drop visual email builder — block toolbox, live canvas, per-block property editors, and send dialog." />
@@ -146,7 +153,11 @@ function UsersTab({ staff, testMode, pendingPTO, reload, onGoTimeOff, initialSea
 
   async function doSave(patch) {
     if (testMode) { toast('Test Mode: changes not saved.'); setEditUser(null); return; }
-    await updateStaff(editUser.id, patch);
+    /* A database trigger blocks non-admins from changing role, permissions or
+       active status. Swallowing that error closed the dialog as if it had
+       saved — keep it open and say what happened. */
+    const { error } = await updateStaff(editUser.id, patch);
+    if (error) return toast(`Could not save: ${error.message}`);
     setEditUser(null); reload();
   }
   async function doReset(u) {
@@ -264,6 +275,7 @@ function UsersTab({ staff, testMode, pendingPTO, reload, onGoTimeOff, initialSea
                           <div className="adm-menu-backdrop" onClick={() => setMenu(null)} />
                           <div className={`adm-menu ${menuUp ? 'up' : ''}`}>
                             <button onClick={() => { setEditUser(u); setMenu(null); }}><Icon d={P.edit} size={14} />Edit User</button>
+                            <button onClick={() => { setEditUser(u); setMenu(null); }}><Icon d={P.shield} size={14} />Permissions</button>
                             <button disabled={u.id === user?.id} onClick={() => { setMenu(null); requestControl(u.id, u.name); }}>
                               <Icon d={P.radio} size={14} />Control{u.id === user?.id ? ' (you)' : ''}
                             </button>

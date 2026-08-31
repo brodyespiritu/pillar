@@ -163,3 +163,60 @@
   .er-stats { grid-template-columns: 1fr 1fr; }
   .er-add-row { grid-template-columns: 1fr; }
 }
+
+/* Addresses that never went out, on the confirmation screen. */
+.er-miss { display: inline-block; margin-top: 6px; font-size: 13px; color: var(--red); line-height: 1.5; }
+
+/* ── Sending screen ── */
+.er-sending { padding: 48px 40px 44px; text-align: center; display: flex;
+  flex-direction: column; align-items: center; }
+.er-sending-ic {
+  width: 56px; height: 56px; border-radius: 50%;
+  background: var(--green-soft); color: var(--green);
+  display: flex; align-items: center; justify-content: center; margin-bottom: 20px;
+}
+.er-sending h3 { font-size: 20px; font-weight: 700; color: var(--text); letter-spacing: -0.3px; }
+.er-sending > p { font-size: 14px; color: var(--text-2); margin-top: 8px; line-height: 1.6; max-width: 380px; }
+
+.er-bar {
+  position: relative; overflow: hidden;
+  width: 100%; max-width: 420px; height: 10px; margin: 26px 0 14px;
+  background: var(--surface-2); border-radius: 999px;
+}
+.er-bar-fill {
+  height: 100%; border-radius: 999px;
+  background: linear-gradient(90deg, var(--green), #34D399);
+  transition: width 0.45s cubic-bezier(0.4, 0, 0.2, 1);
+}
+/* A sheen travelling along the filled part, so it reads as working even
+   between recipients. */
+.er-bar-fill::after {
+  content: ''; position: absolute; inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.55), transparent);
+  animation: erSlide 1.3s linear infinite;
+}
+@keyframes erSlide { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+
+.er-sending-count { font-size: 15px; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.er-sending-count strong { font-size: 20px; font-weight: 800; color: var(--text); }
+.er-sending-note { font-size: 12.5px; color: var(--text-3); margin-top: 16px; }
+
+/* ── Export chooser ── */
+.xp-pick { width: 460px; max-width: 94vw; }
+.xp-opt {
+  display: flex; align-items: flex-start; gap: 14px; width: 100%;
+  padding: 18px; margin-bottom: 10px; text-align: left;
+  border: 1px solid var(--border); border-radius: var(--radius-lg);
+  background: var(--surface);
+  transition: border-color 0.12s, background 0.12s;
+}
+.xp-opt:hover:not(:disabled) { border-color: var(--accent); background: var(--accent-soft); }
+.xp-opt:disabled { opacity: 0.6; }
+.xp-opt-ic {
+  width: 42px; height: 42px; flex-shrink: 0; border-radius: var(--radius);
+  display: flex; align-items: center; justify-content: center;
+  background: var(--accent-soft); color: var(--accent);
+}
+.xp-opt-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.xp-opt-name { font-size: 15px; font-weight: 600; color: var(--text); }
+.xp-opt-sub  { font-size: 13px; color: var(--text-2); line-height: 1.5; }

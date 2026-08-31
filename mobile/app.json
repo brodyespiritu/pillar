@@ -1,0 +1,67 @@
+{
+  "expo": {
+    "name": "Pillar",
+    "slug": "pillar",
+    "version": "1.2.0",
+    "scheme": "pillar",
+    "orientation": "default",
+    "userInterfaceStyle": "light",
+    "icon": "./assets/icon.png",
+    "newArchEnabled": true,
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "org.bethesdabaptist.pillar",
+      "buildNumber": "1",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSCameraUsageDescription": "Pillar uses the camera when you attach a photo to a care note or a guest record.",
+        "NSPhotoLibraryUsageDescription": "Pillar uses your photo library when you attach an image to a care note or a guest record."
+      }
+    },
+    "android": {
+      "package": "org.bethesdabaptist.pillar",
+      "versionCode": 1,
+      "edgeToEdgeEnabled": true,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#006BFF"
+      }
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 180,
+          "resizeMode": "contain",
+          "backgroundColor": "#006BFF"
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "deploymentTarget": "15.1"
+          },
+          "android": {
+            "minSdkVersion": 24,
+            "compileSdkVersion": 36,
+            "targetSdkVersion": 36
+          }
+        }
+      ]
+    ],
+    "extra": {
+      "pillarSite": "https://pillar-bethesda.vercel.app",
+      "eas": {
+        "projectId": "3a1e68d5-6dd0-4862-b1cb-0612938ef17d"
+      }
+    }
+  }
+}

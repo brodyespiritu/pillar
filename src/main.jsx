@@ -6,6 +6,9 @@ import App from './App';
 import Dialogs from './components/Dialogs';
 import { startAutoUpdate } from './lib/autoUpdate';
 import './styles/global.css';
+/* After global so its .modal.sheet rules land on top of the page stylesheets. */
+import './styles/mobileForms.css';
+import { watchKeyboard } from './lib/keyboard';
 
 startAutoUpdate();
 
@@ -19,3 +22,6 @@ ReactDOM.createRoot(document.getElementById('root')).render(
     </BrowserRouter>
   </React.StrictMode>,
 );
+
+/* Publishes --kb so every bottom sheet can sit above the keyboard. */
+watchKeyboard();

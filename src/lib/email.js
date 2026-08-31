@@ -115,14 +115,14 @@ export async function fetchMessages(account, folder = 'INBOX') {
   return { sample: true, messages: sampleMessages(folder) };
 }
 
-export async function sendMessage(account, { to, cc, subject, body, htmlBody, attachments }) {
+export async function sendMessage(account, { to, cc, bcc, subject, body, htmlBody, attachments }) {
   // SMTP runs in a Vercel serverless function (same origin) — works in the web
   // app and the desktop app, and reliably holds the TCP socket SMTP needs.
   //
   // Send from the user's own connected account when they have one; otherwise
   // send nothing and let the server use the church-wide account.
   const payload = {
-    to, cc: cc || '', subject,
+    to, cc: cc || '', bcc: bcc || '', subject,
     text: body || '', html: htmlBody || '',
     attachments: attachments || [],
   };

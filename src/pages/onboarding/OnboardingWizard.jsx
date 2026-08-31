@@ -94,7 +94,16 @@ export default function OnboardingWizard() {
       const okPin = await setPin(pin);
       if (!okPin) throw new Error('Could not save your PIN. Please try again.');
 
-      const preferences = { notifications: notif, desktop_notifications: desktopOn, home_featured: featured };
+      /*
+       * Merged, never replaced. Writing a fresh object here erased every
+       * preference onboarding does not ask about — including the Cares alert
+       * opt-in, which silently stopped a pastor receiving care texts until
+       * somebody noticed weeks later.
+       */
+      const preferences = {
+        ...pref,
+        notifications: notif, desktop_notifications: desktopOn, home_featured: featured,
+      };
       const { error: upErr } = await supabase.from('staff')
         .update({ name: name.trim(), title: title.trim() || null, phone: phone.trim() || null, preferences, onboarded: true, invite_code: null })
         .eq('id', user.id);

@@ -7,7 +7,7 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   const b = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {});
-  const { to, cc, subject, text, html, attachments } = b;
+  const { to, cc, bcc, subject, text, html, attachments } = b;
 
   // Use the sender's own connected account when there is one; otherwise fall
   // back to the church-wide account configured in the environment, so staff
@@ -25,7 +25,7 @@ export default async function handler(req, res) {
       error: 'No mail account configured. Connect an account, or set CHURCH_SMTP_HOST / CHURCH_SMTP_USER / CHURCH_SMTP_PASS.',
     });
   }
-  if (!to) return res.status(400).json({ error: 'No recipients.' });
+  if (!to && !bcc) return res.status(400).json({ error: 'No recipients.' });
 
   try {
     const transporter = nodemailer.createTransport({
@@ -35,10 +35,16 @@ export default async function handler(req, res) {
       auth: { user, pass },
     });
 
-    await transporter.sendMail({
+    /*
+     * The result matters: SMTP can ACCEPT the message and still reject some
+     * recipients, in which case sendMail resolves normally. Discarding `info`
+     * is how a whole batch went missing while the app logged it as delivered.
+     */
+    const info = await transporter.sendMail({
       from: from || user,
-      to,
+      to: to || from || user,      // a message needs a To: header even when everyone is BCC'd
       cc: cc || undefined,
+      bcc: bcc || undefined,
       subject: subject || '',
       text: text || ' ',
       html: html || undefined,
@@ -50,7 +56,14 @@ export default async function handler(req, res) {
       })),
     });
 
-    return res.status(200).json({ ok: true, via: `${host}:${p}` });
+    const accepted = info?.accepted || [];
+    const rejected = info?.rejected || [];
+    if (rejected.length && !accepted.length) {
+      return res.status(400).json({ error: `All recipients rejected: ${rejected.join(', ')}`,
+        via: `${host}:${p}`, accepted, rejected });
+    }
+    return res.status(200).json({ ok: true, via: `${host}:${p}`,
+      accepted, rejected, response: info?.response });
   } catch (e) {
     // Echo the server + username we tried (never the password) — otherwise an
     // auth failure gives no way to tell which account is actually in use.

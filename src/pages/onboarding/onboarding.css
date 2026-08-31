@@ -1,11 +1,11 @@
 /* ═══ First-login onboarding wizard ═══ */
 .ob-overlay {
   position: fixed; inset: 0; z-index: 90; display: flex; align-items: center; justify-content: center; padding: 24px;
-  background: rgba(11, 53, 88, 0.28); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  background: rgba(11,53,88, 0.28); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
 }
 .ob-card {
   width: 100%; max-width: 480px; background: var(--surface); border-radius: 24px;
-  box-shadow: 0 40px 90px rgba(11, 53, 88, 0.30); display: flex; flex-direction: column;
+  box-shadow: 0 40px 90px rgba(11,53,88, 0.30); display: flex; flex-direction: column;
   overflow: hidden; animation: ob-rise 0.28s cubic-bezier(0.16, 1, 0.3, 1);
 }
 @keyframes ob-rise { from { opacity: 0; transform: translateY(16px) scale(0.98); } to { opacity: 1; transform: none; } }

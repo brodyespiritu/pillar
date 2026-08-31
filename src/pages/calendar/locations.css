@@ -1,0 +1,85 @@
+/* ── Location picker (event wizard) ───────────────────── */
+.loc-pick { display: flex; flex-direction: column; gap: 8px; }
+
+/* In-flow, not floating: inside the wizard a floating list clips at the edge. */
+.loc-list {
+  display: flex; flex-direction: column;
+  max-height: 260px; overflow-y: auto;
+  border: 1px solid var(--border); border-radius: var(--radius-lg);
+  background: var(--surface);
+  padding: 6px;
+}
+
+.loc-item {
+  display: flex; align-items: center; gap: 12px;
+  width: 100%; padding: 10px 12px;
+  border-radius: var(--radius); background: none; text-align: left;
+  transition: background 0.12s;
+}
+.loc-item.on { background: var(--surface-2); }
+.loc-item:disabled { opacity: 0.6; }
+
+.loc-thumb {
+  width: 44px; height: 34px; flex-shrink: 0;
+  border-radius: var(--radius-sm); object-fit: cover;
+  background: var(--surface-2);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--text-3);
+}
+.loc-thumb-new { background: var(--accent-soft); color: var(--accent); }
+
+.loc-item-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.loc-name { font-size: 15px; font-weight: 600; color: var(--text); }
+.loc-sub  { font-size: 12px; color: var(--text-2); }
+.loc-new .loc-name { color: var(--accent); }
+.loc-none { padding: 14px; font-size: 13px; color: var(--text-2); text-align: center; }
+
+/* ── Locations manager ────────────────────────────────── */
+.lm-modal { width: 620px; max-width: 94vw; }
+.lm-intro { font-size: 14px; color: var(--text-2); line-height: 1.5; margin: 0 0 20px; }
+.lm-empty { padding: 32px 0; text-align: center; font-size: 14px; color: var(--text-2); }
+
+.lm-add { display: flex; gap: 10px; margin-bottom: 20px; }
+.lm-add input { flex: 1; }
+
+.lm-list { display: flex; flex-direction: column; gap: 10px; list-style: none; margin: 0; padding: 0; }
+
+.lm-row {
+  display: flex; align-items: center; gap: 14px;
+  padding: 14px 16px;
+  border: 1px solid var(--border); border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+.lm-row.busy { opacity: 0.55; }
+
+.lm-thumb {
+  width: 62px; height: 46px; flex-shrink: 0;
+  border-radius: var(--radius); object-fit: cover;
+  background: var(--surface-2);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--text-3);
+}
+
+.lm-main { display: flex; flex-direction: column; gap: 3px; flex: 1; min-width: 0; }
+.lm-name { font-size: 15px; font-weight: 600; color: var(--text); }
+.lm-sub  { font-size: 12px; color: var(--text-2); }
+.lm-rename { font-size: 15px; font-weight: 600; padding: 6px 10px; }
+
+.lm-acts { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.lm-btn {
+  display: flex; align-items: center; gap: 6px;
+  padding: 7px 12px; border-radius: var(--radius-sm);
+  border: 1px solid var(--border); background: var(--surface);
+  font-size: 13px; font-weight: 600; color: var(--text);
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+.lm-btn:hover:not(:disabled) { border-color: var(--text-3); }
+.lm-btn:disabled { opacity: 0.5; }
+/* Destructive: quiet until reached for, same as the care cards. */
+.lm-btn.danger { color: var(--text-2); }
+.lm-btn.danger:hover:not(:disabled) { background: var(--red-soft); border-color: var(--red); color: var(--red); }
+
+@media (max-width: 560px) {
+  .lm-row { flex-wrap: wrap; }
+  .lm-acts { width: 100%; justify-content: flex-end; }
+}

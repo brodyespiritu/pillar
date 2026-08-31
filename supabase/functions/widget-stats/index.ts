@@ -7,7 +7,6 @@
 // Week boundary mirrors the app: Sunday 7:00 AM in the church's timezone
 // (America/New_York), day-granular for date-only columns.
 
-import { serve } from 'https://deno.land/std@0.208.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const TZ = 'America/New_York';
@@ -45,7 +44,7 @@ function nyWallToUtc(y: number, m: number, d: number, h: number) {
 const dateStr = (y: number, m: number, d: number) =>
   `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   try {
     const now = new Date();

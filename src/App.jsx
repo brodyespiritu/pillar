@@ -2,11 +2,15 @@ import { useState, useEffect } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
 import LoginPage from './pages/auth/LoginPage';
+import RsvpPage from './pages/rsvp/RsvpPage';
+import MobileNav from './components/MobileNav';
 import PINPage   from './pages/auth/PINPage';
 import HomePage  from './pages/home/HomePage';
 import CaresPage from './pages/care/CaresPage';
 import GuestsPage from './pages/guests/GuestsPage';
 import CalendarPage from './pages/calendar/CalendarPage';
+import PlaybooksPage from './pages/playbooks/PlaybooksPage';
+import PlaybookDetail from './pages/playbooks/PlaybookDetail';
 import CalendarWidget from './pages/calendar/CalendarWidget';
 import EmailPage from './pages/email/EmailPage';
 import AdminPage from './pages/admin/AdminPage';
@@ -26,6 +30,18 @@ import { SettingsProvider } from './context/SettingsContext';
 import { ControlProvider } from './context/ControlContext';
 import { normalizeRole } from './lib/admin';
 import './context/control.css';
+
+/*
+ * bethesda.rsvp is the congregation's front door, not the staff app's. Its root
+ * is the reservation form, so a link posted as just the domain opens straight
+ * onto it — no path, no token, no sign-in.
+ *
+ * This is decided in the app rather than by a Vercel rewrite: a rewrite changes
+ * the path the server resolves but leaves the address bar alone, and the router
+ * reads the address bar, so the root would still resolve to the staff home.
+ */
+const isRsvpHost = typeof window !== 'undefined'
+  && /(^|\.)bethesda\.rsvp$/i.test(window.location.hostname);
 
 export default function App() {
   const { user, profile, pinVerified, loading } = useAuth();
@@ -57,7 +73,20 @@ export default function App() {
     );
   }
 
-  if (!user) return <LoginPage />;
+  /*
+   * Signed out, the only thing the congregation can reach is the RSVP page —
+   * it is the target of a link the church posts publicly, so it must render
+   * before the sign-in gate. Everything else is still the login screen.
+   */
+  if (!user) return (
+    <Routes>
+      <Route path="/rsvp" element={<RsvpPage />} />
+      <Route path="/rsvp/:token" element={<RsvpPage />} />
+      <Route path="/dinner" element={<RsvpPage />} />
+      <Route path="/"     element={isRsvpHost ? <RsvpPage /> : <LoginPage />} />
+      <Route path="*"     element={<LoginPage />} />
+    </Routes>
+  );
 
   // First login → walk the user through account setup before anything else.
   if (profile && profile.onboarded === false) return <OnboardingWizard />;
@@ -65,12 +94,19 @@ export default function App() {
   const routes = (
     <SettingsProvider>
       <ControlProvider>
+      {/* Phones get a bottom tab bar; it hides itself above 767px. */}
+      <MobileNav />
       <Routes>
-        <Route path="/"       element={<HomePage />} />
+        <Route path="/"       element={isRsvpHost ? <RsvpPage /> : <HomePage />} />
         <Route path="/cares"  element={<CaresPage />} />
         <Route path="/guests"   element={<GuestsPage />} />
         <Route path="/calendar" element={<CalendarPage />} />
+        <Route path="/playbooks"     element={<PlaybooksPage />} />
+        <Route path="/playbooks/:id" element={<PlaybookDetail />} />
         <Route path="/widget/calendar" element={<CalendarWidget />} />
+        <Route path="/rsvp" element={<RsvpPage />} />
+        <Route path="/rsvp/:token" element={<RsvpPage />} />
+        <Route path="/dinner" element={<RsvpPage />} />
         <Route path="/email"    element={<EmailPage />} />
         <Route path="/admin"    element={<AdminPage />} />
         <Route path="/sms"      element={<SmsPage />} />

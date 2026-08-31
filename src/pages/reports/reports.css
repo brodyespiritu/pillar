@@ -60,6 +60,7 @@
   border: none; background: var(--surface-2); border-radius: 9px; padding: 7px 10px;
   font-size: 14px; font-weight: 500; color: var(--text); cursor: pointer;
 }
+.rp-if-op { padding-right: 30px; }   /* room for the global chevron */
 .rp-if-op:focus { outline: none; box-shadow: 0 0 0 2px var(--accent-soft); }
 
 .rp-search {
@@ -95,3 +96,22 @@
 .rp-result-name { font-size: 15px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rp-result-sub { font-size: 13px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rp-result-caret { color: var(--text-3); flex-shrink: 0; }
+
+/* Count badge shown instead of an operator when a Status list is selected. */
+.rp-if-count {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 26px; height: 26px; padding: 0 9px;
+  border-radius: 999px; background: var(--accent-soft); color: var(--accent);
+  font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums;
+}
+
+/* Print, under the report fields — it prints whatever they are showing. */
+.rp-print {
+  display: inline-flex; align-items: center; gap: 8px; min-height: 42px;
+  margin: 18px auto 0; padding: 0 18px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 999px;
+  font-size: 14px; font-weight: 600; color: var(--text-2);
+  box-shadow: 0 6px 22px rgba(11,53,88,0.07);
+  transition: border-color 0.12s, color 0.12s;
+}
+.rp-print:hover { border-color: var(--accent); color: var(--accent); }

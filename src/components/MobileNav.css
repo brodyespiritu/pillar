@@ -1,0 +1,154 @@
+/*
+ * Phone navigation. Hidden entirely above 767px, where the desktop nav takes
+ * over — the two are never on screen together.
+ */
+
+.mn-fab { display: none; }
+.mn-scrim { display: none; }
+
+@media (max-width: 767px) {
+
+  /* ═══ The button ═══ */
+
+  /*
+   * Liquid glass: a translucent pane that samples what is behind it, a bright
+   * specular edge along the top, and a soft drop shadow so it reads as sitting
+   * above the page rather than printed on it.
+   *
+   * corner-shape lands the true iOS superellipse where the browser supports it;
+   * elsewhere the large border-radius alone is a close enough squircle.
+   */
+  .mn-fab {
+    position: fixed; z-index: 340;
+    right: 20px; bottom: calc(20px + var(--pillar-safe-bottom, env(safe-area-inset-bottom, 0px)));
+    width: 62px; height: 62px; min-height: 62px;
+    display: flex; align-items: center; justify-content: center;
+
+    border-radius: 22px;
+    corner-shape: squircle;
+    border: 1px solid rgba(255, 255, 255, 0.7);
+
+    background:
+      linear-gradient(160deg, rgba(255, 255, 255, 0.78) 0%, rgba(255, 255, 255, 0.42) 55%),
+      rgba(226, 236, 249, 0.55);
+    backdrop-filter: blur(26px) saturate(190%);
+    -webkit-backdrop-filter: blur(26px) saturate(190%);
+
+    color: var(--text);
+    box-shadow:
+      0 10px 30px rgba(11, 33, 60, 0.20),
+      0 2px 8px rgba(11, 33, 60, 0.10),
+      inset 0 1px 1px rgba(255, 255, 255, 0.95),
+      inset 0 -1px 3px rgba(11, 33, 60, 0.07);
+
+    transition: transform 0.18s cubic-bezier(0.32, 0.72, 0, 1), background 0.18s;
+  }
+  .mn-fab:active { transform: scale(0.93); }
+
+  /* Once the sheet is up the button is a close control, so it goes solid to
+   * separate itself from the glass sheet behind it. */
+  .mn-fab.open {
+    background:
+      linear-gradient(160deg, rgba(255, 255, 255, 0.90) 0%, rgba(255, 255, 255, 0.62) 55%),
+      rgba(226, 236, 249, 0.78);
+  }
+
+  /* ═══ The menu ═══ */
+
+  /*
+   * Light liquid glass, the same material as the button that opens it: a
+   * translucent pane over a blur, a specular highlight down from the top edge,
+   * and a hairline of white at the border.
+   *
+   * The panes hug the right edge above the button and are sized to their own
+   * content rather than the screen, so the menu rises out of the button instead
+   * of covering the page. The label sits before the icon because the icons then
+   * line up with the button underneath them.
+   */
+
+  .mn-scrim {
+    position: fixed; inset: 0; z-index: 320;
+    display: flex; align-items: flex-end; justify-content: flex-end;
+    background: rgba(11, 20, 32, 0.16);
+    /* Slightly blurred — the page stays recognisable behind the panes. */
+    -webkit-backdrop-filter: blur(7px) saturate(115%);
+    backdrop-filter: blur(7px) saturate(115%);
+    animation: mn-fade 0.18s ease-out;
+  }
+
+  /* Not a sheet: a right-hand rail the panes stack on. */
+  .mn-sheet {
+    display: flex; flex-direction: column; align-items: flex-end;
+    max-width: 100%; max-height: 88vh; overflow-y: auto;
+    background: none; border: none; box-shadow: none;
+    padding: 14px 20px calc(96px + var(--pillar-safe-bottom, env(safe-area-inset-bottom, 0px)));
+    animation: mn-rise 0.30s cubic-bezier(0.32, 0.72, 0, 1);
+  }
+
+  /* The grab handle belongs to a full-width sheet, not to this. */
+  .mn-grab { display: none; }
+
+  .mn-head {
+    display: flex; flex-direction: row-reverse; align-items: center; gap: 8px;
+    margin: 0 0 12px; padding: 0 4px;
+  }
+  .mn-title {
+    margin: 0;
+    font-size: 22px; font-weight: 800; letter-spacing: -0.025em; color: var(--text);
+    text-shadow: 0 1px 10px rgba(255, 255, 255, 0.7);
+  }
+
+  .mn-list { display: flex; flex-direction: column; align-items: flex-end; gap: 9px; }
+
+  /* One pane per destination, sized to its own text. */
+  .mn-row {
+    display: flex; flex-direction: row-reverse; align-items: center; gap: 14px;
+    /* One width for all five. Sizing each to its own label left a ragged stack
+       — "SMS" half the length of "Calendar" — which read as five different
+       controls rather than one menu. */
+    width: 208px;
+    min-height: 60px; padding: 8px 10px 8px 20px;
+    text-align: right;
+
+    border: 1px solid rgba(255, 255, 255, 0.75);
+    border-radius: 22px;
+    corner-shape: squircle;
+
+    background:
+      linear-gradient(160deg, rgba(255, 255, 255, 0.86) 0%, rgba(255, 255, 255, 0.58) 55%),
+      rgba(226, 236, 249, 0.72);
+    -webkit-backdrop-filter: blur(26px) saturate(190%);
+    backdrop-filter: blur(26px) saturate(190%);
+
+    box-shadow:
+      0 8px 26px rgba(11, 33, 60, 0.18),
+      0 2px 6px rgba(11, 33, 60, 0.10),
+      inset 0 1px 1px rgba(255, 255, 255, 0.95);
+  }
+  .mn-row:active { transform: scale(0.97); }
+
+  .mn-row.on .mn-row-name { color: var(--accent); }
+  .mn-row.on .mn-row-ic { background: var(--accent); color: #FFFFFF; }
+
+  .mn-row-ic {
+    width: 44px; height: 44px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 14px;
+    corner-shape: squircle;
+    background: rgba(255, 255, 255, 0.85);
+    color: var(--accent);
+  }
+  .mn-row-name { font-size: 17px; font-weight: 700; color: var(--text); white-space: nowrap; }
+
+  /* A chevron points the wrong way in a right-anchored menu. */
+  .mn-row-go { display: none; }
+
+  @keyframes mn-fade { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes mn-rise { from { transform: translateY(100%); } to { transform: translateY(0); } }
+
+  @media (prefers-reduced-motion: reduce) {
+    .mn-scrim, .mn-sheet { animation: none; }
+    .mn-fab, .mn-row { transition: none; }
+    .mn-row:active { transform: none; }
+  }
+}

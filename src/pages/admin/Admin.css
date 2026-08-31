@@ -108,6 +108,10 @@
 .adm-panel-desc { font-size: 13.5px; color: var(--text-2); padding: 14px 20px 0; }
 .adm-search { display: flex; align-items: center; gap: 8px; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text-3); min-width: 220px; }
 .adm-search input { flex: 1; border: none; background: none; font-size: 14px; color: var(--text); }
+/* Cares and Members both ring on focus; this one didn't, which made every
+   search built on it feel dead to the touch. */
+.adm-search:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(0,107,255,0.1); }
+.adm-search input::placeholder { color: var(--text-3); }
 
 /* Table */
 .adm-table-wrap { overflow-x: auto; }
@@ -126,6 +130,11 @@
 .adm-user { display: flex; align-items: center; gap: 12px; }
 .adm-avatar { width: 34px; height: 34px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .adm-user-name { font-weight: 600; color: var(--text); display: block; }
+/* The class is used two ways: as a <span> stacked above an email (needs block)
+   and directly on a <td>. On a cell, display:block drops it out of the table
+   row — the name lands on its own line and the rest of the row slides across.
+   Affected Contacts, Time Off and the change log. */
+td.adm-user-name { display: table-cell; }
 .adm-user-email { font-size: 12.5px; color: var(--text-3); }
 
 .adm-role { display: inline-block; padding: 3px 11px; border-radius: 999px; font-size: 12px; font-weight: 600; color: var(--c); background: color-mix(in srgb, var(--c) 13%, transparent); white-space: nowrap; }
@@ -272,3 +281,5 @@
 .rem-x:hover { color: var(--red); }
 .rem-pair-foot { display: flex; align-items: center; justify-content: space-between; margin-top: 4px; }
 .rem-phrase { font-size: 13px; font-weight: 600; color: var(--accent); background: var(--accent-soft); padding: 2px 9px; border-radius: 999px; }
+
+.rem-pair select { padding-right: 36px; }   /* room for the global chevron */

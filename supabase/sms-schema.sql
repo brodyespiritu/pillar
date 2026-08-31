@@ -21,3 +21,11 @@ create index if not exists idx_sms_status on sms_messages(status);
 alter table sms_messages enable row level security;
 create policy "staff read sms"  on sms_messages for select using (auth.role() = 'authenticated');
 create policy "staff write sms" on sms_messages for all    using (auth.role() = 'authenticated');
+
+-- ── Which message a send belongs to ───────────────────────────────────────
+-- The Responses tab reads the last thing sent to someone as the question their
+-- next reply answers. That breaks for a reminder: it is sent about one campaign
+-- but lands in a thread whose previous message may be something else entirely,
+-- so replies to it were filed under whatever went out most recently.
+-- A reminder records the campaign it is chasing, and grouping follows that.
+alter table sms_messages add column if not exists campaign text;

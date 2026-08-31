@@ -14,6 +14,7 @@ import {
   parseCsv, mapIndividualList, importMembers,
   allGroups, inGroup, assignedToDeacon, deaconOf, DEACON_GROUP, groupByFamily,
   markMemberAsProspect, restoreProspectToMember, isHiddenProspect,
+  markMemberInactive, reactivateMember, isInactive, isArchived,
 } from '../../lib/members';
 import ManageGroupsModal from './ManageGroupsModal';
 import AddFamilyModal from './AddFamilyModal';
@@ -91,10 +92,38 @@ export default function MembersPage() {
   }
 
   async function restoreMember(m) {
-    const { error } = await restoreProspectToMember(m.id);
+    // One "Restore" for both states — whichever parked them, this brings them back.
+    const { error } = isInactive(m) ? await reactivateMember(m.id) : await restoreProspectToMember(m.id);
     if (error) return alertDialog(`Could not restore ${m.name}: ${error.message}`);
     setViewing(null);
     await load();
+  }
+
+  async function makeInactive(m) {
+    const ok = await confirmDialog({
+      title: 'Mark as inactive',
+      message: `Move ${m.name} out of the member directory? Nothing is deleted — their whole profile is kept and you can find them again under Reports → Inactive, or the "Inactive" filter here.`,
+      confirmLabel: 'Mark as inactive',
+    });
+    if (!ok) return;
+    const { error } = await markMemberInactive(m.id);
+    if (error) return alertDialog(`Could not update ${m.name}: ${error.message}`);
+    setViewing(null);
+    await load();
+  }
+
+  /*
+   * Prospect and Inactive records are deliberately kept out of the directory.
+   * Saving one made it vanish with no explanation, which reads as "it didn't
+   * save" — say where it went and switch the filter to show it.
+   */
+  async function onMemberSaved(saved) {
+    setEdit(null);
+    await load();
+    // Prospects stay visible, so only an Inactive save needs explaining.
+    if (!saved || !isInactive(saved) || groupFilter === '__inactive') return;
+    setGroupFilter('__inactive');
+    alertDialog(`${saved.name} is saved as inactive, so they are kept out of the main member list. Showing the Inactive list now.`);
   }
 
   async function removeMember(m) {
@@ -104,15 +133,19 @@ export default function MembersPage() {
     load();
   }
 
-  const groups = useMemo(() => allGroups(data.rows.filter(m => !isHiddenProspect(m))), [data.rows]);
+  const groups = useMemo(() => allGroups(data.rows.filter(m => !isInactive(m))), [data.rows]);
   const prospectCount = useMemo(() => data.rows.filter(isHiddenProspect).length, [data.rows]);
+  const inactiveCount = useMemo(() => data.rows.filter(isInactive).length, [data.rows]);
   const rows = useMemo(() => {
     const q = search.trim().toLowerCase();
     // Prospects live off to the side — only the explicit filter shows them.
-    let out = groupFilter === '__prospects'
-      ? data.rows.filter(isHiddenProspect)
-      : data.rows.filter(m => !isHiddenProspect(m));
-    if (groupFilter && groupFilter !== '__prospects') out = out.filter(m => inGroup(m, groupFilter));
+    /* Prospects sit in the directory with a badge — hiding them meant 119
+       imported people were invisible with no hint why. Inactive still steps
+       out of the way, and each still has its own filter. */
+    let out = groupFilter === '__prospects' ? data.rows.filter(isHiddenProspect)
+      : groupFilter === '__inactive'  ? data.rows.filter(isInactive)
+      : data.rows.filter(m => !isInactive(m));
+    if (groupFilter && !groupFilter.startsWith('__')) out = out.filter(m => inGroup(m, groupFilter));
     if (q) out = out.filter(m => [m.name, m.phone, m.email, m.tags, m.family, m.family_name]
       .filter(Boolean).some(v => v.toLowerCase().includes(q)));
     return out;
@@ -137,6 +170,7 @@ export default function MembersPage() {
               onBack={() => setViewing(null)}
               onEdit={() => setEdit(viewing)}
               onMakeProspect={() => makeProspect(viewing)}
+              onMakeInactive={() => makeInactive(viewing)}
               onRestoreMember={() => restoreMember(viewing)}
               onDelete={() => removeMember(viewing)}
             />
@@ -157,6 +191,7 @@ export default function MembersPage() {
                     <option value="">All groups</option>
                     {groups.map(g => <option key={g} value={g}>{g}</option>)}
                     {prospectCount > 0 && <option value="__prospects">Prospects ({prospectCount})</option>}
+                    {inactiveCount > 0 && <option value="__inactive">Inactive ({inactiveCount})</option>}
                   </select>
                 </div>
                 {isAdmin && (
@@ -170,6 +205,16 @@ export default function MembersPage() {
                 <button className="mbr-add" onClick={() => setEdit({})}><Icon d={P.plus} size={16} />Add Member</button>
               </div>
             </header>
+
+            {/* A half-loaded directory is what made added members "disappear" —
+                never let it look complete again. */}
+            {data.partial && (
+              <div className="mbr-partial">
+                <Icon d={P.shield} size={15} />
+                Only part of the directory loaded, so some members are missing from this list.
+                <button type="button" onClick={load}>Retry</button>
+              </div>
+            )}
 
             {data.missing ? (
               <div className="mbr-empty-state">
@@ -205,7 +250,7 @@ export default function MembersPage() {
         </div>
       </main>
 
-      {edit && <MemberModal member={edit} onClose={() => setEdit(null)} onSaved={() => { setEdit(null); load(); }} onDeleted={() => { setEdit(null); load(); }} />}
+      {edit && <MemberModal member={edit} onClose={() => setEdit(null)} onSaved={onMemberSaved} onDeleted={() => { setEdit(null); load(); }} />}
       {groupsOpen && (
         <ManageGroupsModal
           rows={data.rows}
@@ -227,6 +272,7 @@ function MemberCard({ member, onOpen }) {
       <div className="mbr-card-top">
         <div className="mbr-card-headtext">
           <h3 className="mbr-card-name">{member.name}</h3>
+          {isHiddenProspect(member) && <span className="mbr-status prospect">Prospect</span>}
           {member.status === 'Inactive' && <span className="mbr-status">Inactive</span>}
         </div>
         <div className="mbr-avatar">
@@ -245,7 +291,7 @@ function MemberCard({ member, onOpen }) {
 /* ── Full member profile ── */
 const PROFILE_TABS = ['Info', 'Notes', 'Groups', 'Attachments'];
 
-function MemberProfile({ member, allRows = [], onOpenMember, onChanged, onBack, onEdit, onMakeProspect, onRestoreMember, onDelete }) {
+function MemberProfile({ member, allRows = [], onOpenMember, onChanged, onBack, onEdit, onMakeProspect, onMakeInactive, onRestoreMember, onDelete }) {
   const [tab, setTab] = useState('Info');
   const [menu, setMenu] = useState(false);
   const [addFam, setAddFam] = useState(false);
@@ -279,9 +325,20 @@ function MemberProfile({ member, allRows = [], onOpenMember, onChanged, onBack, 
                 <div className="mp2-menu-backdrop" onClick={() => setMenu(false)} />
                 <div className="mp2-menu">
                   <button onClick={() => { setMenu(false); onEdit(); }}><Icon d={P.edit} size={14} />Edit Member</button>
-                  {isHiddenProspect(member)
-                    ? <button onClick={() => { setMenu(false); onRestoreMember?.(); }}><Icon d={P.person} size={14} />Restore to Members</button>
-                    : <button onClick={() => { setMenu(false); onMakeProspect?.(); }}><Icon d={P.location} size={14} />Mark as Prospect</button>}
+                  {/* Parked either way — one Restore brings them back. Neither
+                      deletes anything, and neither touches the Guest page. */}
+                  {isArchived(member)
+                    ? <button onClick={() => { setMenu(false); onRestoreMember?.(); }}>
+                        <Icon d={P.person} size={14} />Restore to Members
+                      </button>
+                    : <>
+                        <button onClick={() => { setMenu(false); onMakeProspect?.(); }}>
+                          <Icon d={P.location} size={14} />Mark as Prospect
+                        </button>
+                        <button onClick={() => { setMenu(false); onMakeInactive?.(); }}>
+                          <Icon d={P.archive} size={14} />Mark as Inactive
+                        </button>
+                      </>}
                   <button className="danger" onClick={() => { setMenu(false); onDelete(); }}><Icon d={P.trash} size={14} />Remove Member</button>
                 </div>
               </>)}
@@ -293,7 +350,8 @@ function MemberProfile({ member, allRows = [], onOpenMember, onChanged, onBack, 
             Added on <strong>{fmt(member.created_at) || '—'}</strong>
           </p>
           <div className="mp2-actions">
-            <button className="btn-primary sm" onClick={onEdit}><Icon d={P.edit} size={14} />Edit</button>
+            {/* Each card carries its own pencil now. The full form stays
+                reachable from the ⋯ menu, since the photo lives only there. */}
             <button className="btn-ghost sm" onClick={() => printMember(member)}><Icon d={P.print} size={14} />Print</button>
           </div>
         </div>
@@ -310,17 +368,34 @@ function MemberProfile({ member, allRows = [], onOpenMember, onChanged, onBack, 
       {tab === 'Info' && (
         <div className="mp2-grid">
           <div className="mp2-col">
-            <div className="mp2-card">
-              <h2 className="mp2-card-title">Contact Information</h2>
+            <EditableCard title="Contact Information" member={member} onSaved={onChanged}
+              fields={[
+                { key: 'name',    label: 'Name' },
+                { key: 'address', label: 'Home Address' },
+                { key: 'phone',   label: 'Phone', placeholder: '(555) 123-4567' },
+                { key: 'email',   label: 'Email', placeholder: 'jane@email.com' },
+              ]}>
               <Row label="Name" value={member.name} />
               <Row label="Home Address" value={member.address}
                 extra={mapUrl && <a href={mapUrl} target="_blank" rel="noreferrer" className="mp2-link">View Map</a>} />
               <Row label="Phone" value={member.phone && <a href={`tel:${member.phone}`} className="mp2-link">{member.phone}</a>} />
               <Row label="Email" value={member.email && <a href={`mailto:${member.email}`} className="mp2-link">{member.email}</a>} last />
-            </div>
+            </EditableCard>
 
-            <div className="mp2-card">
-              <h2 className="mp2-card-title">Personal Information</h2>
+            <EditableCard title="Personal Information" member={member} onSaved={onChanged}
+              fields={[
+                { key: 'family_position', label: 'Family Position', type: 'select', options: FAMILY_POSITIONS },
+                { key: 'birthday',        label: 'Birthday', type: 'date' },
+                { key: 'gender',          label: 'Gender', type: 'select', options: GENDERS },
+                { key: 'marital_status',  label: 'Marital Status', type: 'select', options: MARITAL_STATUSES },
+                { key: 'member_status',   label: 'Member Status', type: 'select', options: MEMBER_STATUSES },
+                { key: 'record_type',     label: 'Record Type', type: 'select', options: RECORD_TYPES },
+                { key: 'joined_how',      label: 'Joined How', type: 'select', options: JOINED_HOW_OPTIONS },
+                { key: 'date_joined',     label: 'Date Joined', type: 'date' },
+                { key: 'include_directory', label: 'Include on Directory', type: 'bool' },
+                { key: 'status_code',     label: 'Status Code' },
+                { key: 'active',          label: 'Active', type: 'bool' },
+              ]}>
               <Row label="Family Position" value={member.family_position} />
               <Row label="Birthday" value={member.birthday && <>{fmtMDY(member.birthday)}{age != null && <span className="mp2-muted"> / {age} years old</span>}</>} />
               <Row label="Gender" value={member.gender} />
@@ -332,7 +407,7 @@ function MemberProfile({ member, allRows = [], onOpenMember, onChanged, onBack, 
               <Row label="Include on Directory" value={yesNo(member.include_directory)} />
               <Row label="Status Code" value={member.status_code} />
               <Row label="Active" value={trueFalse(member.active)} last />
-            </div>
+            </EditableCard>
           </div>
 
           <aside className="mp2-side">
@@ -398,17 +473,17 @@ function MemberProfile({ member, allRows = [], onOpenMember, onChanged, onBack, 
       )}
 
       {tab === 'Notes' && (
-        <div className="mp2-card">
-          <h2 className="mp2-card-title">Notes</h2>
+        <EditableCard title="Notes" member={member} onSaved={onChanged}
+          fields={[{ key: 'notes', label: 'Notes', type: 'textarea', placeholder: 'Anything worth remembering…' }]}>
           {member.notes ? <p className="mp2-notes">{member.notes}</p> : <p className="mp2-side-empty">No notes yet.</p>}
-        </div>
+        </EditableCard>
       )}
       {tab === 'Groups' && (
-        <div className="mp2-card">
-          <h2 className="mp2-card-title">Groups</h2>
+        <EditableCard title="Groups" member={member} onSaved={onChanged}
+          fields={[{ key: 'tags', label: 'Groups / Tags', placeholder: 'e.g. Choir, Small Group A' }]}>
           {tags.length ? <div className="mbr-card-tags">{tags.map(t => <span key={t} className="mbr-tag">{t}</span>)}</div>
             : <p className="mp2-side-empty">This member isn't in any groups yet.</p>}
-        </div>
+        </EditableCard>
       )}
       {tab === 'Attachments' && (
         <div className="mp2-card"><h2 className="mp2-card-title">Attachments</h2><p className="mp2-side-empty">No attachments — file uploads coming soon.</p></div>
@@ -422,6 +497,78 @@ function MemberProfile({ member, allRows = [], onOpenMember, onChanged, onBack, 
           onAdded={() => { setAddFam(false); onChanged?.(); }}
         />
       )}
+    </div>
+  );
+}
+
+
+/*
+ * A profile card you can edit in place: pencil in the corner, the same rows
+ * turn into inputs, Save writes only this card's fields. Editing one detail no
+ * longer means opening the whole member form and hunting for it.
+ *
+ * `fields` describes what to show — the same list drives the read view and the
+ * edit view, so the two cannot drift apart.
+ */
+function EditableCard({ title, member, fields, onSaved, children }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState({});
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  function start() {
+    setDraft(Object.fromEntries(fields.map(f => [f.key, member[f.key] ?? (f.type === 'bool' ? false : '')])));
+    setError(''); setEditing(true);
+  }
+
+  async function save() {
+    setSaving(true); setError('');
+    const { error: err } = await saveChurchMember({ ...draft, id: member.id });
+    setSaving(false);
+    if (err) return setError(err.message);
+    setEditing(false);
+    onSaved?.();
+  }
+
+  const set = (k, v) => setDraft(d => ({ ...d, [k]: v }));
+
+  return (
+    <div className={`mp2-card ${editing ? 'editing' : ''}`}>
+      <div className="mp2-card-head">
+        <h2 className="mp2-card-title">{title}</h2>
+        {!editing && (
+          <button className="mp2-card-edit" onClick={start} title={`Edit ${title}`} aria-label={`Edit ${title}`}>
+            <Icon d={P.edit} size={15} />
+          </button>
+        )}
+      </div>
+
+      {editing ? (<>
+        {/* Same rows, same label column — only the value becomes a control, so
+            the card does not visibly change shape when you start editing. */}
+        {fields.map((f, i) => (
+          <div key={f.key} className={`mp2-row ${i === fields.length - 1 ? 'last' : ''}`}>
+            <span className="mp2-row-label">{f.label}</span>
+            <span className="mp2-row-value">
+              {f.type === 'select'
+                ? <SelectWithValue value={draft[f.key]} onChange={v => set(f.key, v)} options={f.options} />
+                : f.type === 'bool'
+                ? <select value={draft[f.key] ? 'Yes' : 'No'} onChange={e => set(f.key, e.target.value === 'Yes')}>
+                    <option>Yes</option><option>No</option>
+                  </select>
+                : f.type === 'textarea'
+                ? <textarea rows={4} value={draft[f.key] || ''} onChange={e => set(f.key, e.target.value)} placeholder={f.placeholder} />
+                : <input type={f.type || 'text'} value={draft[f.key] || ''}
+                    onChange={e => set(f.key, e.target.value)} placeholder={f.placeholder} />}
+            </span>
+          </div>
+        ))}
+        {error && <p className="modal-error">{error}</p>}
+        <div className="mp2-edit-foot">
+          <button className="btn-ghost sm" onClick={() => setEditing(false)} disabled={saving}>Cancel</button>
+          <button className="btn-primary sm" onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
+        </div>
+      </>) : children}
     </div>
   );
 }
@@ -483,6 +630,7 @@ function MemberModal({ member, onClose, onSaved, onDeleted }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [uploading, setUploading] = useState(false);
+  const [showMore, setShowMore] = useState(false);
   const fileRef = useRef(null);
   const set = (k, v) => setF(p => ({ ...p, [k]: v }));
 
@@ -537,10 +685,10 @@ function MemberModal({ member, onClose, onSaved, onDeleted }) {
   async function save() {
     if (!f.name.trim()) { setError('Name is required.'); return; }
     setSaving(true); setError('');
-    const { error } = await saveChurchMember({ ...f, id: member.id });
+    const { data, error } = await saveChurchMember({ ...f, id: member.id });
     setSaving(false);
     if (error) { setError(error.message); return; }
-    onSaved();
+    onSaved(data);
   }
   async function remove() {
     if (!(await confirmDialog({ message: `Remove ${f.name}? This cannot be undone.` }))) return;
@@ -590,10 +738,15 @@ function MemberModal({ member, onClose, onSaved, onDeleted }) {
             <label className="field-group"><span>Email</span><input value={f.email} onChange={e => set('email', e.target.value)} placeholder="jane@email.com" /></label>
           </div>
           <label className="field-group"><span>Address</span><input value={f.address} onChange={e => set('address', e.target.value)} placeholder="123 Main St, City, State" /></label>
+          {/* Status and Record Type together: one says whether they are current,
+              the other whether they are a member or a prospect. Both drive what
+              the directory shows, so they lead rather than sit in a sub-section. */}
           <div className="field-row">
-            <label className="field-group"><span>Birthday</span><input type="date" value={f.birthday} onChange={e => set('birthday', e.target.value)} /></label>
             <label className="field-group"><span>Status</span>
               <select value={f.status} onChange={e => set('status', e.target.value)}>{STATUSES.map(s => <option key={s}>{s}</option>)}</select>
+            </label>
+            <label className="field-group"><span>Record Type</span>
+              <SelectWithValue value={f.record_type} onChange={v => set('record_type', v)} options={RECORD_TYPES} placeholder="Select…" />
             </label>
           </div>
           <div className="field-row">
@@ -602,39 +755,45 @@ function MemberModal({ member, onClose, onSaved, onDeleted }) {
               <SelectWithValue value={f.family_position} onChange={v => set('family_position', v)} options={FAMILY_POSITIONS} placeholder="Select…" />
             </label>
           </div>
+          <label className="field-group"><span>Birthday</span><input type="date" value={f.birthday} onChange={e => set('birthday', e.target.value)} /></label>
 
-          <div className="mbr-section-label">Personal Information</div>
-          <div className="field-row">
-            <label className="field-group"><span>Gender</span>
-              <SelectWithValue value={f.gender} onChange={v => set('gender', v)} options={GENDERS} placeholder="Select…" />
-            </label>
-            <label className="field-group"><span>Marital Status</span>
-              <SelectWithValue value={f.marital_status} onChange={v => set('marital_status', v)} options={MARITAL_STATUSES} placeholder="Select…" />
-            </label>
-          </div>
-          <div className="field-row">
-            <label className="field-group"><span>Member Status</span>
-              <SelectWithValue value={f.member_status} onChange={v => set('member_status', v)} options={MEMBER_STATUSES} placeholder="Select…" />
-            </label>
-            <label className="field-group"><span>Record Type</span>
-              <SelectWithValue value={f.record_type} onChange={v => set('record_type', v)} options={RECORD_TYPES} placeholder="Select…" />
-            </label>
-          </div>
-          <div className="field-row">
-            <label className="field-group"><span>Joined How</span>
-              <SelectWithValue value={f.joined_how} onChange={v => set('joined_how', v)} options={JOINED_HOW_OPTIONS} placeholder="Select…" />
-            </label>
-            <label className="field-group"><span>Date Joined</span><input type="date" value={f.date_joined || ''} onChange={e => set('date_joined', e.target.value)} /></label>
-          </div>
-          <div className="field-row">
-            <label className="field-group"><span>Include on Directory</span>
-              <select value={f.include_directory ? 'Yes' : 'No'} onChange={e => set('include_directory', e.target.value === 'Yes')}><option>Yes</option><option>No</option></select>
-            </label>
+          {/*
+           * The rest came in with the CallMultiplier import and is almost never
+           * touched: across 1,171 members, Status Code is "Active" for every
+           * single one, and Gender, Marital Status and Joined How are filled in
+           * for fewer than five people between them. Folded away rather than
+           * deleted — the columns still hold whatever the import brought.
+           */}
+          <button type="button" className="mbr-more" onClick={() => setShowMore(v => !v)}>
+            <Icon d={showMore ? P.arrowUp : P.arrowDown} size={14} />
+            {showMore ? 'Hide extra details' : 'More details'}
+          </button>
+
+          {showMore && (<>
+            <div className="field-row">
+              <label className="field-group"><span>Gender</span>
+                <SelectWithValue value={f.gender} onChange={v => set('gender', v)} options={GENDERS} placeholder="Select…" />
+              </label>
+              <label className="field-group"><span>Marital Status</span>
+                <SelectWithValue value={f.marital_status} onChange={v => set('marital_status', v)} options={MARITAL_STATUSES} placeholder="Select…" />
+              </label>
+            </div>
+            <div className="field-row">
+              <label className="field-group"><span>Member Status</span>
+                <SelectWithValue value={f.member_status} onChange={v => set('member_status', v)} options={MEMBER_STATUSES} placeholder="Select…" />
+              </label>
+              <label className="field-group"><span>Joined How</span>
+                <SelectWithValue value={f.joined_how} onChange={v => set('joined_how', v)} options={JOINED_HOW_OPTIONS} placeholder="Select…" />
+              </label>
+            </div>
+            <div className="field-row">
+              <label className="field-group"><span>Date Joined</span><input type="date" value={f.date_joined || ''} onChange={e => set('date_joined', e.target.value)} /></label>
+              <label className="field-group"><span>Include on Directory</span>
+                <select value={f.include_directory ? 'Yes' : 'No'} onChange={e => set('include_directory', e.target.value === 'Yes')}><option>Yes</option><option>No</option></select>
+              </label>
+            </div>
             <label className="field-group"><span>Status Code</span><input value={f.status_code} onChange={e => set('status_code', e.target.value)} placeholder="Active" /></label>
-          </div>
-          <label className="field-group"><span>Active</span>
-            <select value={f.active ? 'True' : 'False'} onChange={e => set('active', e.target.value === 'True')}><option>True</option><option>False</option></select>
-          </label>
+          </>)}
 
           <label className="field-group"><span>Groups / Tags</span><input value={f.tags} onChange={e => set('tags', e.target.value)} placeholder="e.g. Choir, Small Group A" /></label>
           <label className="field-group"><span>Notes</span><textarea rows={3} value={f.notes} onChange={e => set('notes', e.target.value)} placeholder="Anything worth remembering…" /></label>

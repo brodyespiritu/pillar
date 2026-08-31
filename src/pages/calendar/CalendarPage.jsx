@@ -10,16 +10,20 @@ import {
 } from '../../lib/calendar';
 import { templateToEvent } from '../../lib/eventTemplates';
 import { isDesktop } from '../../lib/email';
+import { useIsMobile } from '../../lib/useIsMobile';
+import CalendarMobile from './CalendarMobile';
 import EventWizard from './EventWizard';
 import EventProfile from './EventProfile';
 import TemplatePalette from './TemplatePalette';
 import ContextMenu from './ContextMenu';
+import LocationsManager from './LocationsManager';
 import './Calendar.css';
 
 const VIEWS = ['Month', 'Week', 'Day'];
 
 export default function CalendarPage() {
   const location = useLocation();
+  const isMobile = useIsMobile();
   const [calendar, setCalendar] = useState('church'); // church | personal
   const [events, setEvents]     = useState([]);
   const [view, setView]         = useState('Month');
@@ -27,6 +31,7 @@ export default function CalendarPage() {
   const [wizard, setWizard]     = useState(null);      // { date } | { event }
   const [profile, setProfile]   = useState(null);
   const [toolsOpen, setToolsOpen] = useState(false);
+  const [locationsOpen, setLocationsOpen] = useState(false);
 
   const load = useCallback(async () => {
     setEvents(await fetchEvents(calendar));
@@ -108,20 +113,49 @@ export default function CalendarPage() {
       const { invoke } = await import('@tauri-apps/api/core');
       await invoke('open_calendar_widget');
     } catch (e) {
-      const missing = /not found|not allowed|unknown command/i.test(String(e?.message || e));
-      alertDialog(missing
-        ? 'The calendar widget needs Pillar 1.2 or newer. Download the latest installer from the Pillar releases page, then reopen this menu.'
-        : `Could not open the calendar widget: ${e?.message || e}`);
+      // Always surface the underlying error: guessing at the cause from a
+      // pattern match produced a dialog that told 1.2.0 users to install 1.2.0.
+      const raw = String(e?.message || e || 'unknown error');
+      let running = '';
+      try {
+        const { getVersion } = await import('@tauri-apps/api/app');
+        running = await getVersion();
+      } catch { /* version unavailable */ }
+      alertDialog(`Could not open the calendar widget.\n\n${raw}`
+        + (running ? `\n\nPillar ${running}` : ''));
     }
   }
 
   const TOOLS = [
     isDesktop() && { icon: P.grid, label: 'Open Calendar Widget', act: openWidget },
+    { icon: P.location, label: 'Locations & Photos', act: () => setLocationsOpen(true) },
     { icon: P.planner, label: 'Service Planner',  act: () => alertDialog('Service Planner — coming soon.') },
     { icon: P.clock,   label: 'Time Off Request', act: () => alertDialog('Time Off Request — coming soon.') },
     { icon: P.print,   label: 'Print / Export',   act: () => alertDialog('Gantt PDF export — coming soon.') },
     { icon: P.settings, label: 'Calendar Settings', act: () => alertDialog('Calendar settings — coming soon.') },
   ];
+
+  if (isMobile) {
+    return (
+      <>
+        <CalendarMobile
+          events={events}
+          onOpenEvent={ev => setProfile(ev)}
+          onAddEvent={dateIso => setWizard({ date: dateIso })}
+        />
+        {wizard && (
+          <EventWizard calendar={calendar} initialDate={wizard.date} event={wizard.event}
+            onClose={() => setWizard(null)} onSaved={() => { setWizard(null); load(); }} />
+        )}
+        {profile && (
+          <EventProfile event={profile}
+            onClose={() => setProfile(null)}
+            onEdit={ev => { setProfile(null); setWizard({ event: ev, date: ev.start_date }); }}
+            onChanged={load} />
+        )}
+      </>
+    );
+  }
 
   return (
     <div className="cal-wrap">
@@ -238,6 +272,10 @@ export default function CalendarPage() {
           onClose={() => setProfile(null)}
           onEdit={ev => { setProfile(null); setWizard({ event: ev, date: ev.start_date }); }}
           onChanged={load} />
+      )}
+      {/* Renaming a location rewrites the events that used it, so reload after. */}
+      {locationsOpen && (
+        <LocationsManager onClose={() => setLocationsOpen(false)} onChanged={load} />
       )}
     </div>
   );

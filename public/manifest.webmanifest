@@ -1,0 +1,16 @@
+{
+  "name": "Pillar — Bethesda Baptist Church",
+  "short_name": "Pillar",
+  "description": "Pastoral care, guests, calendar and congregation texting.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F8FAFD",
+  "theme_color": "#2C3A4B",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

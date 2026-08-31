@@ -5,13 +5,18 @@ import TopNav from '../../components/TopNav';
 import { P, Icon } from '../../lib/icons';
 import {
   fetchMembers, deleteMember, computeStats, buildSummary,
-  CATEGORIES, PRIORITIES, CATEGORY_COLORS, lastContacted, notifyCareSms,
-  upcomingCareEvents, relativeDayLabel,
+  CATEGORIES, PRIORITIES, CATEGORY_COLORS, lastContacted,
+  upcomingCareEvents, relativeDayLabel, fetchCarePhotos, carePhotoFor,
 } from '../../lib/care';
+import { initials } from '../../lib/members';
 import MemberForm from './MemberForm';
 import MemberProfile from './MemberProfile';
 import BulkAddModal from './BulkAddModal';
-import { exportMembersPDF } from './pdfExport';
+import { buildCareDoc } from './pdfExport';
+import DocPreviewModal from '../../components/DocPreviewModal';
+import { useIsMobile } from '../../lib/useIsMobile';
+import CaresMobile from './CaresMobile';
+import LogContactSheet from './LogContactSheet';
 import './CaresPage.css';
 
 const FILTERS = {
@@ -22,6 +27,7 @@ const FILTERS = {
 
 export default function CaresPage() {
   const location = useLocation();
+  const isMobile = useIsMobile();
   const deepLinked = useRef(false);
   const [members, setMembers]   = useState([]);
   const [loading, setLoading]   = useState(true);
@@ -34,6 +40,10 @@ export default function CaresPage() {
   const [profileMember, setProfileMember] = useState(null);
   const [profileLogging, setProfileLogging] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
+  /* Phone-only: logging a contact without opening the whole profile. */
+  const [logFor, setLogFor] = useState(null);
+  const [photos, setPhotos] = useState(null);   // name → photo_url from the directory
+  const [preview, setPreview] = useState(null); // { html, filename, heading }
 
   const [holdProgress, setHoldProgress] = useState(0);
   const holdTimer = useRef(null);
@@ -45,6 +55,8 @@ export default function CaresPage() {
     setLoading(false);
   }
   useEffect(() => { load(); }, []);
+  // Directory photos are independent of the care list — load once.
+  useEffect(() => { fetchCarePhotos().then(setPhotos); }, []);
 
   // Deep link from global search → open the exact member's profile
   useEffect(() => {
@@ -89,20 +101,11 @@ export default function CaresPage() {
     setFilter(f => (f === key ? null : key));
     setPriorityF('All'); setCategoryF('All'); setSearch('');
   }
-  /* New care needs page the staff who opted into SMS. Alerting is best-effort:
-     a texting failure must never make a saved record look unsaved. */
-  async function onCareSaved(result) {
+  /* Additions are picked up by the next digest (8:00 AM, 1:00 PM, 5:00 PM)
+     rather than texting staff the moment anyone touches a record. */
+  function onCareSaved() {
     setFormOpen(false);
     load();
-    if (!result?.isNew || !result.member) return;
-    const res = await notifyCareSms(result.member);
-    if (res.skipped) return;
-    if (res.sent) {
-      const failed = (res.failed || []).length;
-      if (failed) alertDialog(`Texted ${res.sent} staff. ${failed} could not be reached.`);
-    } else if ((res.failed || []).length) {
-      alertDialog(`Care need saved, but the alert text didn't send: ${res.failed[0]?.error || 'unknown error'}`);
-    }
   }
 
   function openAdd()   { setEditMember(null); setFormOpen(true); }
@@ -110,8 +113,25 @@ export default function CaresPage() {
   function openProfile(m, logging = false) { setProfileMember(m); setProfileLogging(logging); }
 
   async function handleDelete(m) {
-    if (!(await confirmDialog({ message: `Delete ${m.full_name}? This cannot be undone.` }))) return;
-    await deleteMember(m.id);
+    /* contact_logs cascades on delete, so this takes the whole care history
+       with it — say so plainly rather than a generic "cannot be undone". */
+    const logs = m.contact_logs?.length || 0;
+    const ok = await confirmDialog({
+      title: `Delete ${m.full_name}?`,
+      message: logs
+        ? `This also erases ${logs} contact log${logs === 1 ? '' : 's'} — their entire care history. This cannot be undone.`
+        : 'This removes them from the care list. This cannot be undone.',
+      danger: true,
+      confirmLabel: 'Delete',
+    });
+    if (!ok) return;
+    /* The delete used to be fire-and-forget: if RLS refused it, the list just
+       reloaded with the member still there and no explanation. */
+    const { error } = await deleteMember(m.id);
+    if (error) {
+      await alertDialog({ title: 'Could not delete', message: error.message });
+      return;
+    }
     setProfileMember(null);
     load();
   }
@@ -140,6 +160,53 @@ export default function CaresPage() {
     rec.lang = 'en-US';
     rec.onresult = e => { setSearch(e.results[0][0].transcript); setFilter('active'); };
     rec.start();
+  }
+
+  /* Both layouts open the same forms, profile card and print preview. */
+  const modals = (
+    <>
+    {formOpen && (
+      <MemberForm member={editMember} onClose={() => setFormOpen(false)} onSaved={onCareSaved} />
+    )}
+    {profileMember && (
+      <MemberProfile member={profileMember} startLogging={profileLogging}
+        onClose={() => { setProfileMember(null); setProfileLogging(false); }}
+        onEdit={openEdit} onDelete={handleDelete} onChanged={load} />
+    )}
+    {bulkOpen && (
+      <BulkAddModal onClose={() => setBulkOpen(false)} onSaved={() => { setBulkOpen(false); load(); }} />
+    )}
+    {preview && (
+      <DocPreviewModal
+        html={preview.html}
+        filename={preview.filename}
+        landscape={preview.landscape}
+        title={`${preview.heading} — ${filtered.length} ${filtered.length === 1 ? 'person' : 'people'}`}
+        onClose={() => setPreview(null)}
+      />
+    )}
+    </>
+  );
+
+  if (isMobile) {
+    return (
+      <>
+        <CaresMobile
+          members={members}
+          loading={loading}
+          onAdd={openAdd}
+          onLogContact={setLogFor}
+        />
+        {logFor && (
+          <LogContactSheet
+            member={logFor}
+            onClose={() => setLogFor(null)}
+            onSaved={() => { setLogFor(null); load(); }}
+          />
+        )}
+        {modals}
+      </>
+    );
   }
 
   return (
@@ -171,7 +238,6 @@ export default function CaresPage() {
                   <option value="All">All priorities</option>
                   {PRIORITIES.map(p => <option key={p} value={p}>{p} priority</option>)}
                 </select>
-                <Icon d={P.chevron} size={18} className="cp-select-chev" />
               </div>
             </div>
           </header>
@@ -214,9 +280,8 @@ export default function CaresPage() {
                       <option value="All">All categories</option>
                       {CATEGORIES.map(c => <option key={c}>{c}</option>)}
                     </select>
-                    <Icon d={P.chevron} size={16} className="cp-select-chev" />
                   </div>
-                  <button className="cp-tool-btn" onClick={() => exportMembersPDF(filtered)}>
+                  <button className="cp-tool-btn" onClick={() => setPreview(buildCareDoc(filtered))}>
                     <Icon d={P.pdf} size={15} />Export PDF
                   </button>
                   <button className="cp-tool-btn ghost" onClick={() => setFilter(null)}>Hide</button>
@@ -230,10 +295,11 @@ export default function CaresPage() {
               ) : (
                 <div className="cp-cards">
                   {filtered.map(m => (
-                    <MemberCard key={m.id} member={m}
+                    <MemberCard key={m.id} member={m} photos={photos}
                       onOpen={() => openProfile(m)}
                       onEdit={() => openEdit(m)}
                       onUpdate={() => openProfile(m, true)}
+                      onDelete={() => handleDelete(m)}
                     />
                   ))}
                 </div>
@@ -249,17 +315,7 @@ export default function CaresPage() {
         </div>
       </main>
 
-      {formOpen && (
-        <MemberForm member={editMember} onClose={() => setFormOpen(false)} onSaved={onCareSaved} />
-      )}
-      {profileMember && (
-        <MemberProfile member={profileMember} startLogging={profileLogging}
-          onClose={() => { setProfileMember(null); setProfileLogging(false); }}
-          onEdit={openEdit} onDelete={handleDelete} onChanged={load} />
-      )}
-      {bulkOpen && (
-        <BulkAddModal onClose={() => setBulkOpen(false)} onSaved={() => { setBulkOpen(false); load(); }} />
-      )}
+      {modals}
     </div>
   );
 }
@@ -350,13 +406,24 @@ function QB({ k, value, filter, toggle }) {
   );
 }
 
+/* ── Profile photo, matched from the church directory ── */
+export function CareAvatar({ name, photos, size = 26 }) {
+  const src = carePhotoFor(photos, name);
+  return (
+    <span className="care-av" style={{ '--s': `${size}px` }} title={name}>
+      {src ? <img src={src} alt="" /> : <span>{initials(name)}</span>}
+    </span>
+  );
+}
+
 /* ── Member card ── */
-function MemberCard({ member, onOpen, onEdit, onUpdate }) {
+function MemberCard({ member, photos, onOpen, onEdit, onUpdate, onDelete }) {
   const lc = lastContacted(member);
   return (
     <div className="mc" onClick={onOpen}>
       <h3 className="mc-name">
         {member.full_name}
+        <CareAvatar name={member.full_name} photos={photos} size={26} />
         {member.family_member && <span className="mc-family"> · {member.family_member}</span>}
       </h3>
 
@@ -371,6 +438,10 @@ function MemberCard({ member, onOpen, onEdit, onUpdate }) {
         <div className="mc-hover">
           <button className="mc-hbtn" onClick={onEdit}><Icon d={P.edit} size={14} />Edit</button>
           <button className="mc-hbtn primary" onClick={onUpdate}><Icon d={P.clock} size={14} />Update</button>
+          <button className="mc-hbtn danger" onClick={onDelete}
+            title={`Delete ${member.full_name}`} aria-label={`Delete ${member.full_name}`}>
+            <Icon d={P.trash} size={14} />
+          </button>
         </div>
       </div>
     </div>

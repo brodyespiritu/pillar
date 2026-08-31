@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { P, Icon } from '../../lib/icons';
 import { useAuth } from '../../context/AuthContext';
-import { LOG_TYPES, CATEGORY_COLORS, addLog, deleteLog, notifyCareUpdateSms } from '../../lib/care';
-import { PriorityBadge } from './CaresPage';
+import { LOG_TYPES, CATEGORY_COLORS, addLog, deleteLog, fetchCarePhotos } from '../../lib/care';
+import { PriorityBadge, CareAvatar } from './CaresPage';
 import './Modal.css';
 
 const LOG_ICON = {
@@ -24,6 +24,8 @@ export default function MemberProfile({ member, startLogging, onClose, onEdit, o
   const [adding, setAdding] = useState(!!startLogging);
   const [logType, setLogType] = useState('Update/Visit');
   const [logNote, setLogNote] = useState('');
+  const [photos, setPhotos] = useState(null);
+  useEffect(() => { fetchCarePhotos().then(setPhotos); }, []);
 
   async function submitLog() {
     if (!logNote.trim()) return;
@@ -35,12 +37,9 @@ export default function MemberProfile({ member, startLogging, onClose, onEdit, o
       logged_by_name: profile?.name || 'Staff',
     });
     if (data) setLogs(l => [data, ...l]);
-    const note = logNote;
     setLogNote(''); setAdding(false);
     onChanged?.();
-    // Best-effort: a texting failure must never make a saved log look unsaved.
-    notifyCareUpdateSms({ memberName: member.full_name, note })
-      .catch(e => console.warn('Cares update SMS failed:', e));
+    // Picked up by the next digest (8:00 AM, 1:00 PM, 5:00 PM).
   }
 
   async function removeLog(id) {
@@ -57,7 +56,10 @@ export default function MemberProfile({ member, startLogging, onClose, onEdit, o
       <div className="modal sheet mp-profile" onClick={e => e.stopPropagation()}>
         <div className="modal-head">
           <div className="mp-title">
-            <h2>{member.full_name}</h2>
+            <h2>
+              {member.full_name}
+              <CareAvatar name={member.full_name} photos={photos} size={32} />
+            </h2>
             <div className="mp-badges">
               <span className="mt-cat" style={{ '--c': catColor }}>{member.category}</span>
               <PriorityBadge p={member.priority} />

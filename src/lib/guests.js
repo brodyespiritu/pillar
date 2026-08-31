@@ -159,6 +159,15 @@ export function inGuestWeek(g, start = guestWeekStart()) {
   return t >= start && t < guestWeekEnd(start);
 }
 
+/* Greeter comments live in their own table but belong to the same guest week
+   (they key off created_at, so inGuestWeek works on them unchanged). */
+export async function fetchGreeterComments() {
+  const { data, error } = await supabase
+    .from('greeter_comments').select('*').order('created_at', { ascending: true });
+  if (error) { console.warn('greeter_comments unavailable:', error.message); return []; }
+  return data || [];
+}
+
 export function guestWeekLabel(start = guestWeekStart()) {
   return `Week of ${start.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
 }

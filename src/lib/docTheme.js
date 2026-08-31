@@ -50,8 +50,15 @@ export const metric = (n, label) => `<td width="25%" valign="top" style="padding
 export function docShell({ docTitle, heading, subheading, today, metricsRow = '', body = '' }) {
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width">
   <title>${docTitle}</title>
-  <style>@page { size: letter portrait; margin: 0.5in; }</style></head>
-  <body style="margin:0;padding:0;background:#fff;">
+  <style>
+    @page { size: letter portrait; margin: 0.4in; }
+    /* Keep a person's card whole rather than splitting their name from their
+       details across a page boundary. */
+    table, tr, td { break-inside: avoid; page-break-inside: avoid; }
+    h2 { break-after: avoid; page-break-after: avoid; }
+    @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+  </style></head>
+  <body style="margin:0;padding:20px;background:#fff;">
   <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="border-collapse:collapse;max-width:760px;margin:0 auto;font-family:${FONT};font-size:9pt;color:${C.ink};">
 
     <tr><td style="border-bottom:2px solid #111;padding-bottom:10px;">

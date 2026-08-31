@@ -67,6 +67,7 @@ function ManageGreeters() {
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
 
   async function load() {
     const { rows, missing } = await fetchGreeters();
@@ -75,24 +76,40 @@ function ManageGreeters() {
   useEffect(() => { load(); }, []);
 
   async function add() {
-    if (!validEmail(email)) return;
-    setBusy(true);
-    await addGreeter({ email, name });
-    setEmail(''); setName(''); setBusy(false);
+    const clean = email.trim().toLowerCase();
+    if (!validEmail(clean)) return;
+    // The table has no unique constraint, so the same address could be saved
+    // twice and then be emailed twice.
+    if (rows.some(r => (r.email || '').trim().toLowerCase() === clean)) {
+      setErr('That address is already saved.');
+      return;
+    }
+    setBusy(true); setErr('');
+    /* Errors were ignored here — a rejected insert looked exactly like a
+       successful one, which is how a saved address could quietly not save. */
+    const { error } = await addGreeter({ email, name });
+    setBusy(false);
+    if (error) return setErr(error.message || 'Could not save that address.');
+    setEmail(''); setName('');
     load();
   }
   async function remove(id) {
-    await removeGreeter(id); load();
+    const { error } = await removeGreeter(id);
+    if (error) return setErr(error.message || 'Could not remove that address.');
+    setErr('');
+    load();
   }
 
   return (
     <div className="er-body">
       <div className="er-manage-head">
         <h2>Saved Greeters</h2>
-        <p>Shared across all staff. Used by the “+ Greeters” quick-add and one-click chips.</p>
+        <p>Shared across all staff — anyone who adds an address here saves it for everyone.
+           Added to a recap in one go with the “+ Greeters” button.</p>
       </div>
 
       {missing && <div className="er-warn">Run <strong>supabase/email-recap-schema.sql</strong> to enable saved emails.</div>}
+      {err && <div className="er-error">{err}</div>}
 
       <div className="er-add-row">
         <input placeholder="Name (optional)" value={name} onChange={e => setName(e.target.value)} />

@@ -58,12 +58,22 @@ export function eventCoversDay(ev, day) {
 }
 
 /* ── Reads ── */
-export async function fetchEvents(calendar) {
+
+/*
+ * Same query as fetchEvents, but it says why the list came back empty. An
+ * empty calendar and a calendar that failed to load look identical to the
+ * caller otherwise, and screens end up asserting the wrong reason.
+ */
+export async function fetchEventsResult(calendar) {
   let q = supabase.from('events').select('*');
   if (calendar) q = q.eq('calendar', calendar);
   const { data, error } = await q.order('start_date', { ascending: true });
-  if (error) { console.error(error); return []; }
-  return data || [];
+  if (error) { console.error(error); return { rows: [], error: error.message || 'Could not load the calendar.' }; }
+  return { rows: data || [], error: null };
+}
+
+export async function fetchEvents(calendar) {
+  return (await fetchEventsResult(calendar)).rows;
 }
 
 /* ── Save (expands recurring into a series) ── */

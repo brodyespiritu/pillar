@@ -47,12 +47,20 @@ export function AuthProvider({ children }) {
   }
 
   // PIN is verified server-side against a bcrypt hash; the hash never leaves the DB.
-  async function verifyPin(pin) {
+  /*
+   * `holdMs` lets the caller play an unlock animation before the PIN screen
+   * disappears. Flipping the flag immediately unmounts the screen mid-frame,
+   * so the lock never gets to open. The answer is returned straight away
+   * either way — only the state change waits.
+   */
+  async function verifyPin(pin, holdMs = 0) {
     if (!user) return false;
     const { data, error } = await supabase.rpc('verify_pin', { input: pin });
     if (error) { console.error('verify_pin', error.message); return false; }
-    if (data === true) { setPinVerified(true); return true; }
-    return false;
+    if (data !== true) return false;
+    if (holdMs > 0) setTimeout(() => setPinVerified(true), holdMs);
+    else setPinVerified(true);
+    return true;
   }
 
   // Set (or change) the current user's PIN — hashed server-side.

@@ -78,3 +78,5 @@
 .cw-btn:disabled { opacity: 0.6; }
 .cw-btn-ghost { background: none; border: 1px solid var(--border); color: var(--text-2); }
 .cw-btn-ghost:hover { background: var(--surface-2); color: var(--text); }
+
+.cw-f select { padding-right: 36px; }   /* room for the global chevron */

@@ -38,7 +38,7 @@ const NAV_MENUS = {
     left: { heading: 'Messaging', items: [
       { icon: P.mail,     name: 'Email',        sub: 'Gmail / Yahoo inbox', to: '/email', actions: ['Compose Email', 'View Inbox', 'Connect Account', 'View All'] },
       { icon: P.chat,     name: 'SMS',          sub: 'Text the congregation', to: '/sms', actions: ['New Broadcast', 'Manage Contacts', 'Manage Groups', 'View All'] },
-      { icon: P.announce, name: 'Announcements', sub: 'Media & scripts',       actions: ['New Announcement', 'Schedule Post', 'View Archive', 'View All'] },
+      { icon: P.announce, name: 'Playbooks / Arcs', sub: 'Promotion arcs for events & ministries', to: '/playbooks', actions: ['New event arc', 'New ministry arc', 'View All'] },
       { icon: P.radio,    name: 'Director Hub', sub: 'Communications hub',     actions: ['Open Hub', 'Team Broadcast', 'Meeting Notes', 'View All'] },
     ] },
     right: { heading: 'Quick Actions', items: [{ icon: P.grid, name: 'Catalog' }, { icon: P.doc, name: 'Pillar' }] },

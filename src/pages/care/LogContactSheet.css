@@ -1,0 +1,141 @@
+/*
+ * The log-contact sheet. Same material as the rest of the phone UI — bottom
+ * sheet, squircles, one blue pill committing at the end.
+ */
+
+.lc-scrim {
+  position: fixed; inset: 0; z-index: 360;
+  display: flex; align-items: flex-end;
+  background: rgba(11, 27, 45, 0.44);
+  backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px);
+  animation: lc-fade 0.18s ease-out;
+  /* Lift the sheet clear of the keyboard. */
+  padding-bottom: var(--kb, 0px);
+}
+
+.lc-sheet {
+  position: relative;
+  width: 100%;
+  /*
+   * Shrink with the keyboard rather than only moving up. Padding the scrim
+   * lifted the sheet's bottom edge, but a sheet taller than the space that
+   * remains simply overflows past it — and what overflows is the note field and
+   * the Save button, which is the whole point of the sheet.
+   */
+  max-height: min(100%, 92vh);
+  /*
+   * A column with a scrolling body and a fixed foot, rather than one scrolling
+   * box with a sticky button in it. Sticky only stops an element scrolling
+   * away; it will not hold it at the bottom edge when the content is short, and
+   * the button kept drifting hundreds of pixels up the sheet.
+   */
+  display: flex; flex-direction: column;
+  background: #FFFFFF;
+  border-radius: 34px 34px 0 0;
+  corner-shape: squircle;
+  padding: 30px 22px calc(16px + var(--safe-b, 0px));
+  box-shadow: 0 -12px 44px rgba(11, 33, 60, 0.20);
+  animation: lc-rise 0.30s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.lc-body { flex: 1; min-height: 0; overflow-y: auto; }
+
+.lc-x {
+  position: absolute; top: 20px; right: 20px;
+  width: 40px; height: 40px; min-height: 40px;
+  display: flex; align-items: center; justify-content: center;
+  border: none; border-radius: 50%;
+  background: var(--surface-2); color: var(--text-2);
+}
+.lc-x:active { background: #E5EDF7; }
+
+.lc-title {
+  margin: 0; padding-right: 48px;
+  font-size: 26px; font-weight: 800; letter-spacing: -0.03em; color: var(--text);
+}
+.lc-who {
+  margin: 4px 0 22px;
+  font-size: 16.5px; font-weight: 600; color: var(--text-3);
+}
+
+/* ── Kind of contact ──
+   Two by two rather than a dropdown: four options fit, and a picker you can see
+   is one tap where a select is three. */
+.lc-types {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+  margin-bottom: 20px;
+}
+.lc-type {
+  display: flex; align-items: center; gap: 10px;
+  min-height: 60px; padding: 0 14px;
+  border: 2px solid transparent;
+  border-radius: 20px;
+  corner-shape: squircle;
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: 14.5px; font-weight: 700; text-align: left;
+}
+.lc-type svg { flex-shrink: 0; }
+.lc-type.on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+/* ── The note ── */
+.lc-note {
+  display: flex; flex-direction: column; gap: 4px;
+  padding: 14px 18px;
+  border-radius: 20px;
+  corner-shape: squircle;
+  background: var(--surface-2);
+  cursor: text;
+}
+.lc-note > span { font-size: 13px; font-weight: 600; color: var(--text-3); }
+.lc-note textarea {
+  width: 100%; padding: 0; border: none; outline: none; background: none;
+  resize: none; line-height: 1.45;
+  font-size: 17px; font-weight: 500; color: var(--text);
+  font-family: inherit;
+}
+.lc-note:focus-within { box-shadow: inset 0 0 0 2px var(--accent); }
+.lc-note textarea::placeholder { color: var(--text-3); font-weight: 500; }
+
+.lc-error { margin: 12px 4px 0; font-size: 14.5px; font-weight: 600; color: var(--red); }
+
+/* ── One button. Closing is the X; a Cancel beside Save was a second way to do
+      the same nothing. ── */
+/* The sheet's bottom edge, and therefore always directly above the keyboard. */
+.lc-save {
+  flex-shrink: 0;
+  width: 100%; min-height: 56px; margin-top: 18px;
+  display: flex; align-items: center; justify-content: center;
+  border: none; border-radius: 28px;
+  corner-shape: squircle;
+  background: var(--accent); color: #FFFFFF;
+  font-size: 17px; font-weight: 700;
+}
+.lc-save:active:not(:disabled) { background: var(--accent-hover); }
+.lc-save:disabled { opacity: 0.45; }
+
+@keyframes lc-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes lc-rise { from { transform: translateY(100%); } to { transform: translateY(0); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .lc-scrim, .lc-sheet { animation: none; }
+}
+
+/*
+ * The card continues behind the keyboard.
+ *
+ * The sheet itself stops above the keys so its buttons stay reachable; this
+ * paints its colour on down over the gap, so what you see is one card running
+ * off the bottom of the screen rather than a card floating on a scrim.
+ */
+.lc-sheet::after {
+  content: '';
+  position: absolute; top: 100%; left: 0; right: 0;
+  height: var(--kb, 0px);
+  background: #FFFFFF;
+  pointer-events: none;
+}

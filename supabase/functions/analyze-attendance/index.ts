@@ -12,7 +12,6 @@
 //
 // Returns: { zones: [{ zone_key, estimate }], total, confidence, model }
 
-import { serve } from 'https://deno.land/std@0.208.0/http/server.ts';
 
 const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY')!;
 const MODEL = 'claude-opus-4-8';
@@ -22,7 +21,7 @@ const cors = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
 
   try {

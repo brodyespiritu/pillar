@@ -31,7 +31,66 @@ alter table sms_groups        enable row level security;
 alter table sms_contacts      enable row level security;
 alter table sms_group_members enable row level security;
 
-create policy "own groups"   on sms_groups   for all using (owner = auth.uid());
-create policy "own contacts" on sms_contacts for all using (owner = auth.uid());
+/*
+ * Contacts and groups are shared church data, not personal address books.
+ * These were scoped to owner = auth.uid(), which meant the congregation list
+ * one staff member built was invisible to everyone else. `owner` is kept as a
+ * record of who added the row, not as an access boundary.
+ */
+drop policy if exists "own groups"   on sms_groups;
+drop policy if exists "own contacts" on sms_contacts;
+create policy "staff groups"   on sms_groups   for all using (auth.role() = 'authenticated');
+create policy "staff contacts" on sms_contacts for all using (auth.role() = 'authenticated');
 -- membership rows are reachable via their owned group/contact
 create policy "own members"  on sms_group_members for all using (auth.role() = 'authenticated');
+
+/*
+ * Opt-out, recorded on the contact rather than only at the provider.
+ *
+ * Telnyx already suppresses a number the moment it texts STOP, so compliance
+ * never depended on this. What it did not do is tell Pillar: an opted-out
+ * person stayed in the contact list, kept inflating the "All congregation"
+ * count, and was attempted on every broadcast only to be refused. Worse, the
+ * suppression lived only inside one Telnyx messaging profile — change profile
+ * or provider and the record of their wishes would not travel with it.
+ */
+alter table sms_contacts add column if not exists opted_out    boolean not null default false;
+alter table sms_contacts add column if not exists opted_out_at timestamptz;
+
+/* Partial: the opted-out are a small minority, and this is only ever read to
+   exclude them. */
+create index if not exists idx_sms_contacts_opted_out
+  on sms_contacts (opted_out) where opted_out;
+
+/*
+ * Back-fill: anyone who already texted STOP before the flag existed.
+ *
+ * Without this the column starts false for everybody, so people who opted out
+ * weeks ago would keep showing as reachable — the provider would still refuse
+ * them, but the count and the list would go on lying. Matches on the last ten
+ * digits, because stored numbers vary in formatting.
+ *
+ * Inbound only (status 'Received'), whole-message keyword only, so "stop by the
+ * office on Sunday" is not read as an opt-out. Safe to run more than once.
+ */
+with stopped as (
+  select distinct right(regexp_replace(to_number, '\D', '', 'g'), 10) as last10,
+         max(created_at) as said_at
+    from sms_messages
+   where status = 'Received'
+     and lower(btrim(coalesce(body, ''))) ~
+         '^(stop|stopall|unsubscribe|cancel|end|quit|revoke|optout|opt out)[[:punct:][:space:]]*$'
+   group by 1
+)
+update sms_contacts c
+   set opted_out    = true,
+       opted_out_at = coalesce(c.opted_out_at, s.said_at)
+  from stopped s
+ where right(regexp_replace(c.phone, '\D', '', 'g'), 10) = s.last10
+   and c.opted_out is distinct from true;
+
+/* Who it caught — read this before trusting it. */
+select name, phone, opted_out_at
+  from sms_contacts
+ where opted_out
+ order by opted_out_at desc nulls last;

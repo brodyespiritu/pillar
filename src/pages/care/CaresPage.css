@@ -96,7 +96,7 @@
   transition: border-color 0.15s;
 }
 .cp-select select:focus { border-color: var(--accent); }
-.cp-select-chev { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); color: var(--text-3); pointer-events: none; }
+/* chevron now comes from the global select rule in global.css */
 .cp-select.sm select { padding: 8px 34px 8px 12px; font-size: 13px; }
 
 /* ── Colored filters ── */
@@ -129,7 +129,7 @@
 .qb-label { font-size: 13px; font-weight: 500; color: var(--text-2); }
 .qb-hold-fill {
   position: absolute; left: 0; bottom: 0; width: 100%;
-  background: rgba(11, 53, 88, 0.85); z-index: 1;
+  background: rgba(11,53,88, 0.85); z-index: 1;
   transition: height 0.05s linear;
 }
 
@@ -193,6 +193,20 @@
 }
 .mc-family { color: var(--text-3); font-weight: 500; font-size: 17px; }
 
+/* Profile photo beside the name, matched from the church directory.
+   Falls back to initials so the name line keeps its rhythm either way. */
+.care-av {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: var(--s, 26px); height: var(--s, 26px);
+  margin-left: 10px; vertical-align: middle;
+  border-radius: 50%; overflow: hidden; flex-shrink: 0;
+  background: var(--accent-soft); color: var(--accent);
+  border: 1px solid var(--border);
+  font-size: calc(var(--s, 26px) * 0.38); font-weight: 700; letter-spacing: 0;
+  line-height: 1; user-select: none;
+}
+.care-av img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
 .mc-sub {
   font-size: 16px;
   color: var(--text-2);
@@ -242,6 +256,10 @@
 .mc-hbtn:hover { border-color: var(--text-3); }
 .mc-hbtn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
 .mc-hbtn.primary:hover { background: var(--accent-hover); }
+/* Destructive: icon-only and neutral until reached for, so it never competes
+   with Update for the eye or the cursor. */
+.mc-hbtn.danger { padding: 8px 10px; margin-left: 4px; color: var(--text-2); }
+.mc-hbtn.danger:hover { background: var(--red-soft); border-color: var(--red); color: var(--red); }
 
 /* Priority badge */
 .pb { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; flex-shrink: 0; }

@@ -174,3 +174,5 @@
   .ap-hero-edit { grid-template-columns: 1fr; }
   .ap-hero-preview { max-width: 300px; }
 }
+
+.ap-select { padding-right: 36px; }   /* room for the global chevron */

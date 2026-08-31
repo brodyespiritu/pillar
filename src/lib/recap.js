@@ -191,19 +191,67 @@ export function recapBody(recap, senderName) {
 }
 
 /* ── Send + log (auto-attaches the Weekly Recap PDF) ── */
-export async function sendRecap({ account, recipients, subject, body, senderName, createdBy, recap }) {
-  const to = recipients.join(', ');
-  const attachments = recap ? [buildRecapPdf(recap)] : [];
-  // The recap travels as the PDF attachment only — the body is a short plain-
-  // text note, so the email reads clean and the PDF is the single source.
-  await sendMessage(account, { to, subject, body, attachments });   // throws on failure
+/*
+ * One message per recipient, sent one at a time.
+ *
+ * Batched BCC was worse in every way that matters here: a single refusal took
+ * out the whole batch (that is how 18 people silently missed a recap while the
+ * log said 38 delivered), and one address failing was indistinguishable from
+ * twenty. Per-recipient means a failure is attributable to one person, is
+ * retried on its own, and is reported by name. It also gives the best inbox
+ * placement, since each message is an ordinary one-to-one email.
+ */
+const SEND_GAP_MS = 250;      // gentle on the SMTP server between messages
+const RETRIES = 1;            // one second attempt before giving up on an address
+
+export async function sendRecap({
+  account, recipients, subject, body, senderName, createdBy, recap, attachment, onProgress,
+}) {
+  const seen = new Set();
+  const list = recipients
+    .map(r => String(r).trim())
+    .filter(e => e && !seen.has(e.toLowerCase()) && seen.add(e.toLowerCase()));
+  if (!list.length) throw new Error('No recipients.');
+
+  /* The emailed PDF is the very same document the Export button produces —
+     the caller rasterises it and hands it over. buildRecapPdf remains only as
+     the fallback when no attachment was supplied. */
+  const attachments = attachment ? [attachment] : (recap ? [buildRecapPdf(recap)] : []);
+
+  const delivered = [];
+  const failed = [];
+
+  for (let i = 0; i < list.length; i++) {
+    const to = list[i];
+    let lastErr = '';
+    for (let attempt = 0; attempt <= RETRIES; attempt++) {
+      if (i || attempt) await new Promise(r => setTimeout(r, attempt ? 1200 : SEND_GAP_MS));
+      try {
+        const info = await sendMessage(account, { to, subject, body, attachments });
+        /* SMTP can accept the message and still reject the recipient — that
+           resolves as success, which is how failures went unnoticed. */
+        if ((info?.rejected || []).length) { lastErr = 'Rejected by the mail server'; continue; }
+        delivered.push(to);
+        lastErr = '';
+        break;
+      } catch (e) {
+        lastErr = String(e?.message || e);
+      }
+    }
+    if (lastErr) failed.push({ email: to, error: lastErr });
+    onProgress?.({ done: i + 1, total: list.length, sent: delivered.length, failed: failed.length });
+  }
+
+  if (!delivered.length) throw new Error(failed[0]?.error || 'No recipients accepted.');
+
   // The log is secondary to the send — never fail a delivered recap over it,
   // but don't lose the error silently either (supabase returns, not throws).
   const { error: logErr } = await supabase.from('recap_sends').insert({
-    subject, recipients, recipient_count: recipients.length,
+    subject, recipients: delivered, recipient_count: delivered.length,
     sender_name: senderName || null, created_by: createdBy || null,
   });
   if (logErr) console.warn('Recap sent, but logging to recap_sends failed:', logErr.message);
+  return { sent: delivered.length, failed };
 }
 
 /* ══════════ Weekly Recap "PDF" (HTML → browser print) ══════════ */

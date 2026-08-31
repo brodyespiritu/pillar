@@ -4,8 +4,26 @@
     {
       "name": "pillar-dev",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
       "port": 1420
+    },
+    {
+      "name": "pillar-mobile",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "--prefix",
+        "mobile",
+        "run",
+        "start",
+        "--",
+        "--port",
+        "8083"
+      ],
+      "port": 8083,
+      "autoPort": false
     }
   ]
 }

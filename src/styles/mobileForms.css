@@ -1,0 +1,188 @@
+/*
+ * Every form on a phone.
+ *
+ * Pillar's forms all share one convention — a .modal.sheet holding .modal-head,
+ * .modal-body full of `<label class="field-group"><span>…</span><input/></label>`,
+ * and a .modal-foot of buttons. Because that convention is universal, this
+ * restyles the calendar's event wizard, the care form, the guest forms and
+ * everything else in one pass rather than each being rewritten.
+ *
+ * The shape is the one in the reference: fields as soft grey rounded rows with
+ * no borders of their own, the label small above the value, and a single
+ * full-width blue pill doing the committing at the bottom.
+ */
+
+@media (max-width: 767px) {
+
+  /*
+   * The card's colour runs on down behind the keyboard.
+   *
+   * The sheet stops above the keys so its buttons stay reachable — but without
+   * this there is a band of dimmed page between the sheet and the keyboard,
+   * which reads as the card floating rather than as one card running off the
+   * bottom of the screen.
+   */
+  .modal.sheet { position: relative; }
+  .modal.sheet::after {
+    content: '';
+    position: absolute; top: 100%; left: 0; right: 0;
+    height: var(--kb, 0px);
+    background: var(--surface);
+    pointer-events: none;
+  }
+
+  .modal.sheet .modal-head { padding: 6px 20px 10px; }
+  .modal.sheet .modal-head h2 {
+    font-size: 24px; font-weight: 800; letter-spacing: -0.03em;
+  }
+
+  /* The 1-2-3-4 stepper goes with the steps. */
+  .modal.sheet .gf-steps { display: none; }
+
+  /* Each former step keeps its heading, which is what actually helped. */
+  .modal.sheet .gf-q {
+    margin: 18px 4px 2px;
+    font-size: 13px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--text-3);
+  }
+  .modal.sheet .modal-body > .gf-q:first-child { margin-top: 4px; }
+
+  .modal.sheet .modal-body {
+    padding: 6px 18px 20px;
+    gap: 10px;
+  }
+
+  /*
+   * ── The name lookup ──
+   *
+   * It matches anywhere in the name, so typing "Te" returns up to five people
+   * ("Abby Ya-te-s"). Desktop lets the modal grow to fit them; a sheet cannot,
+   * so the list took the whole body and the last row was sliced off at the
+   * footer. It gets its own scroll and a ceiling of about three rows instead —
+   * enough to recognise the right person, never enough to bury the fields.
+   */
+  .modal.sheet .cf-ac-list {
+    /* -14px was tuned against the desktop body's 22px gap; here the gap is
+       10px, so it pulled the list up over the field it belongs to. */
+    margin-top: -4px;
+    /* Rows are 56px with a 2px gap, so 3*56 + 2*2 + 12 of padding shows three
+       two of them whole: 6 of padding + 56 + 2 of gap + 56 lands on 120, one
+       pixel short of where the third begins, so no sliver of it shows through
+       the bottom padding. A cap that fell mid-row is what made the list read as
+       broken rather than as scrollable.
+
+       Two rather than three because the budget is genuinely tight: a 336px
+       keyboard and the status bar leave the card about 417px, and the head,
+       question, field and two 56px buttons claim most of it.
+
+       It is deliberately still allowed to shrink. Pinning the height instead
+       (flex-shrink: 0) just moves the cut from the list's own edge to the body's,
+       which is the sliced-off row this started as. Shrinking keeps the cut
+       inside the grey box, where it reads as a list that scrolls. */
+    max-height: 120px; overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 6px;
+    border: none;
+    border-radius: 20px;
+    corner-shape: squircle;
+    background: var(--surface-2);
+  }
+  .modal.sheet .cf-ac-item {
+    min-height: 56px; justify-content: center;
+    gap: 2px; padding: 8px 14px;
+    border-radius: 14px;
+    corner-shape: squircle;
+  }
+  .modal.sheet .cf-ac-item:active { background: #E1E9F4; }
+  .modal.sheet .cf-ac-name { font-size: 16.5px; font-weight: 700; }
+  .modal.sheet .cf-ac-sub { font-size: 13.5px; }
+
+  /* ── A field is a filled row, not a boxed input ── */
+  .modal.sheet .field-group {
+    gap: 3px;
+    padding: 13px 18px;
+    border-radius: 20px;
+    corner-shape: squircle;
+    background: var(--surface-2);
+    /* The whole row is the target, not just the 20px of text inside it. */
+    cursor: text;
+  }
+  .modal.sheet .field-group:focus-within {
+    box-shadow: inset 0 0 0 2px var(--accent);
+  }
+  .modal.sheet .field-group > span {
+    font-size: 13px; font-weight: 600; color: var(--text-3);
+  }
+
+  /*
+   * Strip the control's own chrome — the row is the container now. Height comes
+   * from the row's padding, so a bare input and a select line up.
+   */
+  .modal.sheet .field-group > input,
+  .modal.sheet .field-group > select,
+  .modal.sheet .field-group > textarea {
+    width: 100%;
+    padding: 0; margin: 0;
+    border: none; outline: none; background: none; box-shadow: none;
+    font-size: 17px; font-weight: 500; color: var(--text);
+    min-height: 26px;
+  }
+  .modal.sheet .field-group > textarea { min-height: 76px; resize: none; line-height: 1.45; }
+  .modal.sheet .field-group > input::placeholder,
+  .modal.sheet .field-group > textarea::placeholder { color: var(--text-3); font-weight: 500; }
+
+  /* The chevron the global stylesheet paints on every select would sit off the
+   * right edge of the row's padding, so it is re-hung against the row. */
+  .modal.sheet .field-group > select {
+    background-position: right 0 center !important;
+    padding-right: 26px;
+  }
+
+  /* Two fields sharing a line stay sharing it, each its own row. */
+  .modal.sheet .field-row { display: flex; gap: 10px; }
+  .modal.sheet .field-row > .field-group { flex: 1; min-width: 0; }
+
+  .modal.sheet .form-section { gap: 10px; }
+  .modal.sheet .form-section-title { padding: 10px 6px 0; font-size: 13px; letter-spacing: 0.06em; }
+
+  .modal.sheet .modal-check {
+    min-height: 56px; padding: 0 18px;
+    border-radius: 20px;
+    corner-shape: squircle;
+    background: var(--surface-2);
+    font-size: 16.5px; font-weight: 600;
+  }
+  .modal.sheet .modal-check input[type="checkbox"] { width: 22px; height: 22px; }
+
+  /* ── One blue pill commits, everything else is quieter ── */
+  /* .modal-body already scrolls and .modal-foot already sits below it, so the
+     footer is the sheet's bottom edge without any stickiness. */
+  .modal.sheet .modal-foot {
+    flex-shrink: 0;
+    background: var(--surface);
+    flex-direction: column-reverse;
+    align-items: stretch;
+    gap: 10px;
+    /* --safe-b collapses to 0 while the keyboard is up, so the commit button
+       sits directly on the keys instead of above a dead white band. */
+    padding: 14px 18px calc(18px + var(--safe-b, 0px));
+    border-top: none;
+  }
+  .modal.sheet .modal-foot .btn-primary,
+  .modal.sheet .modal-foot .btn-ghost,
+  .modal.sheet .modal-foot .btn-danger {
+    justify-content: center;
+    width: 100%;
+    min-height: 56px; padding: 0 24px;
+    border-radius: 28px;
+    corner-shape: squircle;
+    font-size: 17px; font-weight: 700;
+  }
+  .modal.sheet .modal-foot .btn-ghost {
+    background: var(--surface-2); border-color: transparent; color: var(--text-2);
+  }
+  /* Delete keeps its distance from the two it sits with. */
+  .modal.sheet .modal-foot .btn-danger { margin-right: 0; margin-top: 4px; }
+
+  .modal.sheet .modal-error { font-size: 14.5px; padding: 0 4px; }
+}

@@ -1,7 +1,7 @@
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(11, 53, 88, 0.35);
+  background: rgba(11,53,88, 0.35);
   z-index: 500;
   display: flex;
   animation: mOverlay 0.15s ease;
@@ -157,6 +157,7 @@
   font-size: 14px;
   transition: border-color 0.15s, box-shadow 0.15s;
 }
+.modal select { padding-right: 36px; }   /* room for the global chevron */
 .modal input:focus, .modal select:focus, .modal textarea:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px rgba(0,107,255,0.1);
@@ -267,14 +268,25 @@ a.mp-chip:hover svg { color: var(--accent); }
 }
 .bulk-add-another:hover { border-color: var(--accent); color: var(--accent); }
 
-/* Mobile bottom sheets */
-@media (max-width: 720px) {
+/*
+ * Mobile bottom sheets — the rise, and nothing else.
+ *
+ * This block used to restate the sheet's whole geometry (width, max-width,
+ * max-height, radius). Because this file is imported by the route chunks it
+ * lands *after* global.css, so those declarations quietly won over the
+ * keyboard-aware ones there — in particular `max-height: 92vh`, which takes no
+ * account of --kb and let the sheet grow down behind the keyboard with the
+ * footer buttons underneath it.
+ *
+ * Geometry now lives in one place, the phone block of global.css. What is left
+ * here is the animation, which that file does not set.
+ *
+ * The breakpoint was also 720px while every other phone rule uses 767px, so a
+ * window between the two got mobile forms in a desktop-shaped card.
+ */
+@media (max-width: 767px) {
   .modal.sheet {
     margin: auto 0 0;
-    width: 100%;
-    max-width: 100%;
-    max-height: 92vh;
-    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
     animation: mBottom 0.25s cubic-bezier(0.16,1,0.3,1);
   }
   @keyframes mBottom { from { transform: translateY(100%); } to { transform: translateY(0); } }
