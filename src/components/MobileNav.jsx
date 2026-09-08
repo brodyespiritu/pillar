@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { P, Icon } from '../lib/icons';
-import { useSettings } from '../context/SettingsContext';
 import { tapOpen, tapClose, tapSelect } from '../lib/haptics';
 import './MobileNav.css';
 
@@ -17,6 +16,10 @@ import './MobileNav.css';
  * Five destinations, one level. Trimmed deliberately: the rest of Pillar is
  * still there and still routed, it just is not on the phone's menu for now.
  *
+ * Settings is not among them on purpose — the home screen already opens it from
+ * the avatar and the gear, and a menu that lists a destination reachable in one
+ * tap from the screen behind it is spending a row to save nothing.
+ *
  * Bottom right because that is where a thumb rests on a large phone.
  */
 
@@ -25,13 +28,12 @@ const ITEMS = [
   { to: '/cares',    icon: P.heart,    label: 'Cares' },
   { to: '/calendar', icon: P.calendar, label: 'Calendar' },
   { to: '/sms',      icon: P.chat,     label: 'SMS' },
-  { settings: true,  icon: P.settings, label: 'Settings' },
+  { to: '/members',  icon: P.person,   label: 'Members' },
 ];
 
 export default function MobileNav() {
   const navigate = useNavigate();
   const { pathname } = useLocation();
-  const { openSettings } = useSettings();
 
   const [open, setOpen] = useState(false);
 
@@ -59,7 +61,6 @@ export default function MobileNav() {
   const pick = m => {
     tapSelect();
     setOpen(false);
-    if (m.settings) { openSettings('general'); return; }
     navigate(m.to);
   };
 
@@ -78,9 +79,9 @@ export default function MobileNav() {
               {ITEMS.map(m => (
                 <button
                   key={m.label}
-                  className={`mn-row ${m.to && on(m.to) ? 'on' : ''}`}
+                  className={`mn-row ${on(m.to) ? 'on' : ''}`}
                   onClick={() => pick(m)}
-                  aria-current={m.to && on(m.to) ? 'page' : undefined}
+                  aria-current={on(m.to) ? 'page' : undefined}
                 >
                   <span className="mn-row-ic"><Icon d={m.icon} size={21} /></span>
                   <span className="mn-row-name">{m.label}</span>

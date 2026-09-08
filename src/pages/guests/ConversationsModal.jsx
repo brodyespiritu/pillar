@@ -1,18 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { P, Icon } from '../../lib/icons';
-import { fetchThreads, sendText, markRead, normPhone, formatPhone } from '../../lib/conversations';
+import { fetchThreads, sendText, markRead, normPhone, formatPhone, sepLabel } from '../../lib/conversations';
 import './conversations.css';
 
 const initials = n => (n || '#').trim().split(/\s+/).map(w => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase() || '#';
-
-function sepLabel(iso) {
-  const d = new Date(iso);
-  const today = new Date();
-  const sameDay = d.toDateString() === today.toDateString();
-  const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-  if (sameDay) return `Today ${time}`;
-  return `${d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} · ${time}`;
-}
 
 export default function ConversationsModal({ guests = [], onClose }) {
   const [threads, setThreads] = useState([]);
@@ -44,6 +35,13 @@ export default function ConversationsModal({ guests = [], onClose }) {
     const id = setInterval(refresh, 12000);   // live-ish: pick up replies
     return () => clearInterval(id);
   }, []);
+
+  // Full screen leaves no backdrop to click past, so Escape is the way out.
+  useEffect(() => {
+    const onKey = e => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
 
   // Conversations list = threads where the person replied (per the feature spec).
   const listed = useMemo(() => {
@@ -83,7 +81,7 @@ export default function ConversationsModal({ guests = [], onClose }) {
     const text = compose.trim();
     if (!text || !active || sending) return;
     setSending(true);
-    await sendText({ number: active.number, name: active.name || displayName(active), body: text });
+    await sendText({ number: active.number, name: active.name || displayName(active), body: text, status: 'Reply' });
     setCompose('');
     await refresh();
     setSending(false);

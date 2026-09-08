@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { P, Icon } from '../../lib/icons';
-import { LOG_TYPES, addLog } from '../../lib/care';
+import { LOG_TYPES, CATEGORIES, addLog, saveMember } from '../../lib/care';
 import { useAuth } from '../../context/AuthContext';
-import { tapClose, tapSelect, tapSaved } from '../../lib/haptics';
+import { tapClose, tapSelect, tapSaved, tapFailed } from '../../lib/haptics';
+import PillMenu from '../sms/PillMenu';
 import './LogContactSheet.css';
 
 /*
@@ -18,21 +19,31 @@ import './LogContactSheet.css';
  * button. Nothing here is a second route to somewhere else.
  */
 
-/* Each kind of contact gets its own glyph — four is few enough to recognise
- * without reading, which is the point of a picker over a dropdown. */
-const ICONS = {
-  'Phone Call':   P.phone,
-  'Text Message': P.sms,
-  'Dinner/Meal':  P.meal,
-  'Update/Visit': P.heart,
+/* Short forms, because a pill has room for a word and not a phrase. */
+const SHORT = {
+  'Phone Call':   'Call',
+  'Text Message': 'Text',
+  'Dinner/Meal':  'Meal',
+  'Update/Visit': 'Visit',
 };
 
 export default function LogContactSheet({ member, onClose, onSaved }) {
   const { user, profile } = useAuth();
   const [type, setType] = useState('Update/Visit');
+  /*
+   * Chosen for this update, not seeded from the record — the same rule the
+   * desktop card follows. Starting it at the member's current category made the
+   * commonest mistake, writing "she's home now" and leaving the tag on
+   * Hospitalized, take no action at all to make.
+   */
+  const [catChoice, setCatChoice] = useState('');
+  const [catShake, setCatShake] = useState(false);
   const [note, setNote] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  /* A missing category is a prompt, a failed write is a fault — they should not
+     look the same. */
+  const [errWarn, setErrWarn] = useState(false);
 
   useEffect(() => {
     const prev = document.body.style.overflow;
@@ -44,8 +55,18 @@ export default function LogContactSheet({ member, onClose, onSaved }) {
 
   async function save() {
     if (!note.trim() || saving) return;
+    if (!catChoice) {
+      setError('Choose a category before saving this update.');
+      setErrWarn(true);
+      setCatShake(true);
+      tapFailed();
+      setTimeout(() => setCatShake(false), 500);
+      return;
+    }
     setSaving(true);
-    setError('');
+    setError(''); setErrWarn(false);
+    /* No member passed: the person has just said what the category is, and an
+       explicit choice must beat anything read out of the wording. */
     const { data, error: err } = await addLog({
       member_id: member.id,
       type,
@@ -53,8 +74,11 @@ export default function LogContactSheet({ member, onClose, onSaved }) {
       logged_by: user?.id,
       logged_by_name: profile?.name || 'Staff',
     });
+    if (!err && catChoice !== member.category) {
+      await saveMember({ ...member, category: catChoice }, member);
+    }
     setSaving(false);
-    if (err) { setError(err.message || 'Could not save that.'); return; }
+    if (err) { setError(err.message || 'Could not save that.'); setErrWarn(false); return; }
     tapSaved();
     onSaved?.(data);
   }
@@ -72,19 +96,24 @@ export default function LogContactSheet({ member, onClose, onSaved }) {
             lands on. Getting that wrong is the only expensive mistake here. */}
         <p className="lc-who">{member.full_name}</p>
 
-        <div className="lc-types" role="radiogroup" aria-label="Kind of contact">
-          {LOG_TYPES.map(t => (
-            <button
-              key={t}
-              role="radio"
-              aria-checked={type === t}
-              className={`lc-type ${type === t ? 'on' : ''}`}
-              onClick={() => { tapSelect(); setType(t); }}
-            >
-              <Icon d={ICONS[t] || P.check} size={20} />
-              <span>{t}</span>
-            </button>
-          ))}
+        {/* Two pills, the same pair as the desktop card: what kind of contact
+            it was, and where the person stands now. Four glyph buttons across
+            the sheet took a whole row to say one word. */}
+        <div className="lc-pills">
+          <PillMenu
+            ariaLabel="Kind of contact"
+            value={type}
+            onChange={t => { tapSelect(); setType(t); }}
+            options={LOG_TYPES.map(t => ({ key: t, label: SHORT[t] || t }))}
+          />
+          <PillMenu
+            ariaLabel="Category"
+            value={catChoice}
+            onChange={c => { tapSelect(); setCatChoice(c); setError(''); setErrWarn(false); }}
+            placeholder="Category"
+            className={`${catChoice ? '' : 'unset'} ${catShake ? 'shake' : ''}`}
+            options={CATEGORIES.map(c => ({ key: c, label: c }))}
+          />
         </div>
 
         <label className="lc-note">
@@ -99,7 +128,7 @@ export default function LogContactSheet({ member, onClose, onSaved }) {
           />
         </label>
 
-        {error && <p className="lc-error">{error}</p>}
+        {error && <p className={`lc-error ${errWarn ? 'warn' : ''}`}>{error}</p>}
         </div>
 
         <button className="lc-save" onClick={save} disabled={!note.trim() || saving}>

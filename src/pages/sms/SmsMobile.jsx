@@ -438,7 +438,7 @@ function ThreadSheet({ thread, onClose, reload }) {
   async function send() {
     if (!reply.trim() || sending) return;
     setSending(true);
-    const res = await sendText({ number: thread.number, name: thread.name, body: reply.trim() });
+    const res = await sendText({ number: thread.number, name: thread.name, body: reply.trim(), status: 'Reply' });
     setSending(false);
     if (res?.error) { tapFailed(); return; }
     tapSaved();

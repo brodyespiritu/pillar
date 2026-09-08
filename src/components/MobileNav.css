@@ -98,15 +98,28 @@
     text-shadow: 0 1px 10px rgba(255, 255, 255, 0.7);
   }
 
-  .mn-list { display: flex; flex-direction: column; align-items: flex-end; gap: 9px; }
+  /*
+   * Sized to the longest label, and every row takes that width.
+   *
+   * The width used to be a flat 208px, which is wider than any of these words
+   * needs — so each pane carried a stretch of empty card between its edge and
+   * its text. max-content on the list measures the widest label once; the rows
+   * then fill it, so they still match each other without the padding being
+   * invented.
+   */
+  .mn-list {
+    display: grid; width: max-content; justify-self: end;
+    gap: 9px;
+  }
 
   /* One pane per destination, sized to its own text. */
   .mn-row {
     display: flex; flex-direction: row-reverse; align-items: center; gap: 14px;
-    /* One width for all five. Sizing each to its own label left a ragged stack
-       — "SMS" half the length of "Calendar" — which read as five different
-       controls rather than one menu. */
-    width: 208px;
+    /* One width for all five, set by the list above rather than by a number
+       here: sizing each to its own label left a ragged stack — "SMS" half the
+       length of "Calendar" — which read as five different controls rather than
+       one menu. */
+    width: 100%;
     min-height: 60px; padding: 8px 10px 8px 20px;
     text-align: right;
 

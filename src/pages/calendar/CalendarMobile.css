@@ -236,6 +236,67 @@
 }
 .mcal-ev-go { flex-shrink: 0; color: var(--text-3); }
 
+/* ── The event, in the same card ──
+   The head keeps its shape and swaps what it holds: back where Add was on the
+   left, the event's name where the date was. */
+.mcal-sheet-back {
+  width: 46px; height: 46px; min-height: 46px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  border: none; border-radius: 16px;
+  corner-shape: squircle;
+  background: var(--surface-2); color: var(--text-2);
+}
+.mcal-sheet-back:active { background: #E1E9F4; }
+
+.mcal-detail { display: flex; flex-direction: column; padding: 4px 4px 0; }
+
+.mcal-detail-cat {
+  align-self: flex-start;
+  padding: 5px 13px; border-radius: 999px;
+  background: color-mix(in srgb, var(--cc) 14%, transparent);
+  color: var(--cc);
+  font-size: 13px; font-weight: 700;
+}
+
+.mcal-detail-facts { display: flex; flex-direction: column; gap: 12px; margin-top: 18px; }
+.mcal-detail-row {
+  display: flex; align-items: baseline; gap: 14px;
+  margin: 0; font-size: 16px; color: var(--text);
+}
+.mcal-detail-row span {
+  flex: 0 0 82px;
+  font-size: 13.5px; font-weight: 600; color: var(--text-3);
+}
+
+.mcal-detail-note {
+  margin: 18px 0 0;
+  font-size: 15.5px; line-height: 1.55; color: var(--text-2);
+}
+
+/* Edit and delete, side by side; the delete confirmation stacks in their place
+   rather than opening a dialog over the card. */
+.mcal-detail-acts { display: flex; gap: 10px; margin-top: 22px; }
+.mcal-detail-acts .mcal-detail-act { flex: 1; }
+
+.mcal-detail-confirm { display: flex; flex-direction: column; gap: 10px; margin-top: 22px; }
+.mcal-detail-ask {
+  margin: 0 0 2px; text-align: center;
+  font-size: 15px; font-weight: 700; color: var(--text);
+}
+
+.mcal-detail-act {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  min-height: 54px; padding: 0 18px;
+  border: none; border-radius: 20px;
+  corner-shape: squircle;
+  background: var(--surface-2); color: var(--text);
+  font-size: 16px; font-weight: 700;
+}
+.mcal-detail-act:active { background: #E1E9F4; }
+.mcal-detail-act:disabled { opacity: 0.5; }
+.mcal-detail-act.danger { background: var(--red-soft, #FDEEEE); color: var(--red); }
+.mcal-detail-act.danger:active { background: #FBDDDD; }
+
 @keyframes mcal-fade { from { opacity: 0; } to { opacity: 1; } }
 @keyframes mcal-rise { from { transform: translateY(100%); } to { transform: translateY(0); } }
 

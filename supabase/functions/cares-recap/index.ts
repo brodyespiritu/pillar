@@ -26,6 +26,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { upcomingCareEvents } from '../_shared/careEvents.ts';
+import { deaconFor, cadenceOf, addedText, updateText, dailyText, last10 } from '../_shared/deacons.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -37,7 +38,7 @@ const CRON_SECRET = Deno.env.get('CARES_CRON_SECRET') || '';
 const TZ = 'America/New_York';   // Ellerslie / Columbus, GA
 
 /* Local minutes past midnight. The first slot carries the morning briefing. */
-const SLOTS = [8 * 60, 13 * 60, 17 * 60];
+const SLOTS = [8 * 60, 16 * 60];          // 8:00 AM and 4:00 PM
 const SLOT_WINDOW = 30;          // a firing counts if it lands inside the half hour
 const MORNING = SLOTS[0];
 
@@ -140,6 +141,26 @@ const clean = (s: string) => String(s || '').replace(/\s+/g, ' ').trim();
 
 const renderAdded   = (m: any) => `- ${m.full_name}${m.category ? ` — ${m.category}` : ''}`;
 const renderUpdate  = (u: any) => `- ${u.name}: ${clean(u.notes)}`;
+/*
+ * An edit, with what it consisted of.
+ *
+ * "Also edited: Pansy Loudermilk" told a reader that something had happened and
+ * then made them open the record to find out what — the exact work the digest
+ * exists to save. `details` comes from change_log when the edit was made in the
+ * app; when there is no recorded diff (an older edit, or one made directly in
+ * the database) the record's current standing is reported instead, which is
+ * still an answer to "what about her?".
+ */
+const renderEdit = (e: any) => {
+  if (e.details) return `- ${e.name}: ${clean(e.details)}`;
+  const now = [
+    e.category,
+    e.hospital_name ? `at ${e.hospital_name}` : '',
+    e.room_number ? `Rm ${e.room_number}` : (e.floor ? `Floor ${e.floor}` : ''),
+  ].filter(Boolean).join(', ');
+  const note = clean(e.care_notes || '');
+  return `- ${e.name}: ${now || 'record updated'}${note ? ` — ${note}` : ''}`;
+};
 const renderEvent   = (e: any) => {
   // Time and place only when actually recorded — no "time TBD" filler.
   const when = e.time?.label ? `${e.time.label} ` : '';
@@ -224,7 +245,7 @@ function packLines(lines: string[], budget: number): string[][] {
  */
 export function buildDigest(
   { slot, added, updates, edited, events, ongoing = [] }:
-  { slot: number; added: any[]; updates: any[]; edited: string[]; events: any[]; ongoing?: any[] },
+  { slot: number; added: any[]; updates: any[]; edited: any[]; events: any[]; ongoing?: any[] },
   { tail = '' }: { tail?: string } = {},
 ): string[] {
   const morning = slot === MORNING;
@@ -250,7 +271,10 @@ export function buildDigest(
     content.push(...sectionLines('Added', added, renderAdded));
     if (added.length && (updates.length || edited.length)) content.push('');
     content.push(...sectionLines('Updates', updates, renderUpdate));
-    if (edited.length) content.push(`Also edited: ${clean(edited.join(', '))}`);
+    if (edited.length) {
+      if (added.length || updates.length) content.push('');
+      content.push(...sectionLines('Edited', edited, renderEdit));
+    }
     /* Last, under its own heading: it is standing context, not news, and should
        not push the things that did change further down the message. */
     if (ongoing.length) {
@@ -316,6 +340,131 @@ export function reminderText(e: any) {
   // Nothing else to go on — the note itself is better than a bare name.
   if (!what && !where && e.snippet) lines.push(e.snippet);
   return lines.join('\n');
+}
+
+/*
+ * Deacon alerts.
+ *
+ * Runs on every firing, so "as it happens" means within the half hour the recap
+ * already wakes on rather than needing a second schedule. The morning slot also
+ * carries the summary for everyone who asked for one instead.
+ *
+ * Every send is claimed first, the way reminders are: the same admission must
+ * not be texted twice because the function ran again.
+ */
+async function sendDeaconAlerts(supabase: any, now: Date, isMorning: boolean) {
+  /* Who is reachable: the phones actually on the Deacons SMS group. */
+  const { data: grp } = await supabase.from('sms_groups').select('id, name');
+  const deaconGroup = (grp || []).find((g: any) => String(g.name || '').trim().toLowerCase() === 'deacons');
+  if (!deaconGroup) return { skipped: 'no Deacons SMS group' };
+
+  const { data: gm } = await supabase.from('sms_group_members')
+    .select('contact_id').eq('group_id', deaconGroup.id);
+  const ids = new Set((gm || []).map((r: any) => r.contact_id));
+  if (!ids.size) return { skipped: 'Deacons group is empty' };
+
+  const { data: contacts } = await supabase.from('sms_contacts').select('id, name, phone, opted_out');
+  const onGroup = (contacts || []).filter((c: any) => ids.has(c.id) && !c.opted_out && String(c.phone || '').trim());
+  const deaconPhones = new Set(onGroup.map((c: any) => last10(c.phone)));
+  if (!deaconPhones.size) return { skipped: 'no reachable deacons' };
+
+  /* How each wants to hear. The most recent poll answer for that number wins. */
+  const { data: answers } = await supabase.from('sms_poll_answers')
+    .select('to_number, choice, answered_at').order('answered_at', { ascending: true });
+  const cadence = new Map<string, string>();
+  for (const a of answers || []) cadence.set(last10(a.to_number), cadenceOf(a.choice));
+
+  const { data: directory } = await supabase.from('church_members')
+    .select('id, name, phone, deacon_id');
+
+  /* Everything that happened in the window this firing covers. */
+  const since = new Date(now.getTime() - SLOT_WINDOW * 60_000).toISOString();
+  const { data: added } = await supabase.from('care_members')
+    .select('id, full_name, phone, category, care_notes, hospital_name, room_number, created_at')
+    .gte('created_at', since);
+  const { data: logs } = await supabase.from('contact_logs')
+    .select('id, notes, created_at, member_id, care_members(full_name, phone)')
+    .gte('created_at', since);
+
+  const events: { kind: string; ref: string; care: any; line: string }[] = [];
+  for (const m of added || []) {
+    events.push({ kind: 'added', ref: m.id, care: m, line: addedText(m) });
+  }
+  for (const l of logs || []) {
+    const cm = (l as any).care_members;
+    if (!cm || !String(l.notes || '').trim()) continue;
+    events.push({ kind: 'update', ref: l.id, care: cm, line: updateText(cm.full_name, l.notes) });
+  }
+
+  const send = async (to: string, body: string) => {
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/send-prospect-sms`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SERVICE_ROLE}` },
+      body: JSON.stringify({ channel: 'care', messages: [{ to_number: to, to_name: '', body }] }),
+    });
+    if (!res.ok) console.error('deacon alert send failed:', res.status);
+    return res.ok;
+  };
+
+  let immediate = 0;
+  const forDaily = new Map<string, { name: string; line: string }[]>();
+
+  for (const e of events) {
+    const hit = deaconFor(e.care, directory || [], deaconPhones);
+    if (!hit) continue;                       // unmatched, or unreachable — never guessed
+    const how = cadence.get(hit.phone) || cadenceOf(null);
+    if (how === 'daily') {
+      if (!forDaily.has(hit.phone)) forDaily.set(hit.phone, []);
+      forDaily.get(hit.phone)!.push({ name: e.care.full_name, line: e.line });
+      continue;
+    }
+    /* Claim before sending — a repeat firing must not text again. */
+    const { error } = await supabase.from('deacon_alerts_sent')
+      .insert({ deacon_phone: hit.phone, kind: e.kind, ref_id: String(e.ref) });
+    if (error) continue;                      // 23505 = already told
+    if (await send(hit.phone, e.line)) immediate++;
+  }
+
+  /*
+   * The morning summary covers a full day, not the half hour above, so it is
+   * gathered separately — otherwise it would only ever report what happened
+   * between 7:30 and 8:00.
+   */
+  let daily = 0;
+  if (isMorning) {
+    const dayAgo = new Date(now.getTime() - 24 * 3600_000).toISOString();
+    const { data: dAdded } = await supabase.from('care_members')
+      .select('id, full_name, phone, category, care_notes, hospital_name, room_number')
+      .gte('created_at', dayAgo);
+    const { data: dLogs } = await supabase.from('contact_logs')
+      .select('id, notes, member_id, care_members(full_name, phone)')
+      .gte('created_at', dayAgo);
+
+    const byDeacon = new Map<string, { name: string; line: string }[]>();
+    const push = (care: any, line: string) => {
+      const hit = deaconFor(care, directory || [], deaconPhones);
+      if (!hit) return;
+      if ((cadence.get(hit.phone) || cadenceOf(null)) !== 'daily') return;
+      if (!byDeacon.has(hit.phone)) byDeacon.set(hit.phone, []);
+      byDeacon.get(hit.phone)!.push({ name: care.full_name, line });
+    };
+    for (const m of dAdded || []) push(m, addedText(m));
+    for (const l of dLogs || []) {
+      const cm = (l as any).care_members;
+      if (cm && String(l.notes || '').trim()) push(cm, updateText(cm.full_name, l.notes));
+    }
+
+    const stamp = isoDay(now);
+    for (const [phone, items] of byDeacon) {
+      if (!items.length) continue;
+      const { error } = await supabase.from('deacon_alerts_sent')
+        .insert({ deacon_phone: phone, kind: 'daily', ref_id: stamp });
+      if (error) continue;                    // already summarised today
+      if (await send(phone, dailyText(items))) daily++;
+    }
+  }
+
+  return { deacons: deaconPhones.size, events: events.length, immediate, daily };
 }
 
 async function sendReminders(supabase: any, members: any[], now: Date, today: Date) {
@@ -385,10 +534,20 @@ Deno.serve(async (req) => {
             .filter((e: any) => e.date === isoDay(today) && e.time).length, sent: 0, dryRun: true }
       : await sendReminders(supabase, allMembers || [], now, today);
 
+    /* Deacon alerts run on every firing too, for the same reason reminders do:
+       the slot gate below returns early, and "as it happens" cannot wait for
+       8:00 or 4:00. The morning firing also carries the daily summaries. */
+    const deacons = dryRun
+      ? { dryRun: true }
+      : await sendDeaconAlerts(supabase, now, currentSlot(now) === MORNING).catch((e: any) => {
+          console.error('deacon alerts failed:', e?.message || e);
+          return { error: String(e?.message || e) };
+        });
+
     const slot = forceSlot ?? currentSlot(now)
       ?? ((dryRun || manual) ? (SLOTS.find(s => s >= now.getHours() * 60) ?? MORNING) : null);
     if (slot === null) {
-      return json({ ok: true, reminders,
+      return json({ ok: true, reminders, deacons,
         skipped: `local time ${pad2(now.getHours())}:${pad2(now.getMinutes())} is not a send slot` });
     }
 
@@ -438,8 +597,40 @@ Deno.serve(async (req) => {
         return u >= start.getTime() && u < end.getTime()
           && !addedIds.has(m.id) && !loggedIds.has(m.id);
       });
-    const edited = editedRows.map(m => m.full_name);
     const editedIds = new Set(editedRows.map(m => m.id));
+
+    /*
+     * What each of those edits actually was. change_log carries a field-level
+     * diff written by the app at save time; it is matched by name because that
+     * is the only key the table holds. A missing row is not an error — edits
+     * made before this was recorded, or made straight in the database, simply
+     * fall back to reporting where the record stands now.
+     */
+    const { data: changes } = await supabase
+      .from('change_log')
+      .select('member_name, details, created_at')
+      .eq('action', 'Updated')
+      .gte('created_at', start.toISOString())
+      .lt('created_at', end.toISOString())
+      .order('created_at', { ascending: true });
+
+    const detailFor = new Map<string, string[]>();
+    for (const c of changes || []) {
+      const k = String(c.member_name || '').trim().toLowerCase();
+      if (!k || !String(c.details || '').trim()) continue;
+      if (!detailFor.has(k)) detailFor.set(k, []);
+      detailFor.get(k)!.push(String(c.details).trim());
+    }
+
+    const edited = editedRows.map(m => ({
+      name: m.full_name,
+      details: (detailFor.get(String(m.full_name || '').trim().toLowerCase()) || []).join('; '),
+      category: m.category,
+      hospital_name: m.hospital_name,
+      room_number: m.room_number,
+      floor: m.floor,
+      care_notes: m.care_notes,
+    }));
 
     /*
      * Still in a hospital bed, and nothing new said about them this window.

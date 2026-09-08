@@ -71,12 +71,45 @@ Deno.serve(async (req) => {
       const { data: staffRows, error: staffErr } = await supabase
         .from('staff').select('phone, active, preferences');
       // If the roster can't be read we refuse everything rather than guess.
-      careAllowed = new Set(
+      const allowed = new Set(
         (staffErr ? [] : (staffRows || []))
           .filter((s: any) => s.active !== false && s.preferences?.caresSmsOptIn === true)
           .map((s: any) => String(s.phone || '').replace(/\D/g, '').slice(-10))
           .filter(Boolean),
       );
+
+      /*
+       * Deacons as well.
+       *
+       * A deacon told that one of the families they shepherd is in hospital is
+       * care content reaching somebody entitled to it — that is the whole point
+       * of the alerts. Without this the rule above blocks every one of them,
+       * because a deacon is a congregation contact, not Cares-alert staff.
+       *
+       * Widened only as far as the Deacons SMS group. WHICH family reaches
+       * WHICH deacon is settled upstream by deacon_id; this is the coarser
+       * question of whether a person may receive care content at all.
+       */
+      if (!staffErr) {
+        const tail = (v: unknown) => String(v ?? '').replace(/\D/g, '').slice(-10);
+        const { data: groups } = await supabase.from('sms_groups').select('id, name');
+        const deaconGroup = (groups || []).find(
+          (g: any) => String(g.name || '').trim().toLowerCase() === 'deacons');
+        if (deaconGroup) {
+          const { data: gm } = await supabase.from('sms_group_members')
+            .select('contact_id').eq('group_id', deaconGroup.id);
+          const ids = new Set((gm || []).map((r: any) => r.contact_id));
+          if (ids.size) {
+            const { data: cs } = await supabase.from('sms_contacts').select('id, phone');
+            for (const c of cs || []) {
+              if (!ids.has(c.id)) continue;
+              const t = tail(c.phone);
+              if (t) allowed.add(t);
+            }
+          }
+        }
+      }
+      careAllowed = allowed;
     }
 
     // Send each individually — no group chats.

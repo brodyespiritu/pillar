@@ -60,9 +60,31 @@ export async function fetchThreads() {
   return { rows, missing: false };
 }
 
-/** Send a single text; logs to sms_messages via the Telnyx edge function. */
-export async function sendText({ number, name, body }) {
-  return sendProspectSms([{ to_number: number, to_name: name || '', body }]);
+/*
+ * Send a single text; logs to sms_messages via the Telnyx edge function.
+ *
+ * `status` is deliberately NOT defaulted. It is what groupCampaigns reads to
+ * tell a question we asked from an answer we gave: an outbound row with any
+ * other status starts a NEW campaign keyed on its own text, so a staff reply
+ * logged as a broadcast turns into a phantom campaign card carrying one
+ * message. Callers that mean "this is a reply" say so; anything that forgets
+ * keeps the server's 'MassText' rather than being silently relabelled.
+ */
+export async function sendText({ number, name, body, status, campaign }) {
+  return sendProspectSms([{ to_number: number, to_name: name || '', body }], status, campaign);
+}
+
+/*
+ * The divider above a message when there is a gap before it. Lives here rather
+ * than in a page because two thread views now render the same bubbles — the
+ * Guests conversations modal and the Responses person pane.
+ */
+export function sepLabel(iso) {
+  const d = new Date(iso);
+  const today = new Date();
+  const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  if (d.toDateString() === today.toDateString()) return `Today ${time}`;
+  return `${d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} · ${time}`;
 }
 
 /** Mark inbound replies as read. */

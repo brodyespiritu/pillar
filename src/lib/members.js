@@ -254,6 +254,39 @@ export function groupByFamily(members) {
     .sort((a, b) => a.label.localeCompare(b.label));
 }
 
+/*
+ * Moving somebody out of their parents' household into their own.
+ *
+ * Typically the week a child turns eighteen: they stay on the roll, keep their
+ * record, and stop being filed under someone else's family.
+ *
+ * A household is whatever familyKey() returns — family_id if it is set, and the
+ * lower-cased family_name if it is not. Both have to change, or the person
+ * silently lands back with their family: clearing family_id alone would fall
+ * through to the shared family_name and rejoin them to it.
+ *
+ * They become the Head of the new household, since a household of one has no
+ * one else to head it.
+ */
+export function newHouseholdPatch(member) {
+  const last = lastNameOf(member) || (member.name || '').trim() || 'Household';
+  return {
+    /* Unique and traceable: the member's own id can only ever describe one
+       household, and it cannot collide with an imported family_id. */
+    family_id: `h-${member.id}`,
+    family_name: last,
+    family_position: 'Head',
+  };
+}
+
+export async function createNewHousehold(member) {
+  return supabase.from('church_members')
+    .update(newHouseholdPatch(member))
+    .eq('id', member.id)
+    .select()
+    .single();
+}
+
 /* ── CSV import ── */
 
 /* Minimal RFC-4180 CSV parser: handles quoted fields, embedded commas,

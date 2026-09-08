@@ -24,6 +24,12 @@ export const dinnerBodySet = (library = []) => new Set(
   library.filter(r => r.message_type === 'Dinner').map(r => norm(r.body)),
 );
 
+/** Bodies the library marks as a Poll. Answered with a number, like a dinner —
+ *  which is exactly why the two have to be told apart by recency. */
+export const pollBodySet = (library = []) => new Set(
+  library.filter(r => r.message_type === 'Poll').map(r => norm(r.body)),
+);
+
 /**
  * Campaigns, newest reply first.
  *
@@ -33,6 +39,7 @@ export const dinnerBodySet = (library = []) => new Set(
  */
 export function groupCampaigns(threads = [], library = [], nameFor = () => '') {
   const dinners = dinnerBodySet(library);
+  const polls = pollBodySet(library);
   const map = new Map();
 
   for (const t of threads) {
@@ -48,7 +55,16 @@ export function groupCampaigns(threads = [], library = [], nameFor = () => '') {
      * what we sent most recently. Reading a reply as answering the last thing
      * sent is right for conversation and wrong for an RSVP.
      */
-    let lastDinner = null;
+    /*
+     * The last thing this person was ASKED — a dinner or a poll, whichever came
+     * later. Both are answered with a bare number, so recency is the only thing
+     * that can tell them apart: a "1" the day after a poll is a poll choice; the
+     * same "1" the day after a dinner invitation is one plate.
+     *
+     * Tracking only the last dinner is what put poll answers under the dinner
+     * text and counted them as plates.
+     */
+    let lastAsk = null;   // { body, kind: 'dinner' | 'poll' }
     let askedStatus = null;
     for (const m of t.messages) {
       if ((m.direction || 'out') !== 'in') {
@@ -62,13 +78,20 @@ export function groupCampaigns(threads = [], library = [], nameFor = () => '') {
         if (m.status === 'Reminder') {
           if (m.campaign) {
             asked = m.campaign; askedStatus = m.status;
-            if (dinners.has(norm(m.campaign))) lastDinner = m.campaign;
+            if (dinners.has(norm(m.campaign))) lastAsk = { body: m.campaign, kind: 'dinner' };
           }
           continue;
         }
-        if (m.status !== 'AutoReply') {
+        /*
+         * 'Reply' joins 'AutoReply' here: both are us answering them, not us
+         * asking something new. Without this a staff reply became the campaign
+         * every later message from that person was filed under, so answering
+         * someone minted a phantom card titled with our own words.
+         */
+        if (m.status !== 'AutoReply' && m.status !== 'Reply') {
           asked = m.body; askedStatus = m.status;
-          if (dinners.has(norm(m.body))) lastDinner = m.body;
+          if (dinners.has(norm(m.body)))    lastAsk = { body: m.body, kind: 'dinner' };
+          else if (polls.has(norm(m.body))) lastAsk = { body: m.body, kind: 'poll' };
         }
         continue;
       }
@@ -83,8 +106,8 @@ export function groupCampaigns(threads = [], library = [], nameFor = () => '') {
        * exactly like a headcount. Whoever was just asked a numbered question is
        * answering that, not accepting a dinner invitation from last week.
        */
-      const answers = lastDinner && askedStatus !== 'CareIntake' && parseHeadcount(m.body)
-        ? lastDinner : asked;
+      const answers = lastAsk && askedStatus !== 'CareIntake' && parseHeadcount(m.body)
+        ? lastAsk.body : asked;
       const key = campaignLabel(answers) || 'Other replies';
       if (!map.has(key)) map.set(key, { key, prompt: answers, replies: [] });
       map.get(key).replies.push({ ...m, thread: t, who: nameFor(t) });

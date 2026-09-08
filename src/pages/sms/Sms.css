@@ -67,32 +67,7 @@
 .sms-bar { display: flex; align-items: center; gap: 8px; padding: 10px 12px 12px; }
 .sms-bar-gap { flex: 1; }
 
-.pill-wrap { position: relative; display: inline-flex; }
-.pill {
-  display: inline-flex; align-items: center; gap: 7px; min-height: 38px;
-  padding: 0 12px; border: 1px solid var(--border); border-radius: 999px;
-  background: var(--surface); font-size: 13.5px; font-weight: 600; color: var(--text-2);
-}
-.pill:hover, .pill.open { border-color: var(--text-3); color: var(--text); }
-.pill svg { color: var(--text-3); }
-.pill em { font-style: normal; font-weight: 500; color: var(--text-3); }
-.pill-chev { margin-left: 1px; }
-
-.pill-menu {
-  position: absolute; bottom: calc(100% + 8px); left: 0; z-index: 60; min-width: 210px;
-  background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
-  box-shadow: 0 18px 44px rgba(11,53,88,0.20); padding: 6px;
-}
-.pill-item {
-  display: flex; align-items: center; gap: 10px; width: 100%; min-height: 40px;
-  padding: 0 10px; border: none; border-radius: 9px; background: none;
-  font-size: 14px; font-weight: 500; color: var(--text); text-align: left;
-}
-.pill-item span { flex: 1; }
-.pill-item em { font-style: normal; font-size: 12.5px; color: var(--text-3); }
-.pill-item svg { color: var(--accent); }
-.pill-item:hover { background: var(--surface-2); }
-.pill-item.on { font-weight: 600; }
+/* The pill controls now live with the component, in PillMenu.css. */
 
 .sms-round {
   display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
@@ -240,56 +215,137 @@
   border: 1px dashed var(--border); border-radius: 12px;
 }
 
-/* Boxes styled after the home page cards. */
-/* min() so the track never exceeds the container — a bare minmax(400px)
-   forces a 400px column on a phone narrower than that and pushes the card
-   off the side of the screen. */
-.rsp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(400px, 100%), 1fr)); gap: 12px; }
-.rsp-box {
-  grid-column: span 1; display: flex; flex-direction: column;
-  background: var(--surface); border: 1px solid var(--border); border-radius: 18px;
-  transition: border-color 0.14s, box-shadow 0.16s;
-}
-.rsp-box:hover { border-color: #C6D5EC; box-shadow: var(--shadow-md); }
-.rsp-box.open { grid-column: 1 / -1; }
-
-/*
- * Unread is a dot, not a coloured card. Washing the whole card in green made
- * every waiting message shout as loudly as the headcount it was competing
- * with — the way mail apps do it, one small mark is enough.
+/* ══════════ Responses · three columns ══════════
+ *
+ * Messages → the replies to one of them → that person's conversation.
+ * The green headcount rides on the campaign row in column 1, which is the
+ * point of the layout: the number you are managing stays visible while you
+ * work through the replies that add up to it.
+ *
+ * NOTHING in this block may take transform, filter, backdrop-filter, contain
+ * or will-change, and nor may any ancestor. The Remind and reservation-link
+ * dialogs are position:fixed siblings of .rsp-cols at z-500 (care/Modal.css),
+ * and any of those properties would make a full-screen dialog resolve against
+ * a 320px column instead of the viewport. The one transform below is on
+ * .rsp-col-inner, which sits beneath both dialogs in the tree and leaves no
+ * containing block behind once its 220ms is up.
  */
-.rsp-box-dot {
-  display: inline-block; width: 8px; height: 8px; margin-right: 9px;
-  border-radius: 50%; background: var(--green); vertical-align: middle;
-}
-.rsp-box.fresh .rsp-box-title { font-weight: 700; }
 
-.rsp-box-head {
-  display: flex; align-items: flex-start; gap: 20px;
-  padding: 22px 22px 0; width: 100%;
+/* This tab is a workspace: it fills the window and each column scrolls itself.
+   body is overflow:hidden;height:100vh (global.css) and .sms-scroll is the
+   app's only scroll container, so this stays `auto` — with `hidden` a short
+   window crushes the columns and there is no way to reach them. */
+.sms-scroll.pane { display: flex; flex-direction: column; overflow-y: auto; }
+.sms-scroll.pane > .sms-band { flex-shrink: 0; }
+/*
+ * flex-shrink must be 1. With `flex: 1 0 auto` the container takes its content's
+ * height, so .rsp-cols is never height-bounded, no column ever scrolls itself,
+ * and the whole page scrolls instead — measured at 2,830px tall for a list that
+ * should have fitted 794px. Shrinking is what hands the columns a real height.
+ * Being crushed is already prevented by .rsp-cols's 420px floor, and reaching
+ * them on a short window by .sms-scroll.pane's overflow-y: auto.
+ */
+/*
+ * And full width. Every other tab is a reading column capped at 1120px, but
+ * this one is a workspace — three panes side by side — and the cap left a third
+ * of a wide monitor as empty margin while the conversation pane was squeezed to
+ * 414px. The band above keeps its own 1120px, so the tabs do not move when you
+ * switch; only the panel below widens. The conversation stays readable at any
+ * width because .cv-scroll caps its own reading column at 900px and centres it.
+ */
+.sms-container.pane { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; max-width: none; padding-bottom: 24px; }
+.rsp-shell { flex: 1; min-height: 0; }
+.rsp-shell > .rsp-head-row, .rsp-shell > .rsp-search { flex-shrink: 0; }
+
+.rsp-cols {
+  flex: 1; min-height: 420px;
+  display: grid;
+  /* THREE TRACKS, ALWAYS. A track list of a different length is a discrete
+     change and does not interpolate — the reveal would snap. 0px → 320px
+     inside a fixed three-track list animates for real. */
+  grid-template-columns: 320px 0px minmax(0, 1fr);
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); overflow: hidden;
+  transition: grid-template-columns 0.22s cubic-bezier(0.16, 1, 0.3, 1);
 }
-.rsp-box-main {
-  display: flex; flex-direction: column; align-items: flex-start; gap: 7px;
-  flex: 1; min-width: 0; background: none; text-align: left; padding: 0; border: none;
+.rsp-cols.deep { grid-template-columns: 320px 320px minmax(0, 1fr); }
+.rsp-col { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; }
+.rsp-col + .rsp-col { border-left: 1px solid var(--border); }
+/* Collapsed, the 0px track would still paint its 1px edge. */
+.rsp-cols:not(.deep) .rsp-col-replies { border-left-color: transparent; }
+.rsp-col-inner {
+  flex: 1; min-height: 0; display: flex; flex-direction: column;
+  opacity: 0; transform: translateX(-8px);
+  transition: opacity 0.18s ease, transform 0.22s cubic-bezier(0.16, 1, 0.3, 1);
 }
-.rsp-box-title {
-  font-size: 16.5px; font-weight: 600; letter-spacing: -0.2px; line-height: 1.4; color: var(--text);
+.rsp-cols.deep .rsp-col-inner { opacity: 1; transform: none; }
+
+.rsp-col-head {
+  flex-shrink: 0; display: flex; align-items: center; gap: 10px;
+  padding: 14px 16px 10px; border-bottom: 1px solid var(--border);
+}
+.rsp-col-title {
+  flex: 1; min-width: 0; margin: 0; font-size: 11px; font-weight: 700;
+  letter-spacing: 0.5px; text-transform: uppercase; color: var(--text-3);
+}
+.rsp-col-list { flex: 1; min-height: 0; overflow-y: auto; padding: 8px; display: flex; flex-direction: column; gap: 2px; }
+.rsp-col-note { padding: 18px 12px; font-size: 13px; line-height: 1.5; color: var(--text-3); }
+
+/* ── Column 1 · the messages ── */
+.rsp-camp {
+  display: flex; align-items: center; gap: 12px; width: 100%; text-align: left;
+  padding: 10px 12px; border: none; border-radius: 10px; background: none;
+  transition: background 0.12s;
+}
+.rsp-camp:hover { background: var(--surface-2); }
+/* Readable because this rail is --surface; a --surface-2 tint would make
+   --accent-soft (#EFF5FF on #F1F5FB) invisible and fight the green tile. */
+.rsp-camp.on { background: var(--accent-soft); }
+.rsp-camp.on .rsp-camp-title, .rsp-camp.on .rsp-camp-n { color: var(--accent); }
+.rsp-camp-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.rsp-camp-title {
+  font-size: 14px; font-weight: 600; color: var(--text); line-height: 1.35;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
-/* Everything countable on one quiet line instead of a pill and three labels. */
-.rsp-box-sub { font-size: 13px; line-height: 1.5; color: var(--text-2); }
+/* Unread stays a dot and a bolder title, never a coloured row. */
+.rsp-camp.fresh .rsp-camp-title { font-weight: 700; }
+.rsp-camp-sub { font-size: 12.5px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rsp-camp-n { flex-shrink: 0; font-size: 13px; font-weight: 600; color: var(--text-3); }
+/* The green count itself shares .ov-tally's rule further down this file, so the
+   Broadcast preview row and this rail are one implementation and cannot drift. */
 
-/* The one bold element on the card. */
-.rsp-box-tally {
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  flex-shrink: 0; min-width: 92px; padding: 14px 16px;
-  border-radius: 14px; background: var(--green); color: #fff;
+/* ── Column 2 · one reply ──
+   ONE declaration. This rule used to be three, 130 lines apart, merged by the
+   cascade — which is how a padding edit kept silently undoing the flex layout. */
+.rsp-item {
+  position: relative; display: flex; flex-wrap: wrap; align-items: flex-start; gap: 10px;
+  padding: 10px 12px; border-radius: 10px; transition: background 0.12s;
 }
-.rsp-box-tally-num { font-size: 34px; font-weight: 700; line-height: 1; letter-spacing: -1px; }
-.rsp-box-tally-lbl { font-size: 12px; font-weight: 500; margin-top: 4px; color: rgba(255,255,255,0.9); }
+.rsp-item > * { position: relative; z-index: 1; }
+.rsp-item:hover { background: var(--surface-2); }
+.rsp-item.on { background: var(--accent-soft); }
+.rsp-item.on .rsp-item-who { color: var(--accent); }
+/* An amber ground would be a third competing background beside .on and the
+   green just-seen wash. A 2px inset bar keeps the at-a-glance scan and
+   coexists with selection, which a background cannot. */
+.rsp-item.unclear { box-shadow: inset 2px 0 0 var(--yellow); }
+.rsp-item.off { opacity: 0.55; }
+.rsp-item.off .rsp-item-body { text-decoration: line-through; text-decoration-color: var(--text-3); }
 
-/* Actions as text, in reading order, out of the number's way. */
-.rsp-box-foot { display: flex; flex-wrap: wrap; gap: 2px; padding: 6px 9px 9px; }
+.rsp-item-open {
+  flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px;
+  background: none; border: none; padding: 0; text-align: left;
+}
+.rsp-item-top { display: flex; align-items: baseline; gap: 10px; }
+/* The name had no ellipsis, so a long one pushed the timestamp off the row. */
+.rsp-item-who { flex: 1; min-width: 0; font-size: 14px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rsp-item-when { flex-shrink: 0; font-size: 12px; color: var(--text-3); white-space: nowrap; }
+.rsp-item-body {
+  margin: 0; font-size: 13.5px; line-height: 1.5; color: var(--text-2); white-space: pre-wrap;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+
+/* ── Actions ── */
 .rsp-act {
   /* 44px is the smallest target a thumb reliably hits. */
   display: inline-flex; align-items: center; min-height: 44px;
@@ -300,47 +356,12 @@
 .rsp-act:hover:not(:disabled) { background: var(--surface-2); }
 .rsp-act:disabled { opacity: 0.5; }
 
-@media (max-width: 620px) {
-  .rsp-box-head { gap: 14px; }
-  .rsp-box-tally { min-width: 78px; padding: 12px 13px; }
-  .rsp-box-tally-num { font-size: 29px; }
-}
-
-.rsp-box-body { padding: 0 24px 20px; display: flex; flex-direction: column; gap: 10px; }
-.rsp-item { padding: 14px 16px; border-radius: 12px; background: var(--surface-2); }
-.rsp-item-top { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
-.rsp-item-who { font-size: 14.5px; font-weight: 600; color: var(--text); }
-.rsp-item-when { font-size: 12px; color: var(--text-3); white-space: nowrap; }
-.rsp-item-body { margin: 6px 0 0; font-size: 14px; color: var(--text); line-height: 1.5; white-space: pre-wrap; }
-.rsp-item-reply {
-  display: inline-flex; align-items: center; gap: 6px; margin-top: 8px;
-  font-size: 13px; font-weight: 600; color: var(--accent); background: none;
-}
-.rsp-item-reply:hover { text-decoration: underline; }
-
-.rsp-reply { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
-.rsp-reply textarea {
-  width: 100%; resize: vertical; min-height: 58px; padding: 10px 12px;
-  border: 1px solid var(--border); border-radius: 10px;
-  background-color: var(--surface); color: var(--text);
-  font: inherit; font-size: 14px; line-height: 1.5;
-}
-.rsp-reply textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(0,107,255,0.1); }
-.rsp-reply-foot { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
 .rsp-segs { font-size: 12px; color: var(--text-3); margin-right: auto; }
 .rsp-err { margin: 0; font-size: 13px; color: var(--red); }
 
-/* ── A reply the counter could not read ── */
+/* ── The count, and correcting it ── */
 /* The count itself is the control, so nothing else on the row needs a label. */
-.rsp-item { display: flex; align-items: flex-start; gap: 14px; }
-.rsp-item-main { flex: 1; min-width: 0; }
-/* The amber badge on the row already says it needs a look; a stripe as well
-   was one mark too many, and the unread rows carry no stripe either. */
-.rsp-item.unsure { background: var(--yellow-soft); }
-.rsp-item.off { background: var(--surface-2); opacity: 0.55; }
-.rsp-item.off .rsp-item-body { text-decoration: line-through; text-decoration-color: var(--text-3); }
-
-.rsp-count-wrap { position: relative; flex-shrink: 0; }
+.rsp-count-wrap { flex-shrink: 0; }   /* NOT position: relative — the picker is in flow */
 .rsp-count {
   width: 38px; height: 38px; border-radius: 11px;
   display: flex; align-items: center; justify-content: center;
@@ -353,13 +374,17 @@
 .rsp-count.unsure { background: var(--yellow); border-color: var(--yellow); color: #fff; }
 .rsp-count.manual { background: var(--accent-soft); border-color: var(--accent-soft); color: var(--accent); }
 .rsp-count.off { color: var(--text-3); }
+/* Superseded: a later reply from the same number is the one being counted. */
+.rsp-count.quiet { background: var(--surface-2); border-color: var(--border); color: var(--text-3); }
 
-.rsp-picker-backdrop { position: fixed; inset: 0; z-index: 30; }
+/* In flow, on its own wrapped row. The old popover was absolutely positioned
+   and wanted ~341px; .rsp-col-list scrolls and .rsp-cols is overflow:hidden,
+   so anything absolute here is clipped or left floating over the wrong row. */
 .rsp-picker {
-  position: absolute; top: calc(100% + 6px); right: 0; z-index: 31;
-  display: flex; align-items: center; gap: 4px; padding: 6px;
-  background: var(--surface); border: 1px solid var(--border);
-  border-radius: 12px; box-shadow: 0 16px 40px rgba(11,53,88,0.18);
+  flex-basis: 100%; order: 3; margin-top: 8px;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 4px;
+  padding: 7px; background: var(--surface);
+  border: 1px solid var(--border); border-radius: 10px;
 }
 .rsp-pick {
   min-width: 32px; height: 32px; padding: 0 6px; border-radius: 8px;
@@ -371,6 +396,93 @@
 .rsp-pick.icon { color: var(--text-3); }
 .rsp-pick:disabled { opacity: 0.5; }
 .rsp-pick-div { width: 1px; height: 20px; background: var(--border); margin: 0 2px; }
+
+.rsp-filter {
+  flex-shrink: 0; display: inline-flex; align-items: center; min-height: 30px;
+  padding: 0 11px; border-radius: 999px; border: 1px solid var(--border);
+  background: var(--surface); font-size: 12.5px; font-weight: 600; color: var(--text-2);
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.rsp-filter:hover { background: var(--surface-2); }
+/* Accent, not amber: #fff on --yellow is about 2.1:1 and unreadable at 12.5px.
+   The 38px .rsp-count.unsure tile gets away with amber because its glyph is
+   16px/700. */
+.rsp-filter.on { background: var(--accent-soft); border-color: var(--accent-soft); color: var(--accent); }
+
+/* ── Column 3 · the message, or the person ── */
+.rsp-brief { flex: 1; min-height: 0; overflow-y: auto; padding: 26px 28px 24px; }
+.rsp-brief-head { display: flex; align-items: flex-start; gap: 20px; }
+.rsp-brief-main { flex: 1; min-width: 0; }
+.rsp-brief-when { font-size: 12.5px; color: var(--text-3); }
+.rsp-brief-title { margin-top: 4px; font-size: 19px; font-weight: 700; letter-spacing: -0.3px; line-height: 1.35; color: var(--text); }
+.rsp-brief-msg { margin-top: 18px; }
+.rsp-brief-orphan { margin-top: 18px; font-size: 13.5px; line-height: 1.55; color: var(--text-3); }
+.rsp-brief-stats { display: flex; flex-wrap: wrap; gap: 26px; margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--border); }
+.rsp-stat { display: flex; flex-direction: column; gap: 3px; }
+.rsp-stat b { font-size: 20px; font-weight: 700; letter-spacing: -0.4px; color: var(--text); }
+.rsp-stat span { font-size: 12.5px; color: var(--text-3); }
+.rsp-stat.warn b { color: var(--yellow); }
+.rsp-brief-foot { display: flex; flex-wrap: wrap; gap: 2px; margin-top: 20px; }
+/* The prompt is this pane's content, not a chat turn. */
+.rsp-brief .cv-bubble { max-width: 100%; }
+
+/* The one bold element in the pane. */
+.rsp-box-tally {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  flex-shrink: 0; min-width: 92px; padding: 14px 16px;
+  border-radius: 14px; background: var(--green); color: #fff;
+}
+.rsp-box-tally-num { font-size: 34px; font-weight: 700; line-height: 1; letter-spacing: -1px; }
+.rsp-box-tally-lbl { font-size: 12px; font-weight: 500; margin-top: 4px; color: rgba(255,255,255,0.9); }
+
+/*
+ * Narrow bands. Phones never reach this tab at all — SmsPage returns SmsMobile
+ * below 767px — so the squeeze that matters is 768–1180px, where there was no
+ * rule at all and three columns had ~704px between them.
+ */
+@media (max-width: 1180px) {
+  .rsp-cols      { grid-template-columns: 280px 0px minmax(0, 1fr); }
+  .rsp-cols.deep { grid-template-columns: 280px 290px minmax(0, 1fr); }
+  .rsp-brief { padding: 22px 22px 20px; }
+  .rsp-box-tally { min-width: 78px; padding: 12px 13px; }
+  .rsp-box-tally-num { font-size: 29px; }
+}
+
+/*
+ * Below this a conversation cannot share a row with two lists, so the right
+ * side swaps between the replies and the thread instead. The messages rail
+ * always stays: hiding the list is what made the old Guests pane unusable.
+ * .rsp-back is rendered at every width, so there is always a way back.
+ * The three rules are mutually exclusive — exactly one of the two panes is
+ * ever visible, so the shared grid cell is never contested.
+ */
+@media (max-width: 1000px) {
+  .rsp-cols, .rsp-cols.deep { grid-template-columns: 260px minmax(0, 1fr); }
+  .rsp-col-replies, .rsp-col-person { grid-row: 1; grid-column: 2; }
+  .rsp-col-replies { border-left: 1px solid var(--border); }
+  .rsp-cols:not(.deep) .rsp-col-replies       { display: none; }  /* nothing picked → placeholder */
+  .rsp-cols.deep:not(.person) .rsp-col-person { display: none; }  /* message picked → its replies */
+  .rsp-cols.person .rsp-col-replies           { display: none; }  /* person picked  → conversation */
+  .rsp-col-inner { opacity: 1; transform: none; }                 /* nothing slides here */
+  .rsp-cols { transition: none; }
+}
+
+.rsp-person { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+/* Not .cv-conv-head: that carries padding-right: 70px to clear the Guests
+   modal's close button, which this pane has no equivalent of. */
+.rsp-person-head { flex-shrink: 0; display: flex; align-items: center; gap: 11px; padding: 12px 16px; border-bottom: 1px solid var(--border); }
+.rsp-person-info { display: flex; flex-direction: column; min-width: 0; }
+.rsp-person-name { font-size: 15px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rsp-person-num { font-size: 12.5px; color: var(--text-3); }
+.rsp-back {
+  display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0;
+  padding: 6px 8px 6px 4px; border-radius: var(--radius-sm); background: none; border: none;
+  font-size: 13.5px; font-weight: 600; color: var(--accent);
+}
+.rsp-back:hover { background: var(--accent-soft); }
+.rsp-th-note { flex-shrink: 0; margin: 0; padding: 14px 24px 18px; border-top: 1px solid var(--border); font-size: 13px; line-height: 1.55; color: var(--text-3); }
+.rsp-compose-meta { flex-shrink: 0; display: flex; align-items: center; justify-content: flex-end; gap: 10px; padding: 0 24px 10px; }
+.rsp-col-person .rsp-err { margin: 0 auto 0 0; }
 
 /* ── Public reservation link ──────────────────────────────────────────────
    "Create link" mints the address of the web form for one dinner. In the
@@ -433,10 +545,11 @@
 /* A reply that had not been seen before this list was opened. The wash sits on
    a layer of its own so nothing shifts as it goes — padding on the row itself
    would move every line the moment the highlight cleared. */
-.rsp-item { position: relative; }
-.rsp-item > * { position: relative; z-index: 1; }
+/* inset: 0, not -9px -12px: the row now owns its own padding and radius, so the
+   wash lines up with the row instead of bleeding past it. position:relative and
+   the z-index on the children are declared with the .rsp-item rule itself. */
 .rsp-item.fresh::before {
-  content: ''; position: absolute; inset: -9px -12px; border-radius: 12px;
+  content: ''; position: absolute; inset: 0; border-radius: 10px;
   background: var(--green-soft); pointer-events: none; z-index: 0;
   animation: rsp-fresh 2.8s ease-out forwards;
 }
@@ -448,6 +561,7 @@
    stays put instead of animating away. */
 @media (prefers-reduced-motion: reduce) {
   .rsp-item.fresh::before { animation: none; opacity: 0.55; }
+  .rsp-cols, .rsp-col-inner { transition: none; }
 }
 
 /* Two actions where there was one — stacked, together filling the height the
@@ -560,12 +674,14 @@
   display: inline-block; width: 7px; height: 7px; margin-right: 8px;
   border-radius: 50%; background: var(--green); vertical-align: middle;
 }
-.ov-tally {
+/* Shared with .rsp-camp-tally, the green count on a Responses rail row, so the
+   Broadcast preview and the Responses column are one implementation. */
+.ov-tally, .rsp-camp-tally {
   flex-shrink: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
   min-width: 62px; padding: 8px 10px; border-radius: 10px;
   background: var(--green); color: #fff; font-size: 20px; font-weight: 700; line-height: 1;
 }
-.ov-tally em { font-style: normal; font-size: 10px; font-weight: 500; margin-top: 3px; opacity: 0.9; }
+.ov-tally em, .rsp-camp-tally em { font-style: normal; font-size: 10px; font-weight: 500; margin-top: 3px; opacity: 0.9; }
 
 /* Folders — the glyph is the folder; the label sits under it. */
 .ov-folders { display: grid; grid-template-columns: repeat(auto-fill, minmax(124px, 1fr)); gap: 10px; }
@@ -645,3 +761,19 @@
   font-size: 11.5px; font-weight: 700; letter-spacing: 0.01em;
   vertical-align: middle;
 }
+
+/* ── Poll preview ──
+   Shown under the composer while a Poll is selected: the options as the parser
+   reads them, or a warning that it found none. */
+.sms-poll { margin-top: 14px; padding: 14px 16px; border-radius: var(--radius-sm); background: var(--surface-2); }
+.sms-poll-h { margin: 0 0 8px; font-size: 12.5px; font-weight: 700; color: var(--text-3); }
+.sms-poll-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
+.sms-poll-list li { display: flex; align-items: baseline; gap: 10px; font-size: 14px; color: var(--text); }
+.sms-poll-list b {
+  flex-shrink: 0; min-width: 22px; height: 22px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 7px; background: var(--accent); color: #FFFFFF;
+  font-size: 12px; font-weight: 700;
+}
+.sms-poll-warn { margin: 0; font-size: 13px; line-height: 1.5; color: var(--yellow); }
+.sms-poll-warn code { background: var(--surface); padding: 1px 5px; border-radius: 5px; font-size: 12.5px; }

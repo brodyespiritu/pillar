@@ -186,25 +186,13 @@
 .mp-status-inactive { background: var(--surface-2); color: var(--text-2); }
 .mp-status-resolved { background: var(--accent-soft); color: var(--accent); }
 
-.mp-contact { display: flex; flex-direction: column; gap: 8px; }
-.mp-chip {
-  display: flex; align-items: center; gap: 8px;
-  font-size: 14px; color: var(--text);
-  padding: 8px 12px;
-  background: var(--surface-2);
-  border-radius: var(--radius-sm);
-}
-.mp-chip svg { color: var(--text-3); }
-a.mp-chip:hover { background: var(--accent-soft); color: var(--accent); }
-a.mp-chip:hover svg { color: var(--accent); }
-
 .mp-row { display: flex; justify-content: space-between; font-size: 14px; padding: 4px 0; }
 .mp-k { color: var(--text-3); }
 .mp-v { color: var(--text); font-weight: 500; }
 
 .mp-section { font-size: 12px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; color: var(--text-3); margin-bottom: 8px; }
 .mp-notes p:last-child, .mp-medical { font-size: 14px; line-height: 1.6; color: var(--text); }
-.mp-medical { display: flex; flex-direction: column; }
+.mp-medical { display: flex; flex-wrap: wrap; gap: 8px; }
 
 .mp-logs-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
 .mp-log-add {
@@ -244,8 +232,152 @@ a.mp-chip:hover svg { color: var(--accent); }
   display: flex; align-items: center; justify-content: center;
 }
 .mp-log-body { flex: 1; }
-.mp-log-top { display: flex; align-items: center; justify-content: space-between; }
-.mp-log-type-label { font-size: 13px; font-weight: 600; color: var(--text); }
+/*
+ * The category, as a control.
+ *
+ * It reads as the same pill it always was — the select sits on top of it,
+ * transparent, so the thing you click is the thing you were already reading.
+ */
+/*
+ * The record, and the one card that acts on it.
+ *
+ * Built to the same rules as the SMS composer: the card is the box, so the
+ * textarea has no border of its own; the controls sit on a single bar along the
+ * foot; and the only round thing is the button that commits. Care type is one
+ * of those controls, which is where a value you change belongs — beside the
+ * writing it accompanies, not in the title bar.
+ */
+.mp-lede { font-size: 15.5px; line-height: 1.6; color: var(--text); margin: 0; }
+.mp-meta { margin: 0; font-size: 12.5px; line-height: 1.5; color: var(--text-3); }
+
+/*
+ * The care card.
+ *
+ * A banner carrying the name and the original report, one place to write the
+ * update, the two choices it carries as pills, then everything said before.
+ * Nothing here has a box of its own — the sheet is the only box.
+ */
+.mp-hero {
+  position: relative;
+  padding: 30px 56px 24px;
+  text-align: center;
+  background: var(--surface-2);
+}
+.mp-hero h2 {
+  margin: 0;
+  font-size: 30px; font-weight: 800; letter-spacing: -0.03em; color: var(--text);
+}
+.mp-hero-report {
+  margin: 8px auto 0; max-width: 46ch;
+  font-size: 14.5px; line-height: 1.55; color: var(--text-2);
+}
+.mp-hero .modal-x { position: absolute; top: 16px; right: 16px; }
+
+/* Qualified by .modal: `.modal textarea` gives every field in a modal a border
+   and a background, and would put a box back around the one thing meant to
+   write straight onto the card. */
+.modal .mp-compose-body {
+  display: block; width: 100%; padding: 4px 0 0;
+  border: none; background: none; box-shadow: none;
+  color: var(--text); font-family: inherit; font-size: 19px; line-height: 1.55;
+  resize: none; min-height: 92px;
+}
+.modal .mp-compose-body:focus { outline: none; box-shadow: none; border: none; }
+.modal .mp-compose-body::placeholder { color: var(--text-3); }
+
+/* Centred, outlined, and roomy — they are choices, not chrome. */
+.mp-pills { display: flex; justify-content: center; gap: 12px; }
+.mp-pills .pill {
+  min-height: 44px; padding: 0 22px;
+  border: 1.5px solid var(--border); background: none;
+  font-size: 15px; color: var(--text);
+}
+.mp-pills .pill:hover, .mp-pills .pill.open { border-color: var(--accent); color: var(--accent); }
+.mp-pills .pill:hover svg, .mp-pills .pill.open svg { color: var(--accent); }
+
+/* Nothing chosen yet. Amber rather than red: it is a prompt, not a mistake. */
+.mp-pills .pill.unset { border-color: var(--yellow); color: var(--yellow); }
+.mp-pills .pill.unset svg { color: var(--yellow); }
+.mp-pills .pill.shake { animation: mp-shake 0.42s; }
+@keyframes mp-shake {
+  10%, 90% { transform: translateX(-2px); }
+  20%, 80% { transform: translateX(4px); }
+  30%, 50%, 70% { transform: translateX(-7px); }
+  40%, 60% { transform: translateX(7px); }
+}
+.mp-save-err {
+  margin: 0; text-align: center;
+  font-size: 13.5px; font-weight: 600; color: var(--yellow);
+}
+
+/*
+ * The history, on the same timeline as the phone app: solid discs on a rail,
+ * only the newest in blue so colour marks where things stand.
+ */
+.mp-tl { list-style: none; margin: 0; padding: 0; }
+.mp-tl-row { position: relative; display: flex; gap: 14px; padding: 0 0 20px; }
+.mp-tl-row:last-child { padding-bottom: 0; }
+.mp-tl-mark {
+  position: relative; z-index: 1; flex-shrink: 0;
+  width: 11px; height: 11px; margin-top: 6px;
+  border-radius: 50%; background: #C9D6E4;
+}
+.mp-tl-row.now .mp-tl-mark { background: var(--accent); }
+/* The rail belongs to the row, not the marker, so a two-line note cannot leave
+   it stopping short of the next disc. */
+.mp-tl-row:not(:last-child)::before {
+  content: '';
+  position: absolute; left: 4.5px; top: 21px; bottom: -2px;
+  width: 2px; background: var(--border);
+}
+.mp-tl-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.mp-tl-head { display: flex; align-items: baseline; gap: 10px; }
+.mp-tl-date { flex-shrink: 0; font-size: 15px; font-weight: 700; color: var(--text); }
+.mp-tl-kind {
+  flex: 1; min-width: 0;
+  font-size: 12.5px; font-weight: 600; color: var(--text-3);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.mp-tl-note { font-size: 14.5px; line-height: 1.5; color: var(--text-2); }
+.mp-tl .mp-log-del {
+  flex-shrink: 0; padding: 2px; background: none; color: var(--text-3);
+  opacity: 0; transition: opacity 0.12s;
+}
+.mp-tl-row:hover .mp-log-del, .mp-log-del:focus-visible { opacity: 1; }
+.mp-tl .mp-log-del:hover { color: var(--red); }
+
+/* Footer: the two decisions on the right, the full form left as a quiet way out. */
+.mp-foot-gap { flex: 1; }
+.mp-edit-link {
+  background: none; padding: 0;
+  font-size: 14px; font-weight: 600; color: var(--text-3);
+}
+.mp-edit-link:hover { color: var(--accent); }
+.mp-btn {
+  min-height: 46px; padding: 0 26px;
+  border: none; border-radius: 999px;
+  font-size: 15px; font-weight: 700;
+}
+.mp-btn.danger { background: var(--red); color: #FFFFFF; }
+/* Icon only: the word "Delete" beside a trash can said the same thing twice. */
+.mp-btn.icon { padding: 0; width: 46px; }
+.mp-btn.save   { background: var(--accent); color: #FFFFFF; }
+.mp-btn.save:hover:not(:disabled) { background: var(--accent-hover); }
+.mp-btn:disabled { opacity: 0.4; }
+
+.mp-log-top { display: flex; align-items: baseline; gap: 8px; }
+/* The date leads the row now; the icon to its left already says which kind of
+   contact it was, so the label that used to sit here repeated it. */
+.mp-log-when { font-size: 13px; font-weight: 600; color: var(--text); }
+.mp-log-who  { font-size: 11px; color: var(--text-3); }
+/* Rare, irreversible, and not worth permanent space. */
+.mp-log-del {
+  margin-left: auto; padding: 2px;
+  background: none; color: var(--text-3);
+  opacity: 0; transition: opacity 0.12s;
+}
+.mp-log:hover .mp-log-del, .mp-log-del:focus-visible { opacity: 1; }
+.mp-log-del:hover { color: var(--red); }
 .mp-log-time { font-size: 12px; color: var(--text-3); }
 .mp-log-note { font-size: 13px; color: var(--text-2); margin-top: 3px; line-height: 1.5; }
 .mp-log-foot { display: flex; align-items: center; justify-content: space-between; margin-top: 4px; }

@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { P, Icon } from '../../lib/icons';
-import { useSettings } from '../../context/SettingsContext';
 import { useGlobalSearch } from '../../lib/globalSearch';
 import { parseISO } from '../../lib/calendar';
 import { tapSelect } from '../../lib/haptics';
@@ -44,7 +43,6 @@ export default function HomeMobile({
   greeting, firstName, profile, care, memberCount, events,
 }) {
   const navigate = useNavigate();
-  const { openSettings } = useSettings();
   const [q, setQ] = useState('');
 
   const search = useGlobalSearch(q);
@@ -85,12 +83,9 @@ export default function HomeMobile({
             shell that band is the same grey-blue this gradient starts on. ── */}
         <header className="hm-hero">
           <div className="hm-hero-row">
-            <button className="hm-avatar" onClick={() => openSettings('general')} aria-label="Your account">
-              {initialsOf(profile?.name)}
-            </button>
-            <button className="hm-icon-btn" onClick={() => openSettings('general')} aria-label="Settings">
-              <Icon d={P.settings} size={21} />
-            </button>
+            {/* Whose phone this is, not a control. Settings is not on the phone
+                app, so a button that opened it would lead nowhere. */}
+            <span className="hm-avatar" aria-hidden="true">{initialsOf(profile?.name)}</span>
           </div>
 
           <h1 className="hm-greet">{greeting},<br />{firstName}</h1>
@@ -156,7 +151,7 @@ export default function HomeMobile({
                 className={`hm-chip t${i % 6}`}
                 onClick={() => { tapSelect(); navigate(a.to); }}
               >
-                <span className="hm-chip-ic"><Icon d={a.icon} size={21} /></span>
+                <span className="hm-chip-ic"><Icon d={a.icon} size={28} /></span>
                 <span className="hm-chip-label">{a.label}</span>
               </button>
             ))}

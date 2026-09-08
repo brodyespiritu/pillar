@@ -4,6 +4,7 @@ import { BrowserRouter } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import App from './App';
 import Dialogs from './components/Dialogs';
+import SaveFlash from './components/SaveFlash';
 import { startAutoUpdate } from './lib/autoUpdate';
 import './styles/global.css';
 /* After global so its .modal.sheet rules land on top of the page stylesheets. */
@@ -18,6 +19,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
       <AuthProvider>
         <App />
         <Dialogs />
+        <SaveFlash />
       </AuthProvider>
     </BrowserRouter>
   </React.StrictMode>,

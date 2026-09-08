@@ -141,7 +141,9 @@ export default function CalendarPage() {
         <CalendarMobile
           events={events}
           onOpenEvent={ev => setProfile(ev)}
+          onEditEvent={ev => setWizard({ event: ev, date: ev.start_date })}
           onAddEvent={dateIso => setWizard({ date: dateIso })}
+          onChanged={load}
         />
         {wizard && (
           <EventWizard calendar={calendar} initialDate={wizard.date} event={wizard.event}

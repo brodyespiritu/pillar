@@ -1,0 +1,201 @@
+/*
+ * The directory on a phone.
+ *
+ * Deliberately the same measurements as the care list in CaresMobile.css — the
+ * three-column grid, the 34% squircle, the 26px/12px gaps — so the two screens
+ * are recognisably one app rather than two that happen to show people.
+ *
+ * The one difference is colour. Care tiles are tinted by category because that
+ * is what you scan for; a directory has no such ranking, so every tile takes
+ * the same blue the Cares card uses on the home screen.
+ */
+
+:root {
+  --mm-tint: #E7F0FC;
+  --mm-ink:  #1D4ED8;
+}
+
+.mm-wrap { height: 100%; background: var(--surface); }
+.mm-scroll {
+  height: 100%; overflow-y: auto; -webkit-overflow-scrolling: touch;
+  padding-bottom: calc(96px + var(--pillar-safe-bottom, env(safe-area-inset-bottom, 0px)));
+}
+
+/* ── Head ── */
+.mm-head {
+  display: flex; align-items: center; gap: 12px;
+  padding: calc(14px + var(--pillar-safe-top, env(safe-area-inset-top, 0px))) 22px 6px;
+}
+.mm-title {
+  margin: 0;
+  font-size: 34px; font-weight: 800; letter-spacing: -0.035em; color: var(--text);
+}
+.mm-count {
+  font-size: 14px; font-weight: 700;
+  padding: 4px 12px; border-radius: 999px;
+  background: var(--mm-tint); color: var(--mm-ink);
+}
+
+.mm-search {
+  display: flex; align-items: center; gap: 10px;
+  margin: 12px 22px 4px; padding: 0 16px; min-height: 52px;
+  border-radius: 20px;
+  corner-shape: squircle;
+  background: var(--surface-2);
+  color: var(--text-3);
+}
+.mm-search input {
+  flex: 1; min-width: 0;
+  border: none; outline: none; background: none;
+  font-size: 16.5px; color: var(--text);
+}
+.mm-search input::placeholder { color: var(--text-3); }
+.mm-search-x { display: flex; padding: 6px; border: none; background: none; color: var(--text-3); }
+
+.mm-empty { margin: 26px 22px; font-size: 16px; line-height: 1.5; color: var(--text-3); }
+
+/* ── The grid: three to a row ── */
+.mm-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  gap: 26px 12px;
+  padding: 16px 22px 0;
+}
+
+.mm-tile {
+  display: flex; flex-direction: column; align-items: center; gap: 16px;
+  padding: 0; border: none; background: none; min-height: 0;
+  /* Sits at the top of its grid cell rather than stretching to fill it, so a
+     tall neighbour cannot pull this one out of shape. */
+  align-self: start;
+}
+
+/* Square aspect, so the grid stays even however wide the phone is. */
+.mm-sq {
+  position: relative; overflow: hidden;
+  width: 100%; aspect-ratio: 1;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 34%;
+  corner-shape: squircle;
+  background: var(--mm-tint);
+}
+.mm-tile:active .mm-sq { transform: scale(0.96); }
+.mm-sq { transition: transform 0.14s cubic-bezier(0.32, 0.72, 0, 1); }
+
+.mm-ini {
+  font-size: 25px; font-weight: 800; letter-spacing: 0.01em;
+  color: var(--mm-ink);
+}
+.mm-photo { width: 100%; height: 100%; object-fit: cover; }
+
+.mm-name {
+  font-size: 14.5px; font-weight: 700; line-height: 1.25; text-align: center;
+  color: var(--text);
+  /*
+   * Always two lines tall, whether the name needs them or not.
+   *
+   * Clamped but unreserved, "Joy Foster" took one line and "Pansy Loudermilk"
+   * took two, so tiles in the same row ended up different heights and the grid
+   * stretched the short ones — which reads as boxes of different sizes even
+   * though every squircle is identical. Reserving the second line makes every
+   * tile the same block.
+   */
+  min-height: calc(2em * 1.25);
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ── One person, from the bottom ── */
+.mm-scrim {
+  position: fixed; inset: 0; z-index: 400;
+  display: flex; align-items: flex-end; justify-content: center;
+  padding-bottom: var(--kb, 0px);
+  background: rgba(11, 27, 45, 0.5);
+  animation: mm-fade 0.18s ease-out;
+}
+.mm-sheet {
+  position: relative;
+  width: 100%; max-height: min(100%, 90vh); overflow-y: auto;
+  display: flex; flex-direction: column; align-items: center;
+  background: var(--surface);
+  border-radius: 30px 30px 0 0;
+  corner-shape: squircle;
+  padding: 30px 22px calc(26px + var(--safe-b, 0px));
+  animation: mm-rise 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+}
+.mm-x {
+  position: absolute; top: 18px; right: 18px;
+  display: flex; padding: 8px; border: none; border-radius: 50%;
+  background: var(--surface-2); color: var(--text-2);
+}
+
+.mm-sq.lg { width: 96px; height: 96px; aspect-ratio: auto; flex-shrink: 0; }
+.mm-sq.lg .mm-ini { font-size: 32px; }
+
+.mm-sheet-name {
+  margin: 16px 0 0;
+  font-size: 25px; font-weight: 800; letter-spacing: -0.028em; text-align: center; color: var(--text);
+}
+
+.mm-tags { display: flex; flex-wrap: wrap; justify-content: center; gap: 7px; margin-top: 12px; }
+.mm-tag {
+  padding: 5px 12px; border-radius: 999px;
+  background: var(--mm-tint); color: var(--mm-ink);
+  font-size: 12.5px; font-weight: 700;
+}
+
+.mm-actions { display: flex; gap: 10px; width: 100%; margin-top: 22px; }
+.mm-act {
+  flex: 1;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+  min-height: 68px; padding: 0 8px;
+  border-radius: 20px;
+  corner-shape: squircle;
+  background: var(--mm-tint); color: var(--mm-ink);
+  font-size: 14px; font-weight: 700;
+}
+.mm-act:active { background: #D8E6FA; }
+
+.mm-facts { width: 100%; margin-top: 22px; display: flex; flex-direction: column; gap: 12px; }
+.mm-fact {
+  display: flex; align-items: baseline; gap: 14px;
+  margin: 0; font-size: 15.5px; color: var(--text);
+}
+.mm-fact span {
+  flex: 0 0 74px;
+  font-size: 13px; font-weight: 600; color: var(--text-3);
+}
+
+.mm-notes {
+  width: 100%; margin: 20px 0 0;
+  font-size: 15px; line-height: 1.55; color: var(--text-2);
+}
+
+/* ── Managing the record ──
+   Under its own rule, so reading about somebody and changing their record are
+   visibly two different things. */
+.mm-manage {
+  width: 100%; margin-top: 22px; padding-top: 14px;
+  border-top: 1px solid var(--border);
+  display: flex; flex-direction: column;
+}
+.mm-manage-row {
+  display: flex; align-items: center; gap: 14px;
+  min-height: 54px; padding: 0 4px;
+  border: none; background: none;
+  font-size: 16px; font-weight: 600; color: var(--text); text-align: left;
+}
+.mm-manage-row svg { flex-shrink: 0; color: var(--text-3); }
+.mm-manage-row:active { background: var(--surface-2); border-radius: 14px; }
+.mm-manage-row:disabled { opacity: 0.5; }
+/* Only the irreversible one is red. Prospect and inactive can be undone from
+   the desktop list, and colouring all three alike would hide which is which. */
+.mm-manage-row.danger, .mm-manage-row.danger svg { color: var(--red); }
+
+@keyframes mm-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes mm-rise { from { transform: translateY(100%); } to { transform: translateY(0); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .mm-scrim, .mm-sheet { animation: none; }
+  .mm-sq { transition: none; }
+  .mm-tile:active .mm-sq { transform: none; }
+}

@@ -19,7 +19,35 @@ export default function EventWizard({ calendar, initialDate, event, onClose, onS
    * Continue taps and a progress bar to an event that is usually a title, a
    * date and a time.
    */
-  const oneForm = useIsMobile();
+  const isMobile = useIsMobile();
+
+  /*
+   * Two questions to a card on a phone.
+   *
+   * It used to do the opposite: `oneForm = useIsMobile()` put every field of the
+   * wizard on one scroll for phones and kept the steps for desktop, which is the
+   * wrong way round — a long form is at its worst on the screen where you can
+   * see least of it at once.
+   *
+   * A paired row counts as one question: start and end of the same date, or of
+   * the same time, is one decision presented twice.
+   */
+  const MOBILE_STEPS = [
+    ['title', 'dates'],
+    ['times', 'location'],
+    ['organizer', 'category'],
+    ['description'],
+    ['options'],
+  ];
+  /* Desktop keeps the four it already had. */
+  const DESKTOP_STEP = {
+    title: 1, dates: 1,
+    times: 2, location: 2, organizer: 2,
+    category: 3,
+    description: 4, options: 4,
+  };
+  const lastStep = isMobile ? MOBILE_STEPS.length : 4;
+  const show = k => (isMobile ? (MOBILE_STEPS[step - 1] || []).includes(k) : DESKTOP_STEP[k] === step);
   const [step, setStep] = useState(1);
   const [f, setF] = useState(() => ({
     title: event?.title || '',
@@ -63,7 +91,7 @@ export default function EventWizard({ calendar, initialDate, event, onClose, onS
     onSaved();
   }
 
-  const STEPS = ['Basics', 'Timing', 'Category', 'Extras'];
+  const STEPS = ['Basics', 'Timing', 'Category', 'Extras'];   // desktop chips only
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -85,11 +113,15 @@ export default function EventWizard({ calendar, initialDate, event, onClose, onS
         </div>
 
         <div className="modal-body">
-          {(oneForm || step === 1) && (<>
-            <p className="gf-q">Event basics</p>
+          {show('title') && (<>
+            <p className="gf-q">What is it called?</p>
             <label className="field-group"><span>Title <b>*</b></span>
               <input value={f.title} onChange={e => set('title', e.target.value)} placeholder="Sunday Service" autoFocus />
             </label>
+          </>)}
+
+          {show('dates') && (<>
+            <p className="gf-q">Which day?</p>
             <div className="field-row">
               <label className="field-group"><span>Start Date</span>
                 <input type="date" value={f.start_date} onChange={e => set('start_date', e.target.value)} />
@@ -101,8 +133,8 @@ export default function EventWizard({ calendar, initialDate, event, onClose, onS
             {multiDay && <div className="cw-multiday"><Icon d={P.calendar} size={14} />Multi-day event</div>}
           </>)}
 
-          {(oneForm || step === 2) && (<>
-            <p className="gf-q">Timing & location</p>
+          {show('times') && (<>
+            <p className="gf-q">What time?</p>
             <div className="field-row">
               <label className="field-group"><span>Start Time</span>
                 <input type="time" value={f.start_time} onChange={e => set('start_time', e.target.value)} />
@@ -111,6 +143,10 @@ export default function EventWizard({ calendar, initialDate, event, onClose, onS
                 <input type="time" value={f.end_time} onChange={e => set('end_time', e.target.value)} />
               </label>
             </div>
+          </>)}
+
+          {show('location') && (<>
+            <p className="gf-q">Where is it?</p>
             <div className="field-group"><span>Room / Location</span>
               <LocationPicker
                 value={f.location}
@@ -119,13 +155,17 @@ export default function EventWizard({ calendar, initialDate, event, onClose, onS
                 onCreated={loc => setLocations(ls => [...ls, loc].sort((a, b) => a.name.localeCompare(b.name)))}
               />
             </div>
+          </>)}
+
+          {show('organizer') && (<>
+            <p className="gf-q">Who is running it?</p>
             <label className="field-group"><span>Organizer</span>
               <input value={f.organizer} onChange={e => set('organizer', e.target.value)} placeholder="Pastor Mike" />
             </label>
           </>)}
 
-          {(oneForm || step === 3) && (<>
-            <p className="gf-q">Event category</p>
+          {show('category') && (<>
+            <p className="gf-q">What kind of event?</p>
             <div className="cw-cats">
               {CATEGORIES.map(c => (
                 <button key={c.key} className={`cw-cat ${f.category === c.key ? 'on' : ''}`}
@@ -136,11 +176,15 @@ export default function EventWizard({ calendar, initialDate, event, onClose, onS
             </div>
           </>)}
 
-          {(oneForm || step === 4) && (<>
-            <p className="gf-q">Notes & extras</p>
+          {show('description') && (<>
+            <p className="gf-q">Anything to add?</p>
             <label className="field-group"><span>Description</span>
               <textarea rows={3} value={f.description} onChange={e => set('description', e.target.value)} placeholder="Event details…" />
             </label>
+          </>)}
+
+          {show('options') && (<>
+            <p className="gf-q">Anything special?</p>
             <label className="cw-check">
               <input type="checkbox" checked={f.is_private} onChange={e => set('is_private', e.target.checked)} />
               <Icon d={P.lock} size={15} /> Private event (staff only)
@@ -173,25 +217,16 @@ export default function EventWizard({ calendar, initialDate, event, onClose, onS
         </div>
 
         <div className="modal-foot">
-          {/* One form means one button. Back and Continue only exist to move
-              between steps that are no longer there. */}
-          {oneForm ? (
-            <>
-              <button className="btn-ghost" onClick={onClose}>Cancel</button>
-              <button className="btn-primary" onClick={submit} disabled={saving}>
+          {/* Both layouts are stepped now, so both get the same pair of controls
+              — the only difference is how many steps there are. */}
+          {step > 1
+            ? <button className="btn-ghost" onClick={() => setStep(step - 1)}>Back</button>
+            : <button className="btn-ghost" onClick={onClose}>Cancel</button>}
+          {step < lastStep
+            ? <button className="btn-primary" onClick={() => setStep(step + 1)}>Next</button>
+            : <button className="btn-primary" onClick={submit} disabled={saving}>
                 {saving ? 'Saving…' : editing ? 'Save Changes' : 'Create Event'}
-              </button>
-            </>
-          ) : (
-            <>
-              {step > 1
-                ? <button className="btn-ghost" onClick={() => setStep(step - 1)}>Back</button>
-                : <button className="btn-ghost" onClick={onClose}>Cancel</button>}
-              {step < 4
-                ? <button className="btn-primary" onClick={() => setStep(step + 1)}>Next</button>
-                : <button className="btn-primary" onClick={submit} disabled={saving}>{saving ? 'Saving…' : editing ? 'Save Changes' : 'Create Event'}</button>}
-            </>
-          )}
+              </button>}
         </div>
       </div>
     </div>

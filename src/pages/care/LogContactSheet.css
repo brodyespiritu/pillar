@@ -58,28 +58,29 @@
   font-size: 16.5px; font-weight: 600; color: var(--text-3);
 }
 
-/* ── Kind of contact ──
-   Two by two rather than a dropdown: four options fit, and a picker you can see
-   is one tap where a select is three. */
-.lc-types {
-  display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+/* ── The two choices ──
+   One row of pills rather than a two-by-two of glyph buttons. The grid spent
+   the width of the sheet and four tall targets to say one word each, and it
+   could not grow: category has fourteen options, which is a list, not a grid.
+   This is the same pair the desktop card uses. */
+.lc-pills {
+  display: flex; justify-content: center; gap: 12px;
   margin-bottom: 20px;
 }
-.lc-type {
-  display: flex; align-items: center; gap: 10px;
-  min-height: 60px; padding: 0 14px;
-  border: 2px solid transparent;
-  border-radius: 20px;
-  corner-shape: squircle;
-  background: var(--surface-2);
-  color: var(--text-2);
-  font-size: 14.5px; font-weight: 700; text-align: left;
+.lc-pills .pill {
+  min-height: 48px; padding: 0 20px;
+  border: 1.5px solid var(--border); background: none;
+  font-size: 15.5px; color: var(--text);
 }
-.lc-type svg { flex-shrink: 0; }
-.lc-type.on {
-  border-color: var(--accent);
-  background: var(--accent-soft);
-  color: var(--accent);
+/* Nothing chosen yet. Amber because it is a prompt, not a mistake. */
+.lc-pills .pill.unset { border-color: var(--yellow); color: var(--yellow); }
+.lc-pills .pill.unset svg { color: var(--yellow); }
+.lc-pills .pill.shake { animation: lc-shake 0.42s; }
+@keyframes lc-shake {
+  10%, 90% { transform: translateX(-2px); }
+  20%, 80% { transform: translateX(4px); }
+  30%, 50%, 70% { transform: translateX(-7px); }
+  40%, 60% { transform: translateX(7px); }
 }
 
 /* ── The note ── */
@@ -101,7 +102,9 @@
 .lc-note:focus-within { box-shadow: inset 0 0 0 2px var(--accent); }
 .lc-note textarea::placeholder { color: var(--text-3); font-weight: 500; }
 
-.lc-error { margin: 12px 4px 0; font-size: 14.5px; font-weight: 600; color: var(--red); }
+.lc-error { margin: 12px 4px 0; font-size: 14.5px; font-weight: 600; color: var(--red); text-align: center; }
+/* The category prompt, which is a nudge rather than a failure. */
+.lc-error.warn { color: var(--yellow); }
 
 /* ── One button. Closing is the X; a Cancel beside Save was a second way to do
       the same nothing. ── */

@@ -1,5 +1,5 @@
 import { confirmDialog } from "../../lib/dialog";
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import TopNav from '../../components/TopNav';
 import { P, Icon } from '../../lib/icons';
 import { useAuth } from '../../context/AuthContext';
@@ -13,9 +13,14 @@ import {
   fetchScheduled, scheduleBroadcast, cancelScheduled,
 } from '../../lib/broadcast';
 import { fetchChurchMembers, initials } from '../../lib/members';
-import { fetchThreads, sendText, markRead, setRsvp, normPhone, formatPhone } from '../../lib/conversations';
+import { fetchThreads, sendText, markRead, setRsvp, normPhone, formatPhone, sepLabel } from '../../lib/conversations';
+/* The conversation primitives — .cv-scroll, .cv-msg, .cv-bubble, .cv-compose,
+   .cv-send, .cv-ava, .cv-placeholder — are shared with the Guests conversations
+   modal. None of that file's shell selectors match this markup. */
+import '../guests/conversations.css';
 import { tallyReplies, parseHeadcount } from '../../lib/rsvp';
 import { groupCampaigns, campaignLabel } from '../../lib/campaigns';
+import { pollOptions } from '../../lib/poll';
 import RsvpLink, { MenuEditor } from './RsvpLink';
 import SmsOverview from './SmsOverview';
 import PillMenu from './PillMenu';
@@ -30,8 +35,11 @@ import './Sms.css';
 
 /* Dinner is the one that changes behaviour: its replies are tallied. */
 const MESSAGE_TYPES = [
-  { key: 'Dinner',  icon: P.meal, hint: 'Count the replies into a headcount' },
-  { key: 'General', icon: P.sms,  hint: 'An ordinary message' },
+  { key: 'Dinner',  icon: P.meal,  hint: 'Count the replies into a headcount' },
+  /* A poll takes its options from the message text — "[1] Immediately" — so the
+     wording people read and the answers we accept can never drift apart. */
+  { key: 'Poll',    icon: P.check, hint: 'Numbered options; replies record a choice' },
+  { key: 'General', icon: P.sms,   hint: 'An ordinary message' },
 ];
 
 const TABS = [
@@ -84,7 +92,7 @@ export default function SmsPage() {
   return (
     <div className="sms-wrap">
       <TopNav />
-      <main className="sms-scroll">
+      <main className={`sms-scroll ${tab === 'responses' ? 'pane' : ''}`}>
         {/* A coloured band, with the composer sitting across its lower edge. */}
         <div className={`sms-band ${tab === 'broadcast' ? 'tall' : ''}`}>
           <div className="sms-band-inner">
@@ -103,7 +111,7 @@ export default function SmsPage() {
           </div>
         </div>
 
-        <div className={`sms-container ${tab === 'broadcast' ? 'overlap' : ''}`}>
+        <div className={`sms-container ${tab === 'broadcast' ? 'overlap' : ''} ${tab === 'responses' ? 'pane' : ''}`}>
           {missing ? (
             <div className="adm-placeholder">
               <div className="adm-placeholder-icon"><Icon d={P.sms} size={28} /></div>
@@ -260,7 +268,7 @@ function Broadcast({ owner, initialBody = '', contacts, groups, members, reload 
           />
           <PillMenu
             ariaLabel="Message type"
-            icon={msgType === 'Dinner' ? P.meal : P.sms}
+            icon={msgType === 'Dinner' ? P.meal : msgType === 'Poll' ? P.check : P.sms}
             value={msgType}
             onChange={setMsgType}
             options={MESSAGE_TYPES.map(mt => ({ key: mt.key, label: mt.key }))}
@@ -286,6 +294,11 @@ function Broadcast({ owner, initialBody = '', contacts, groups, members, reload 
         {target === 'all' && awaitingIds.size > 0 &&
           ` ${awaitingIds.size} new contact${awaitingIds.size === 1 ? '' : 's'} left out until approval is sent.`}
       </p>
+
+      {/* What a poll will actually accept, read back from the wording. Written
+          here so a numbered list that does not parse is caught before it goes
+          out, not after nobody's replies are recorded. */}
+      {msgType === 'Poll' && <PollPreview body={body} />}
 
       {msgType === 'Dinner' && (
         <div className="sms-dinner">
@@ -807,16 +820,42 @@ function ContactModal({ owner, contact, groups, members, onClose, onSaved }) {
  */
 
 function Responses({ threads, contacts, library = [], reload }) {
-  const [openId, setOpenId] = useState(null);
+  /*
+   * Which message is open, and which person inside it.
+   *
+   * The person is keyed by phone, not by reply id: one person can send two
+   * replies to the same message (tallyReplies keeps one row per number, latest
+   * wins), and the conversation belongs to the person rather than to either
+   * row — so both of their rows highlight together, which is correct.
+   */
+  const [pickedKey, setPickedKey] = useState(null);      // campaign c.key
+  const [pickedPhone, setPickedPhone] = useState(null);  // r.thread.key
+  const [onlyUnclear, setOnlyUnclear] = useState(false);
   const [q, setQ] = useState('');
-  const [draft, setDraft] = useState('');
-  const [replyTo, setReplyTo] = useState(null);
+  /*
+   * Drafts and send errors are keyed by person. One shared draft had to be
+   * force-cleared on every selection change to stop a message written for one
+   * person reaching the next; keyed, that cannot happen at all, and a
+   * half-written text now survives clicking away and back.
+   */
+  const [drafts, setDrafts] = useState({});
+  const [sendErrs, setSendErrs] = useState({});
   const [sending, setSending] = useState(false);
-  const [sendErr, setSendErr] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [checkedAt, setCheckedAt] = useState(null);
   const [fixing, setFixing] = useState(null);     // reply id whose options are open
   const [saving, setSaving] = useState(false);
+  /*
+   * The in-flight guards are refs rather than the state flags. Enter-without-
+   * shift calls send() directly, so two presses inside one render tick both
+   * read `sending === false` and both send.
+   */
+  const sendingRef = useRef(false);
+  const savingRef = useRef(false);
+  const railRef = useRef(null);      // column 1 list
+  const listRef = useRef(null);      // column 2 list
+  const scrollRef = useRef(null);    // column 3 thread
+  const keepScroll = useRef(null);   // scroll positions held across a reload
   /* Replies that were still unread when this list was opened. They come up
      green and fade out, so what arrived since the last look is obvious without
      leaving a highlight sitting there afterwards. */
@@ -926,6 +965,17 @@ function Responses({ threads, contacts, library = [], reload }) {
    */
   async function openLink(c) {
     if (linking) return;
+    /*
+     * Marking something a dinner is irreversible from the UI: createRsvpLink
+     * forces message_type 'Dinner' on the matching library row and there is no
+     * control anywhere that undoes it. On a poll, every "1" and "2" then stops
+     * being an option choice and starts being a plate count.
+     */
+    if (!c.showTally && !(await confirmDialog({
+      title: 'Count this as a dinner?',
+      message: 'Every number people texted back will be read as plates. If this was a poll, those answers stop being poll choices.',
+      confirmLabel: 'Count as dinner',
+    }))) return;
     setLinking(c.key);
     const info = await fetchRsvpInfo(c.prompt);
     setLinking(null);
@@ -939,15 +989,23 @@ function Responses({ threads, contacts, library = [], reload }) {
     const res = await createRsvpLink(null, linkFor.prompt, linkMenu);
     setSaving2(false);
     setLinkFor(f => ({ ...f, ...res }));
+    /* The only mutation on this tab that did not re-read. showTally is what
+       decides whether a rail row carries the green count, so without this it
+       stayed stale until somebody hit Refresh. */
+    if (!res?.error) await reload();
   }
 
   /* Record a person's decision about one reply, then re-read from the server so
      every tally on the page moves together. */
   async function decide(reply, patch) {
-    if (saving) return;
-    setSaving(true);
+    if (savingRef.current) return;
+    savingRef.current = true; setSaving(true);
+    /* Three independently scrolled columns now. Nothing unmounts on a reload
+       and both lists key stably, but holding the offsets makes that explicit
+       rather than an untested assumption. */
+    keepScroll.current = { rail: railRef.current?.scrollTop ?? 0, list: listRef.current?.scrollTop ?? 0 };
     try { await setRsvp(reply.id, patch); setFixing(null); await reload(); }
-    finally { setSaving(false); }
+    finally { savingRef.current = false; setSaving(false); }
   }
 
   async function refresh() {
@@ -970,37 +1028,160 @@ function Responses({ threads, contacts, library = [], reload }) {
     () => groupCampaigns(threads.rows, library, t => nameFor(t) || formatPhone(t.number)),
     [threads.rows, library, nameFor]);
 
+  /*
+   * The search decides which messages are LISTED. It never rewrites a campaign.
+   *
+   * Filtering c.replies down to the matches (which is what this did) left the
+   * tally, the unread count and replies.length describing different sets, so a
+   * row could read "3 new · 1 reply" beside a headcount covering all of them.
+   * The open message is pinned in regardless, so typing can never empty the
+   * drill-down out from under you.
+   */
   const needle = q.trim().toLowerCase();
-  const shown = needle
-    ? campaigns.map(c => ({ ...c, replies: c.replies.filter(r =>
-        (r.who || '').toLowerCase().includes(needle) || (r.body || '').toLowerCase().includes(needle)) }))
-        .filter(c => c.replies.length)
-    : campaigns;
+  const digits = needle.replace(/\D/g, '');
+  const shown = useMemo(() => (!needle ? campaigns : campaigns.filter(c =>
+       c.key === pickedKey
+    || (c.key || '').toLowerCase().includes(needle)
+    || (c.prompt || '').toLowerCase().includes(needle)
+    || c.replies.some(r =>
+         (r.who || '').toLowerCase().includes(needle) ||
+         (r.body || '').toLowerCase().includes(needle) ||
+         /* Guarded: normPhone(x).includes('') is true for every row. */
+         (digits.length >= 3 && normPhone(r.thread.number).includes(digits))))),
+    [campaigns, needle, digits, pickedKey]);
 
-  async function send(reply) {
+  /* Derived from the UNFILTERED campaigns, never stored and never taken from
+     `shown` — that is what keeps a searched pane from contradicting itself and
+     what makes the count picker correct after decide()'s full re-read. */
+  const picked = useMemo(() => campaigns.find(c => c.key === pickedKey) || null, [campaigns, pickedKey]);
+  const person = useMemo(() => {
+    if (!pickedPhone) return null;
+    /* The threads fallback matters: after you reply, that person's next message
+       can refile under a different campaign, and column 3 would blank mid-
+       conversation without it. */
+    return picked?.replies.find(r => r.thread.key === pickedPhone)?.thread
+        || threads.rows.find(t => t.key === pickedPhone) || null;
+  }, [picked, pickedPhone, threads.rows]);
+
+  /*
+   * One source of truth for "needs a count". The per-row predicate and the
+   * per-phone dedupe in tallyReplies used to disagree, so the card's number and
+   * the amber rows could describe different replies.
+   */
+  const unclearIds = useMemo(() => new Set((picked?.tally.unclear || []).map(u => u.id)), [picked]);
+  const countedIds = useMemo(() => {
+    const t = picked?.tally;
+    if (!t) return new Set();
+    return new Set([...t.counted, ...t.declined, ...t.unclear, ...t.excluded].map(x => x.id));
+  }, [picked]);
+
+  /* A campaign key can vanish after a refresh — it is a 46-character
+     truncation of the message used as a Map key. */
+  useEffect(() => {
+    if (pickedKey && !campaigns.some(c => c.key === pickedKey)) { setPickedKey(null); setPickedPhone(null); }
+  }, [campaigns, pickedKey]);
+
+  useLayoutEffect(() => {
+    const k = keepScroll.current;
+    if (!k) return;
+    if (railRef.current) railRef.current.scrollTop = k.rail;
+    if (listRef.current) listRef.current.scrollTop = k.list;
+    keepScroll.current = null;
+  }, [campaigns]);
+
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [pickedPhone, person?.messages?.length]);
+
+  /* The picker never had a way out by keyboard, and its old full-screen
+     backdrop cannot come back — an in-flow picker underneath one is
+     unclickable. Same closer PillMenu already uses in this folder. */
+  useEffect(() => {
+    if (!fixing) return;
+    const onDown = e => { if (!e.target.closest(`[data-reply="${fixing}"]`)) setFixing(null); };
+    const onKey = e => { if (e.key === 'Escape') setFixing(null); };
+    document.addEventListener('mousedown', onDown);
+    window.addEventListener('keydown', onKey);
+    return () => { document.removeEventListener('mousedown', onDown); window.removeEventListener('keydown', onKey); };
+  }, [fixing]);
+
+  const draft = person ? (drafts[person.key] ?? '') : '';
+  const sendErr = person ? (sendErrs[person.key] ?? '') : '';
+  /* A website reservation is given a deliberately impossible number — ten
+     digits with a leading zero. Telnyx accepts it and fails. */
+  const webOnly = person ? normPhone(person.number).startsWith('0') : false;
+  const rows = onlyUnclear ? (picked?.replies || []).filter(r => unclearIds.has(r.id)) : (picked?.replies || []);
+
+  async function send() {
     const body = draft.trim();
-    if (!body || sending) return;
-    setSending(true); setSendErr('');
-    const res = await sendText({ number: reply.thread.number, name: reply.who, body });
-    setSending(false);
-    if (!res?.sent) return setSendErr(res?.failed?.[0]?.error || 'Could not send that message.');
-    setDraft(''); setReplyTo(null);
+    if (!body || !person || webOnly || sendingRef.current) return;
+    sendingRef.current = true; setSending(true);
+    const key = person.key;
+    setSendErrs(s => ({ ...s, [key]: '' }));
+    const res = await sendText({
+      /* person.number, never from_number — the inbound webhook stores the
+         sender in to_number and OUR Telnyx number in from_number. */
+      number: person.number,
+      /* Never persist a formatted phone as a name: fetchThreads takes the
+         thread's name from the first non-empty to_name it sees. */
+      name: nameFor(person) || '',
+      body,
+      status: 'Reply',
+      campaign: picked?.prompt || undefined,
+    });
+    sendingRef.current = false; setSending(false);
+    if (!res?.sent) return setSendErrs(s => ({ ...s, [key]: res?.failed?.[0]?.error || 'Could not send that message.' }));
+    setDrafts(d => ({ ...d, [key]: '' }));
     reload();
   }
 
-  async function openCampaign(c) {
-    const next = openId === c.key ? null : c.key;
-    setOpenId(next); setReplyTo(null); setDraft(''); setSendErr('');
-    // Opening it counts as seeing it, which is what clears the green.
-    if (!next) { setJustSeen(new Set()); return; }
+  function pickCampaign(c) {
+    /* Idempotent: re-clicking the open message must not collapse two columns
+       from under the user, nor replace justSeen and restart the wash. */
+    if (c.key === pickedKey) return;
+    setPickedKey(c.key); setPickedPhone(null); setOnlyUnclear(false); setFixing(null);
     const ids = c.replies.filter(r => !r.read_at).map(r => r.id);
     // Captured before marking read, which is what erases the evidence.
     setJustSeen(new Set(ids));
-    if (ids.length) { await markRead(ids); reload(); }
+    if (ids.length) markRead(ids).then(reload);
+  }
+
+  function pickPerson(r) {
+    setPickedPhone(r.thread.key); setFixing(null);
+    /* Intersected with this campaign. thread.unreadIds spans that number's
+       whole log, so marking it wholesale would silently clear the green dots
+       on every other message they have replied to. */
+    const ids = (picked?.replies || [])
+      .filter(x => x.thread.key === r.thread.key && !x.read_at).map(x => x.id);
+    if (ids.length) markRead(ids).then(reload);
+  }
+
+  function onKeys(e) {
+    if (e.key !== 'Escape') return;
+    if (fixing) { setFixing(null); e.stopPropagation(); return; }
+    if (pickedPhone) { setPickedPhone(null); e.stopPropagation(); return; }
+    if (pickedKey) { setPickedKey(null); e.stopPropagation(); }
+  }
+
+  function railKeys(e) {
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+    e.preventDefault();
+    const b = [...e.currentTarget.querySelectorAll('.rsp-camp, .rsp-item-open')];
+    const i = b.indexOf(document.activeElement);
+    b[Math.min(b.length - 1, Math.max(0, i + (e.key === 'ArrowDown' ? 1 : -1)))]?.focus();
   }
 
   const when = s => new Date(s).toLocaleString('en-US',
     { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+
+  /* A column row has room for a time or a date, not both. */
+  const shortWhen = s => {
+    const d = new Date(s), n = new Date();
+    return d.toDateString() === n.toDateString()
+      ? d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+      : d.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' });
+  };
 
   if (threads.missing) {
     return (
@@ -1013,7 +1194,7 @@ function Responses({ threads, contacts, library = [], reload }) {
   }
 
   return (
-    <div className="sms-library">
+    <div className="sms-library rsp-shell">
       <div className="rsp-head-row">
         <div>
           <p className="rsp-head-lbl">Responses</p>
@@ -1043,159 +1224,248 @@ function Responses({ threads, contacts, library = [], reload }) {
         </div>
       )}
 
-      {shown.length === 0 ? (
+      {campaigns.length === 0 ? (
         <div className="rsp-empty">
-          {q ? 'No responses match that search.'
-             : 'No responses yet. Replies land here once the Telnyx inbound webhook is pointed at Pillar.'}
+          No responses yet. Replies land here once the Telnyx inbound webhook is pointed at Pillar.
         </div>
       ) : (
-        <div className="rsp-grid">
-          {shown.map(c => {
-            const isOpen = openId === c.key;
-            return (
-              <div key={c.key} className={`rsp-box ${c.unread ? 'fresh' : ''} ${isOpen ? 'open' : ''}`}>
-                {/*
-                  * One bold thing per card — the headcount. Everything else is
-                  * type: the message, a single line of detail, and actions as
-                  * plain text rather than tiles competing with the number.
-                  */}
-                <div className="rsp-box-head">
-                  <button className="rsp-box-main" onClick={() => openCampaign(c)} aria-expanded={isOpen}>
-                    <span className="rsp-box-title">
-                      {c.unread > 0 && <span className="rsp-box-dot" />}
-                      {c.key}
-                    </span>
-                    <span className="rsp-box-sub">
-                      {[
-                        c.unread ? `${c.unread} new` : null,
-                        `${c.replies.length} ${c.replies.length === 1 ? 'reply' : 'replies'}`,
-                        c.showTally && c.tally.unclear.length
-                          ? `${c.tally.unclear.length} unclear` : null,
-                        `Last reply ${when(c.lastAt)}`,
-                      ].filter(Boolean).join('  ·  ')}
-                    </span>
-                  </button>
+        <div className={`rsp-cols ${picked ? 'deep' : ''} ${person ? 'person' : ''}`} onKeyDown={onKeys}>
 
-                  {c.showTally && (
-                    <span className="rsp-box-tally">
-                      <span className="rsp-box-tally-num">{c.tally.total}</span>
+          {/* ── 1 · The messages. For a dinner, this row is where the green count lives. ── */}
+          <section className="rsp-col rsp-col-camps" aria-label="Messages with replies">
+            <div className="rsp-col-list" ref={railRef} onKeyDown={railKeys}>
+              {shown.length === 0 && <p className="rsp-col-note">No messages match that search.</p>}
+              {shown.map(c => (
+                <button key={c.key}
+                  className={`rsp-camp ${c.key === pickedKey ? 'on' : ''} ${c.unread ? 'fresh' : ''}`}
+                  onClick={() => pickCampaign(c)}
+                  aria-current={c.key === pickedKey || undefined}
+                  aria-controls="rsp-replies">
+                  <span className="rsp-camp-main">
+                    <span className="rsp-camp-title">
+                      {c.unread > 0 && <span className="ov-dot" />}{c.key}
+                    </span>
+                    <span className="rsp-camp-sub">
+                      {[c.unread ? `${c.unread} new` : null,
+                        `${c.replies.length} ${c.replies.length === 1 ? 'reply' : 'replies'}`,
+                        shortWhen(c.lastAt)].filter(Boolean).join('  ·  ')}
+                    </span>
+                  </span>
+                  {c.showTally
+                    ? <span className="rsp-camp-tally">{c.tally.total}<em>coming</em></span>
+                    : <span className="rsp-camp-n">{c.replies.length}</span>}
+                </button>
+              ))}
+            </div>
+          </section>
+
+          {/* ── 2 · The replies to that message. Slides in; renders nothing while closed. ── */}
+          <section className="rsp-col rsp-col-replies" id="rsp-replies"
+            aria-label={picked ? `Replies to ${picked.key}` : 'Replies'}>
+            {picked && (
+              <div className="rsp-col-inner">
+                <div className="rsp-col-head">
+                  <p className="rsp-col-title">
+                    {picked.replies.length} {picked.replies.length === 1 ? 'reply' : 'replies'}
+                  </p>
+                  {picked.showTally && unclearIds.size > 0 && (
+                    <button className={`rsp-filter ${onlyUnclear ? 'on' : ''}`} aria-pressed={onlyUnclear}
+                      onClick={() => setOnlyUnclear(v => !v)}>Needs a count ({unclearIds.size})</button>
+                  )}
+                </div>
+
+                <div className="rsp-col-list" ref={listRef} onKeyDown={railKeys}>
+                  {rows.length === 0 && <p className="rsp-col-note">Nothing here needs a count.</p>}
+                  {rows.map(r => {
+                    const manual = Number.isInteger(r.rsvp_count);
+                    const off = !!r.rsvp_excluded;
+                    const guess = parseHeadcount(r.body);
+                    const n = off ? null : manual ? r.rsvp_count : (guess ? guess.count : null);
+                    const unclear = unclearIds.has(r.id);
+                    /* A later reply from the same number is the one being counted. */
+                    const stale = picked.showTally && !off && !countedIds.has(r.id);
+                    const on = r.thread.key === pickedPhone;
+                    const picking = fixing === r.id;
+                    return (
+                      /* A div, not a button: it holds the count control and the
+                         in-flow picker, and nesting those inside a button is
+                         invalid. .rsp-item-open is the single control. */
+                      <div key={r.id} data-reply={r.id}
+                        className={`rsp-item ${on ? 'on' : ''} ${unclear ? 'unclear' : ''} ${off ? 'off' : ''} ${justSeen.has(r.id) ? 'fresh' : ''}`}>
+                        <button className="rsp-item-open" onClick={() => pickPerson(r)}
+                          aria-current={on || undefined} aria-controls="rsp-person">
+                          <span className="rsp-item-top">
+                            <span className="rsp-item-who">{r.who}</span>
+                            <span className="rsp-item-when">{shortWhen(r.created_at)}</span>
+                          </span>
+                          <p className="rsp-item-body">{r.body}</p>
+                        </button>
+
+                        {picked.showTally && (
+                          <div className="rsp-count-wrap">
+                            <button
+                              className={`rsp-count ${unclear ? 'unsure' : ''} ${off ? 'off' : ''} ${manual ? 'manual' : ''} ${stale ? 'quiet' : ''}`}
+                              onClick={() => setFixing(picking ? null : r.id)}
+                              aria-haspopup="true" aria-expanded={picking}
+                              aria-label={`Change the count for ${r.who}`}
+                              title={off ? 'Not counted'
+                                   : stale ? 'A later reply from this number is the one counted'
+                                   : manual ? 'Counted by hand'
+                                   : unclear ? 'Set a count' : 'Counted automatically'}>
+                              {off || stale ? '–' : unclear ? '?' : n}
+                            </button>
+                          </div>
+                        )}
+
+                        {picking && (
+                          <div className="rsp-picker" role="group" aria-label="Headcount">
+                            {[0, 1, 2, 3, 4, 5, 6].map(v => (
+                              <button key={v} disabled={saving}
+                                className={`rsp-pick ${!off && n === v ? 'on' : ''}`}
+                                onClick={() => decide(r, { count: v })}>{v}</button>
+                            ))}
+                            <span className="rsp-pick-div" />
+                            <button className="rsp-pick icon" disabled={saving} title="Don't count this reply"
+                              onClick={() => decide(r, { count: null, excluded: true })}>
+                              <Icon d={P.close} size={15} />
+                            </button>
+                            <button className="rsp-pick icon" disabled={saving} title="Read it automatically again"
+                              onClick={() => decide(r, { count: null, excluded: false })}>
+                              <Icon d={P.repeat} size={15} />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </section>
+
+          {/* ── 3 · The message, or the person. ── */}
+          <section className="rsp-col rsp-col-person" id="rsp-person" aria-label="Conversation">
+            {!picked ? (
+              <div className="cv-placeholder">
+                <div className="cv-placeholder-ic"><Icon d={P.chat} size={28} /></div>
+                <p>Pick a message</p>
+                <span>Its replies open beside it, and the headcount with them.</span>
+              </div>
+            ) : !person ? (
+              <div className="rsp-brief">
+                <div className="rsp-brief-head">
+                  <div className="rsp-brief-main">
+                    <span className="rsp-brief-when">Last reply {when(picked.lastAt)}</span>
+                    <h2 className="rsp-brief-title">{picked.key}</h2>
+                  </div>
+                  {picked.showTally && (
+                    <span className="rsp-box-tally" aria-live="polite">
+                      <span className="rsp-box-tally-num">{picked.tally.total}</span>
                       <span className="rsp-box-tally-lbl">coming</span>
                     </span>
                   )}
                 </div>
 
-                <div className="rsp-box-foot">
-                  <button className="rsp-act lead" onClick={() => openCampaign(c)}>
-                    {isOpen ? 'Hide replies' : 'View replies'}
-                  </button>
-                  {/*
-                    * Offered on every message, not just dinners: marking one is
-                    * the only way to fix a dinner that went out tagged General,
-                    * and hiding this on non-dinners would make that unfixable.
-                    */}
-                  <button className="rsp-act" onClick={() => openLink(c)} disabled={linking === c.key}>
-                    {linking === c.key ? 'Opening…' : c.showTally ? 'Update link' : 'Count as dinner'}
-                  </button>
-                  <button className="rsp-act" onClick={() => openRemind(c)}
-                    disabled={!canRemind || linking === c.key}
-                    title={canRemind ? '' : `Texts can only go out between ${WINDOW_LABEL}`}>
-                    {linking === c.key ? 'Checking…' : 'Remind'}
-                  </button>
+                {picked.prompt ? (
+                  <div className="rsp-brief-msg">
+                    <div className="cv-msg out"><div className="cv-bubble">{picked.prompt}</div></div>
+                  </div>
+                ) : (
+                  <p className="rsp-brief-orphan">
+                    These replies did not follow anything we sent, so there is no message to show,
+                    no one to remind, and no link to attach.
+                  </p>
+                )}
+
+                <div className="rsp-brief-stats">
+                  <span className="rsp-stat"><b>{picked.replies.length}</b><span>replies</span></span>
+                  {picked.showTally && (<>
+                    <span className="rsp-stat"><b>{picked.tally.counted.length}</b><span>coming</span></span>
+                    <span className="rsp-stat"><b>{picked.tally.declined.length}</b><span>not coming</span></span>
+                    {unclearIds.size > 0 && (
+                      <span className="rsp-stat warn"><b>{unclearIds.size}</b><span>need a count</span></span>
+                    )}
+                  </>)}
                 </div>
 
-                {isOpen && (
-                  <div className="rsp-box-body">
-                    {c.replies.map(r => {
-                      const guess = parseHeadcount(r.body);
-                      const manual = Number.isInteger(r.rsvp_count);
-                      const off = !!r.rsvp_excluded;
-                      const n = off ? null : manual ? r.rsvp_count : (guess ? guess.count : null);
-                      // Amber only while nobody has settled it and a count is expected.
-                      const unsure = !off && !manual && !guess && c.showTally;
-                      const picking = fixing === r.id;
-                      return (
-                      <div key={r.id}
-                        className={`rsp-item ${unsure ? 'unsure' : ''} ${off ? 'off' : ''} ${justSeen.has(r.id) ? 'fresh' : ''}`}>
-                        <div className="rsp-item-main">
-                          <div className="rsp-item-top">
-                            <span className="rsp-item-who">{r.who}</span>
-                            <span className="rsp-item-when">{when(r.created_at)}</span>
-                          </div>
-                          <p className="rsp-item-body">{r.body}</p>
-                        {replyTo === r.id ? (
-                          <div className="rsp-reply">
-                            <textarea autoFocus value={draft} rows={2}
-                              onChange={e => { setDraft(e.target.value); setSendErr(''); }}
-                              onKeyDown={e => {
-                                if (e.key === 'Escape') { setReplyTo(null); setDraft(''); }
-                                if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(r); }
-                              }}
-                              placeholder={`Reply to ${r.who}…`} />
-                            <div className="rsp-reply-foot">
-                              <span className="rsp-segs">
-                                {draft.trim() && (() => {
-                                  const s = smsSegments(draft);
-                                  return `${s.len} characters · ${s.segments} segment${s.segments === 1 ? '' : 's'}`;
-                                })()}
-                              </span>
-                              <button className="btn-ghost sm" onClick={() => { setReplyTo(null); setDraft(''); }}>Cancel</button>
-                              <button className="btn-primary sm" onClick={() => send(r)} disabled={!draft.trim() || sending}>
-                                {sending ? 'Sending…' : 'Send'}
-                              </button>
-                            </div>
-                            {sendErr && <p className="rsp-err">{sendErr}</p>}
-                          </div>
-                        ) : (
-                          <button className="rsp-item-reply" onClick={() => { setReplyTo(r.id); setDraft(''); }}>
-                            <Icon d={P.reply} size={14} />Reply
-                          </button>
-                        )}
-                        </div>
-
-                        {/*
-                          * The count is the control. No label, no second step to
-                          * reach it — a row that is already right shows a quiet
-                          * number and nothing to read.
-                          */}
-                        {c.showTally && (
-                          <div className="rsp-count-wrap">
-                            <button
-                              className={`rsp-count ${unsure ? 'unsure' : ''} ${off ? 'off' : ''} ${manual ? 'manual' : ''}`}
-                              onClick={() => setFixing(picking ? null : r.id)}
-                              aria-label={`Change the count for ${r.who}`}
-                              title={off ? 'Not counted' : manual ? 'Counted by hand' : unsure ? 'Set a count' : 'Counted automatically'}>
-                              {off ? '–' : unsure ? '?' : n}
-                            </button>
-
-                            {picking && (<>
-                              <div className="rsp-picker-backdrop" onClick={() => setFixing(null)} />
-                              <div className="rsp-picker">
-                                {[0, 1, 2, 3, 4, 5, 6].map(v => (
-                                  <button key={v} disabled={saving}
-                                    className={`rsp-pick ${!off && n === v ? 'on' : ''}`}
-                                    onClick={() => decide(r, { count: v })}>{v}</button>
-                                ))}
-                                <span className="rsp-pick-div" />
-                                <button className="rsp-pick icon" disabled={saving} title="Don't count this reply"
-                                  onClick={() => decide(r, { count: null, excluded: true })}>
-                                  <Icon d={P.close} size={15} />
-                                </button>
-                                <button className="rsp-pick icon" disabled={saving} title="Read it automatically again"
-                                  onClick={() => decide(r, { count: null, excluded: false })}>
-                                  <Icon d={P.repeat} size={15} />
-                                </button>
-                              </div>
-                            </>)}
-                          </div>
-                        )}
-                      </div>
-                      );
-                    })}
-                  </div>
-                )}
+                <div className="rsp-brief-foot">
+                  <button className="rsp-act lead" onClick={() => openLink(picked)}
+                    disabled={!!linking || !picked.prompt}>
+                    {linking ? 'Opening…' : picked.showTally ? 'Reservation link' : 'Count as dinner'}
+                  </button>
+                  <button className="rsp-act" onClick={() => openRemind(picked)}
+                    disabled={!canRemind || !!linking || !picked.prompt}
+                    title={!picked.prompt ? 'There is no original message to chase'
+                         : canRemind ? '' : `Texts can only go out between ${WINDOW_LABEL}`}>
+                    {linking ? 'Checking…' : 'Remind'}
+                  </button>
+                </div>
               </div>
-            );
-          })}
+            ) : (
+              <div className="rsp-person">
+                <header className="rsp-person-head">
+                  <button className="rsp-back" onClick={() => setPickedPhone(null)}>
+                    <Icon d={P.chevL} size={16} />Replies
+                  </button>
+                  <span className="cv-ava sm">{initials(nameFor(person) || '')}</span>
+                  <span className="rsp-person-info">
+                    <span className="rsp-person-name">{nameFor(person) || formatPhone(person.number)}</span>
+                    <span className="rsp-person-num">
+                      {webOnly ? 'Reserved on the website' : formatPhone(person.number)}
+                    </span>
+                  </span>
+                </header>
+
+                {/* Every reply already carries its whole conversation, so this
+                    pane needs no fetch of its own. */}
+                <div className="cv-scroll" ref={scrollRef}>
+                  {person.messages.map((m, i) => {
+                    const prev = person.messages[i - 1];
+                    const dir = m.direction || 'out';
+                    const gap = !prev || (new Date(m.created_at) - new Date(prev.created_at)) > 30 * 60 * 1000;
+                    const bad = dir === 'out' && m.status === 'Failed';
+                    return (
+                      <div key={m.id || i}>
+                        {gap && <div className="cv-sep">{sepLabel(m.created_at)}</div>}
+                        <div className={`cv-msg ${dir}`}>
+                          <div className={`cv-bubble ${bad ? 'failed' : ''}`}>{m.body}</div>
+                        </div>
+                        {bad && <div className="cv-failed">Not delivered</div>}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {webOnly ? (
+                  <p className="rsp-th-note">
+                    This reservation came in through the website, so there is no number to text back.
+                  </p>
+                ) : (<>
+                  <div className="cv-compose">
+                    <textarea rows={1} placeholder={`Text ${nameFor(person) || 'them'}`} value={draft}
+                      onChange={e => {
+                        const v = e.target.value, k = person.key;
+                        setDrafts(d => ({ ...d, [k]: v }));
+                        setSendErrs(s => ({ ...s, [k]: '' }));
+                      }}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+                      }} />
+                    <button className="cv-send" onClick={send} disabled={sending || !draft.trim()} title="Send">
+                      <Icon d={P.arrowUp} size={18} />
+                    </button>
+                  </div>
+                  <div className="rsp-compose-meta">
+                    {sendErr && <p className="rsp-err">{sendErr}</p>}
+                    {draft.trim() && (() => {
+                      const s = smsSegments(draft);
+                      return <span className="rsp-segs">{s.len} characters · {s.segments} segment{s.segments === 1 ? '' : 's'}</span>;
+                    })()}
+                  </div>
+                </>)}
+              </div>
+            )}
+          </section>
         </div>
       )}
 
@@ -1507,4 +1777,34 @@ function toast(msg) {
   el.textContent = msg;
   document.body.appendChild(el);
   setTimeout(() => { el.style.opacity = '0'; setTimeout(() => el.remove(), 300); }, 2400);
+}
+
+/*
+ * What a poll will accept, read back from the message as written.
+ *
+ * The options are parsed out of the text, so a numbered list that does not
+ * parse — a stray line break, "Reply 1 for yes" written as a sentence — records
+ * nobody's answer. Better to see that while composing than to discover it from
+ * a week of replies that went nowhere.
+ */
+function PollPreview({ body }) {
+  const opts = pollOptions(body || '');
+  if (!String(body || '').trim()) return null;
+  return (
+    <div className="sms-poll">
+      {opts.length >= 2 ? (
+        <>
+          <p className="sms-poll-h">Replies will be recorded as:</p>
+          <ul className="sms-poll-list">
+            {opts.map(o => <li key={o.n}><b>{o.n}</b>{o.label}</li>)}
+          </ul>
+        </>
+      ) : (
+        <p className="sms-poll-warn">
+          No numbered options found. Put each choice on its own line, like
+          {' '}<code>[1] Immediately</code>. Until then replies are recorded as ordinary messages.
+        </p>
+      )}
+    </div>
+  );
 }

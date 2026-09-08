@@ -94,7 +94,20 @@ export default function CaresPage() {
         [m.full_name, m.phone, m.email, m.assigned_name, m.care_notes, m.family_member]
           .filter(Boolean).some(v => v.toLowerCase().includes(q)));
     }
-    return list;
+    /*
+     * Alphabetical by name.
+     *
+     * The list arrives ordered by priority then recency, which is right for a
+     * digest and wrong for a roster: to check whether someone is on the list you
+     * need to know where to look, and "somewhere among twenty-seven, ordered by
+     * how urgent we think they are" is not a place.
+     *
+     * Base sensitivity so PANSY LOUDERMILK files under P beside Patty King
+     * rather than clumping with the other shouted names — the list is typed by
+     * different people and the casing is not consistent.
+     */
+    return [...list].sort((a, b) => String(a.full_name || '')
+      .localeCompare(String(b.full_name || ''), undefined, { sensitivity: 'base' }));
   }, [members, filter, priorityF, categoryF, search]);
 
   function toggleFilter(key) {
@@ -274,6 +287,26 @@ export default function CaresPage() {
                   <h2>{FILTERS[filter].label}</h2>
                   <span className="cp-count">{filtered.length}</span>
                 </div>
+                {/* The page search sits far above this list; once you have
+                    scrolled to the names it is off screen, so the same filter is
+                    offered here. Bound to the same state, so the two can never
+                    disagree about what is being shown. */}
+                <div className="cp-results-find">
+                  <Icon d={P.search} size={16} className="cp-results-find-icon" />
+                  <input
+                    type="search"
+                    value={search}
+                    onChange={e => setSearch(e.target.value)}
+                    placeholder="Search a name, phone, or note…"
+                    aria-label={`Search ${FILTERS[filter].label}`}
+                  />
+                  {search && (
+                    <button className="cp-results-find-clear" onClick={() => setSearch('')} aria-label="Clear search">
+                      <Icon d={P.close} size={14} />
+                    </button>
+                  )}
+                </div>
+
                 <div className="cp-results-tools">
                   <div className="cp-select sm">
                     <select value={categoryF} onChange={e => setCategoryF(e.target.value)}>

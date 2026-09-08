@@ -48,7 +48,10 @@ export default function GuestsPage() {
   const [loading, setLoading] = useState(true);
   const [tab, setTab]         = useState(location.state?.prospect ? 'prospects' : 'guests'); // guests | prospects
   const [search, setSearch]   = useState(location.state?.q || '');
-  const [sort, setSort]       = useState({ key: 'last_visit', dir: 'desc' });
+  /* Alphabetical to begin with. A prospect list is read to find a person, and
+     most-recent-first means knowing when they visited before you can look them
+     up. Any column header still re-sorts it. */
+  const [sort, setSort]       = useState({ key: 'full_name', dir: 'asc' });
   const [selected, setSelected] = useState(new Set());
 
   const [picker, setPicker]   = useState(false);
@@ -110,11 +113,16 @@ export default function GuestsPage() {
         .filter(Boolean).some(v => v.toLowerCase().includes(q)));
     }
     const { key, dir } = sort;
+    /*
+     * Compared as words, not as byte values. Plain < and > put every capitalised
+     * name above every lower-case one, so PANSY LOUDERMILK landed in a block of
+     * shouted names ahead of Patty King instead of beside her — and this list is
+     * typed by different people, so the casing is never consistent.
+     */
     list = [...list].sort((a, b) => {
-      const av = a[key] ?? '', bv = b[key] ?? '';
-      if (av < bv) return dir === 'asc' ? -1 : 1;
-      if (av > bv) return dir === 'asc' ? 1 : -1;
-      return 0;
+      const av = String(a[key] ?? ''), bv = String(b[key] ?? '');
+      const cmp = av.localeCompare(bv, undefined, { sensitivity: 'base', numeric: true });
+      return dir === 'asc' ? cmp : -cmp;
     });
     return list;
   }, [guests, tab, search, sort, activeWeek]);

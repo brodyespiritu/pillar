@@ -2,9 +2,9 @@ import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { P, Icon } from '../../lib/icons';
 import {
   iso, parseISO, addDays, addMonths, startOfMonth, endOfMonth, startOfWeek,
-  isToday, catColor, fmtTime,
+  isToday, catColor, fmtTime, deleteEvent,
 } from '../../lib/calendar';
-import { tapOpen, tapClose, tapSelect } from '../../lib/haptics';
+import { tapOpen, tapClose, tapSelect, tapSaved } from '../../lib/haptics';
 import './CalendarMobile.css';
 
 /*
@@ -36,7 +36,7 @@ function monthWeeks(month) {
   return weeks;
 }
 
-export default function CalendarMobile({ events, onOpenEvent, onAddEvent }) {
+export default function CalendarMobile({ events, onOpenEvent, onEditEvent, onAddEvent, onChanged }) {
   const scroller = useRef(null);
   const todayRef = useRef(null);
   const [heading, setHeading] = useState(() => new Date());
@@ -230,7 +230,8 @@ export default function CalendarMobile({ events, onOpenEvent, onAddEvent }) {
           dayIso={day}
           events={byDay.get(day) || []}
           onClose={() => setDay(null)}
-          onOpenEvent={ev => { setDay(null); onOpenEvent(ev); }}
+          onEditEvent={ev => { setDay(null); onEditEvent(ev); }}
+          onChanged={onChanged}
           onAdd={() => { const d = day; setDay(null); onAddEvent(d); }}
         />
       )}
@@ -239,36 +240,67 @@ export default function CalendarMobile({ events, onOpenEvent, onAddEvent }) {
 }
 
 /* ── One day's events, up from the bottom ── */
-function DaySheet({ dayIso, events, onClose, onOpenEvent, onAdd }) {
+function DaySheet({ dayIso, events, onClose, onEditEvent, onAdd, onChanged }) {
   const d = parseISO(dayIso);
+  /*
+   * The event opens inside this card rather than replacing it.
+   *
+   * Tapping one used to dismiss the day and raise a separate modal, so a
+   * glance at what an event was cost the whole day's list and a second card
+   * arriving from somewhere else. The sheet swaps its contents instead: same
+   * card, same position, back to the list when you are done.
+   */
+  const [picked, setPicked] = useState(null);
 
   useEffect(() => {
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-    const onKey = e => { if (e.key === 'Escape') { tapClose(); onClose(); } };
+    /* Escape steps back through the card before it closes it. */
+    const onKey = e => {
+      if (e.key !== 'Escape') return;
+      tapClose();
+      if (picked) setPicked(null); else onClose();
+    };
     window.addEventListener('keydown', onKey);
     return () => { document.body.style.overflow = prev; window.removeEventListener('keydown', onKey); };
-  }, [onClose]);
+  }, [onClose, picked]);
 
   return (
     <div className="mcal-scrim" onClick={onClose}>
       <div className="mcal-sheet" onClick={e => e.stopPropagation()} role="dialog">
         <span className="mcal-grab" />
+
         <div className="mcal-sheet-head">
+          {picked && (
+            <button className="mcal-sheet-back" onClick={() => { tapClose(); setPicked(null); }}
+              aria-label="Back to the day">
+              <Icon d={P.chevL} size={20} />
+            </button>
+          )}
           <h2 className="mcal-sheet-h">
-            {d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+            {picked
+              ? picked.title
+              : d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
           </h2>
-          <button className="mcal-sheet-add" onClick={() => { tapSelect(); onAdd(); }} aria-label="Add an event">
-            <Icon d={P.plus} size={21} />
-          </button>
+          {!picked && (
+            <button className="mcal-sheet-add" onClick={() => { tapSelect(); onAdd(); }} aria-label="Add an event">
+              <Icon d={P.plus} size={21} />
+            </button>
+          )}
         </div>
 
-        {events.length === 0 ? (
+        {picked ? (
+          <EventDetail
+            ev={picked}
+            onEdit={() => onEditEvent(picked)}
+            onDeleted={() => { setPicked(null); onChanged?.(); onClose(); }}
+          />
+        ) : events.length === 0 ? (
           <p className="mcal-sheet-empty">Nothing scheduled.</p>
         ) : (
           <div className="mcal-sheet-list">
             {events.map(ev => (
-              <button key={ev.id} className="mcal-ev" onClick={() => onOpenEvent(ev)}>
+              <button key={ev.id} className="mcal-ev" onClick={() => { tapSelect(); setPicked(ev); }}>
                 <span className="mcal-ev-bar" style={{ background: catColor(ev.category) }} />
                 <span className="mcal-ev-txt">
                   <span className="mcal-ev-name">{ev.title}</span>
@@ -283,6 +315,89 @@ function DaySheet({ dayIso, events, onClose, onOpenEvent, onAdd }) {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+/* The event itself, in the card the day was just showing. */
+function EventDetail({ ev, onEdit, onDeleted }) {
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState('');
+
+  const when = ev.start_time
+    ? `${fmtTime(ev.start_time)}${ev.end_time ? ` – ${fmtTime(ev.end_time)}` : ''}`
+    : 'All day';
+  const facts = [
+    ['When', when],
+    ev.location && ['Where', ev.location],
+    ev.organizer && ['Organizer', ev.organizer],
+  ].filter(Boolean);
+
+  async function del(mode) {
+    if (busy) return;
+    setBusy(mode);
+    await deleteEvent(ev, mode);
+    setBusy('');
+    tapSaved();
+    onDeleted?.();
+  }
+
+  return (
+    <div className="mcal-detail">
+      <span className="mcal-detail-cat" style={{ '--cc': catColor(ev.category) }}>
+        {ev.category || 'Event'}
+      </span>
+
+      <div className="mcal-detail-facts">
+        {facts.map(([k, v]) => (
+          <p key={k} className="mcal-detail-row"><span>{k}</span>{v}</p>
+        ))}
+      </div>
+
+      {ev.description && <p className="mcal-detail-note">{ev.description}</p>}
+
+      {!confirming ? (
+        <div className="mcal-detail-acts">
+          <button className="mcal-detail-act" onClick={() => { tapSelect(); onEdit(); }}>
+            <Icon d={P.edit} size={18} />Edit
+          </button>
+          <button className="mcal-detail-act danger" onClick={() => { tapSelect(); setConfirming(true); }}>
+            <Icon d={P.trash} size={18} />Delete
+          </button>
+        </div>
+      ) : (
+        /*
+         * Asked in the card rather than through a dialog, because a repeating
+         * event has three different answers and a yes/no box can only carry
+         * one. Deleting one Wednesday is not deleting every Wednesday, and
+         * which of those happened must be the person's choice, not a default.
+         */
+        <div className="mcal-detail-confirm">
+          <p className="mcal-detail-ask">
+            {ev.series_id ? 'This event repeats. Delete…' : 'Delete this event?'}
+          </p>
+          {ev.series_id ? (
+            <>
+              <button className="mcal-detail-act danger" disabled={!!busy} onClick={() => del('single')}>
+                {busy === 'single' ? 'Deleting…' : 'Just this one'}
+              </button>
+              <button className="mcal-detail-act danger" disabled={!!busy} onClick={() => del('future')}>
+                {busy === 'future' ? 'Deleting…' : 'This and future'}
+              </button>
+              <button className="mcal-detail-act danger" disabled={!!busy} onClick={() => del('series')}>
+                {busy === 'series' ? 'Deleting…' : 'The entire series'}
+              </button>
+            </>
+          ) : (
+            <button className="mcal-detail-act danger" disabled={!!busy} onClick={() => del('single')}>
+              {busy ? 'Deleting…' : 'Delete event'}
+            </button>
+          )}
+          <button className="mcal-detail-act" disabled={!!busy} onClick={() => setConfirming(false)}>
+            Keep it
+          </button>
+        </div>
+      )}
     </div>
   );
 }

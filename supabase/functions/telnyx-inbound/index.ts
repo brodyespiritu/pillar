@@ -12,6 +12,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { careIntake, reply } from '../_shared/careFlow.ts';
 import { keyword } from '../_shared/careReply.ts';
 import { dinnerAck, rsvpName } from '../_shared/dinnerAck.ts';
+import { pollAnswer } from '../_shared/poll.ts';
 import { CARE_SIGNAL } from '../_shared/careIntake.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
@@ -181,6 +182,19 @@ Deno.serve(async (req) => {
              * nothing pastoral can be reclassified by a stray number.
              */
             if (!CARE_SIGNAL.test(text)) {
+              /*
+               * A poll answer, checked before the RSVP for the same reason the RSVP is
+               * checked before intake: staff are on the congregation list too, and a
+               * bare "1" answering a poll is not a care report. Without this a deacon
+               * who also takes Cares alerts had their answer swallowed by the care
+               * rail and never recorded — which is exactly what happened in testing.
+               */
+              const polled = await pollAnswer(supabase, SUPABASE_URL, SERVICE_ROLE, fromNumber, text);
+              if (polled) {
+                // Congregation traffic after all — let it be seen on the SMS rail.
+                if (p?.id) await supabase.from('sms_messages').update({ channel: 'sms' }).eq('provider_id', p.id);
+                return;
+              }
               const rsvp = await dinnerAck(supabase, SUPABASE_URL, SERVICE_ROLE, fromNumber, text);
               if (rsvp) {
                 // Congregation traffic after all — let it count and be seen.
@@ -212,6 +226,16 @@ Deno.serve(async (req) => {
       queued = 'dinner';
       const work = (async () => {
         try {
+          /*
+           * A poll answer first. Both a poll and a dinner are answered with a bare
+           * number, so whichever was actually asked has to win — and a poll is the
+           * narrower reading: pollChoice only accepts a digit matching an option it
+           * offered, where a headcount accepts any number. Checking dinners first
+           * would swallow "2" meaning "a summary once per day" as two plates.
+           */
+          const polled = await pollAnswer(supabase, SUPABASE_URL, SERVICE_ROLE, fromNumber, text);
+          if (polled) return;
+
           const ack = await dinnerAck(supabase, SUPABASE_URL, SERVICE_ROLE, fromNumber, text);
           /*
            * Someone arriving from the public link has never been texted, so

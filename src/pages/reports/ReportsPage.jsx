@@ -2,11 +2,11 @@ import { useState, useRef, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import TopNav from '../../components/TopNav';
 import { P, Icon } from '../../lib/icons';
-import { fetchChurchMembers, initials, isHiddenProspect, isInactive, isArchived } from '../../lib/members';
-import { fetchContacts } from '../../lib/broadcast';
+import { fetchChurchMembers, initials, isHiddenProspect, isInactive, isArchived, memberTags, assignedToDeacon, groupByFamily } from '../../lib/members';
+import { fetchContacts, fetchGroups, fetchMemberships } from '../../lib/broadcast';
 import { normPhone, formatPhone } from '../../lib/conversations';
 import { printHtml } from '../../lib/printDoc';
-import { buildReportDoc } from './reportDoc';
+import { buildReportDoc, buildDeaconRosterDoc } from './reportDoc';
 import '../home/HomePage.css';
 import './reports.css';
 
@@ -40,6 +40,11 @@ const FIELD_GROUPS = [
     'First Name', 'Last Name', 'Middle Name', 'Phone Number', 'Preferred Name',
   ] },
   { label: 'Groups', options: [
+    /* First, because it is the one in this section that actually searches
+       anything — the rest are placeholders from the import format and have no
+       accessor behind them yet. 'Group Type' in particular is a different thing
+       entirely: a category on an imported roster, not the group a person is in. */
+    'Group',
     'Date First Attended', 'Date Last Attended', 'Group Type', 'Leader Position',
     'Ministry Area', 'Ministry Area Attribute', 'Roster Type',
   ] },
@@ -67,13 +72,27 @@ const FIELD_ACCESSORS = {
   'Address Postal Code': m => m.address || '',
   'Address Region':   m => m.address || '',
   'Address State':    m => m.address || '',
+  /*
+   * Group is the one field a person can hold several of, so it returns a list
+   * and the matcher tests each. "is equal to Deacons" then means one of their
+   * groups is exactly Deacons, rather than their whole comma-separated tag
+   * string being the word Deacons — which no one's ever is.
+   *
+   * Both senses of "group" are searched: the tags on the member record, and the
+   * SMS groups they belong to. The two are separate lists in Pillar and a name
+   * like "Deacons" usually exists in both; asking which one somebody meant is
+   * not a question worth putting to whoever is running a report.
+   */
+  'Group':            (m, ctx) => ctx?.groupsOf?.(m) || [],
 };
 
 const MAX_RESULTS = 60;
 const OPERATORS = ['contains', 'is', 'starts with', 'ends with'];
 
 function matches(val, q, op) {
-  val = val.toLowerCase();
+  /* A multi-valued field matches when any one of its values does. */
+  if (Array.isArray(val)) return val.some(v => matches(v, q, op));
+  val = String(val || '').toLowerCase();
   switch (op) {
     case 'is':          return val === q;
     case 'starts with': return val.startsWith(q);
@@ -90,10 +109,16 @@ export default function ReportsPage() {
   const [q, setQ] = useState('');
   const [members, setMembers] = useState([]);
   const [contacts, setContacts] = useState([]);
+  const [groups, setGroups] = useState([]);
+  const [memberships, setMemberships] = useState([]);
   const ddRef = useRef(null);
 
   useEffect(() => { fetchChurchMembers().then(d => setMembers(d.rows || [])); }, []);
   useEffect(() => { fetchContacts().then(d => setContacts(d.rows || [])); }, []);
+  /* Both kinds of group, loaded once: the tags on a member record and the SMS
+     groups they are a contact in. */
+  useEffect(() => { fetchGroups().then(d => setGroups(d.rows || d || [])); }, []);
+  useEffect(() => { fetchMemberships().then(d => setMemberships(d || [])); }, []);
 
   // Close the menu on outside click or Escape.
   useEffect(() => {
@@ -109,6 +134,39 @@ export default function ReportsPage() {
 
   const listFilter = LISTS[field];
   const accessor = FIELD_ACCESSORS[field];
+
+  /*
+   * Every group a person belongs to, from both places Pillar keeps them.
+   *
+   * Tags live on the member record; SMS groups are a separate many-to-many
+   * joined through sms_contacts by phone, because a contact row is not the same
+   * row as a member. Built once and cached — resolving this per member per
+   * keystroke would walk the whole membership table on every character typed.
+   */
+  const groupsOf = useMemo(() => {
+    const nameById = new Map(groups.map(g => [g.id, String(g.name || '').trim()]));
+    /* contact id -> the SMS groups that contact is in */
+    const byContact = new Map();
+    for (const gm of memberships) {
+      const n = nameById.get(gm.group_id);
+      if (!n) continue;
+      if (!byContact.has(gm.contact_id)) byContact.set(gm.contact_id, []);
+      byContact.get(gm.contact_id).push(n);
+    }
+    /* phone -> those same groups, which is how a member is reached from here */
+    const byPhone = new Map();
+    for (const c of contacts) {
+      const k = normPhone(c.phone);
+      const gs = byContact.get(c.id);
+      if (!k || !gs?.length) continue;
+      byPhone.set(k, [...(byPhone.get(k) || []), ...gs]);
+    }
+    return m => {
+      const out = new Set(memberTags(m));
+      for (const n of byPhone.get(normPhone(m.phone)) || []) out.add(n);
+      return [...out];
+    };
+  }, [groups, memberships, contacts]);
   const isSms = field === SMS_FIELD;
   const query = q.trim().toLowerCase();
 
@@ -152,12 +210,12 @@ export default function ReportsPage() {
     for (const m of members) {
       // Parked records are found through their own list, not general search.
       if (isArchived(m)) continue;
-      const val = accessor(m);
+      const val = accessor(m, { groupsOf });
       if (val && matches(val, query, op)) out.push({ m, val });
       if (out.length >= MAX_RESULTS) break;
     }
     return out;
-  }, [members, field, query, op, accessor, listFilter]);
+  }, [members, field, query, op, accessor, listFilter, groupsOf]);
 
   const shown = isSms ? smsResults : results;
 
@@ -176,6 +234,38 @@ export default function ReportsPage() {
       columns: isSms ? ['Name', 'Mobile', 'Email'] : ['Name', field],
       rows, withExtra: isSms,
     });
+    printHtml(html, { filename });
+  }
+
+  /*
+   * The deacon roster — every deacon and the households they shepherd.
+   *
+   * Stands apart from the Print button above, which prints whatever the filters
+   * are showing. This one always prints the same thing, so it does not depend on
+   * anyone having searched the right way first.
+   */
+  const deaconRoster = useMemo(() => {
+    const assigned = members.filter(m => m.deacon_id && !isArchived(m));
+    const ids = [...new Set(assigned.map(m => m.deacon_id))];
+    const byId = new Map(members.map(m => [m.id, m]));
+
+    return ids
+      .map(id => byId.get(id))
+      .filter(Boolean)
+      .map(d => ({
+        name: d.name || '(no name)',
+        phone: formatPhone(d.phone) || '',
+        /* Grouped into households, so a family of four reads as one visit. */
+        households: groupByFamily(assignedToDeacon(assigned, d.id)).map(g => ({
+          label: g.label,
+          members: g.members.map(m => ({ name: m.name || '', phone: formatPhone(m.phone) || '' })),
+        })),
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+  }, [members]);
+
+  function printRoster() {
+    const { html, filename } = buildDeaconRosterDoc({ deacons: deaconRoster });
     printHtml(html, { filename });
   }
 
@@ -266,6 +356,15 @@ export default function ReportsPage() {
                       title={`Print this list of ${shown.length}`}>
                 <Icon d={P.print} size={18} />
                 <span>Print</span>
+              </button>
+            )}
+
+            {/* Always available: it does not depend on the filters above. */}
+            {deaconRoster.length > 0 && (
+              <button type="button" className="rp-print ghost" onClick={printRoster}
+                      title={`Print all ${deaconRoster.length} deacons and their families`}>
+                <Icon d={P.print} size={18} />
+                <span>Print deacon roster</span>
               </button>
             )}
           </div>

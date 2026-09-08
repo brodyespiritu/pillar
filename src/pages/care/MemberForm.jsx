@@ -131,7 +131,9 @@ export default function MemberForm({ member, onClose, onSaved }) {
     if (!form.full_name.trim()) { setError('Name is required.'); setStep(0); return; }
     setSaving(true); setError('');
     const isNew = !member?.id;
-    const { data, error } = await saveMember(form);
+    /* `member` is the record as it stood before this edit — the digest needs
+       it to say what changed rather than only that something did. */
+    const { data, error } = await saveMember(form, member || null);
     setSaving(false);
     if (error) { setError(error.message); return; }
     onSaved({ isNew, member: data || form });

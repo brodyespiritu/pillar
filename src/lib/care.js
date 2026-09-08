@@ -205,7 +205,57 @@ export async function fetchMembers() {
 }
 
 /* ── Member CRUD ───────────────────────────────────── */
-export async function saveMember(member) {
+
+/*
+ * What actually changed, in words.
+ *
+ * The digest used to be able to say only "Also edited: Pansy Loudermilk",
+ * because nothing anywhere recorded what an edit consisted of — the row was
+ * overwritten and the old values were gone. A name with no change attached is
+ * worse than silence: it tells a reader something happened and then makes them
+ * open the record to find out what, which is the work the digest exists to save.
+ *
+ * Only fields a person would talk about are compared. Nobody needs to be told
+ * that updated_at moved.
+ */
+const WATCHED = [
+  ['category',      'Care type'],
+  ['status',        'Status'],
+  ['priority',      'Priority'],
+  ['care_notes',    'Note'],
+  ['hospital_name', 'Hospital'],
+  ['room_number',   'Room'],
+  ['floor',         'Floor'],
+  ['surgery_type',  'Surgery'],
+  ['surgery_date',  'Surgery date'],
+  ['admission_date','Admitted'],
+  ['assigned_name', 'Assigned to'],
+  ['phone',         'Phone'],
+  ['address',       'Address'],
+];
+
+const shown = v => {
+  const s = String(v ?? '').trim();
+  return s || '(blank)';
+};
+
+export function describeChanges(before = {}, after = {}) {
+  const out = [];
+  for (const [key, label] of WATCHED) {
+    if (!(key in after)) continue;                 // not part of this save
+    const a = String(before?.[key] ?? '').trim();
+    const b = String(after?.[key] ?? '').trim();
+    if (a === b) continue;
+    /* A note is quoted rather than shown as "x -> y": the new wording is the
+       information, and the old wording is just noise once it is replaced. */
+    out.push(key === 'care_notes'
+      ? `Note: ${shown(b)}`
+      : `${label}: ${shown(a)} \u2192 ${shown(b)}`);
+  }
+  return out;
+}
+
+export async function saveMember(member, before = null) {
   const payload = { ...member };
   delete payload.contact_logs;
   // strip empty date strings → null
@@ -219,6 +269,18 @@ export async function saveMember(member) {
   if (member.id) {
     const { data, error } = await supabase
       .from('care_members').update(payload).eq('id', member.id).select().single();
+    /* Recorded after the write, and never allowed to fail the save — an edit
+       that went through must not report an error because its note did not. */
+    if (!error && before) {
+      const details = describeChanges(before, payload);
+      if (details.length) {
+        await supabase.from('change_log').insert({
+          member_name: data?.full_name || member.full_name || '',
+          action: 'Updated',
+          details: details.join('; '),
+        }).then(r => r.error && console.warn('[care] change_log:', r.error.message));
+      }
+    }
     return { data, error };
   }
   delete payload.id;
@@ -232,8 +294,72 @@ export async function deleteMember(id) {
 }
 
 /* ── Contact logs ──────────────────────────────────── */
-export async function addLog(log) {
-  return supabase.from('contact_logs').insert(log).select().single();
+/*
+ * Somebody moving out of the hospital, read out of a follow-up note.
+ *
+ * A category is set the day a person is added and then almost never revisited,
+ * because the person writing the update is describing what changed, not
+ * re-filing the record. So somebody admitted in March, moved to rehab in April
+ * and home in May still carries a "Hospitalized" tag in June — the tag stops
+ * describing them and starts misleading whoever reads the list.
+ *
+ * Only the move out of hospital is read, and only when the note says it
+ * happened. What it deliberately does not do is guess in the other direction:
+ * a note about someone going back in is left alone, because upgrading a
+ * person's severity automatically is a decision a human should make.
+ */
+
+/* The move itself: transferred/moved/discharged/went, to somewhere that is
+   rehab or nursing care. Bounded to one clause so it cannot span sentences. */
+const MOVED_TO_REHAB = new RegExp(
+  '\\b(?:mov(?:ed|ing)|transferr?ed|discharg(?:ed|ing)|releas(?:ed|ing)|went|sent|admitted|placed|now)\\b'
+  + '[^.!?;]{0,44}'
+  + '\\b(?:rehab\\w*|skilled nursing|nursing (?:home|facility|center)|\\bsnf\\b|'
+  + 'physical therapy|recovery (?:center|unit|facility)|long[- ]?term care|step[- ]?down)\\b',
+  'i',
+);
+
+/* Or simply sent home, which is the same movement. */
+const DISCHARGED_HOME = /\b(?:discharged|released|went|came|home)\b[^.!?;]{0,24}\b(?:home|to (?:her|his|their) (?:house|home)|from the hospital)\b/i;
+
+/* Said about a future move, not a completed one. Scoped to the clause so
+   "moved to rehab and will start therapy Monday" still counts as a move. */
+const FUTURE = /\b(?:will|going to|hop(?:es?|ing) to|plans? to|may|might|should|expects? to|scheduled to|if|when)\b[^.!?;]{0,30}\b(?:mov\w*|transferr?\w*|discharg\w*|releas\w*|go|going|come|coming)\b/i;
+
+/* Back in, or never left — either way the hospital tag still fits. */
+const STILL_HOSPITAL = /\b(?:back (?:in|at|to) the hospital|re-?admitted|still (?:in|at) the hospital|returned to the hospital|not (?:been )?discharged)\b/i;
+
+/*
+ * The category a note argues for, or null to leave the record alone.
+ * Exported so the decision can be exercised directly rather than only through
+ * a database write.
+ */
+export function categoryAfterNote(category, notes) {
+  const s = String(notes || '');
+  if (!s.trim()) return null;
+  if (category !== 'Hospitalized') return null;
+  if (STILL_HOSPITAL.test(s)) return null;
+  if (!MOVED_TO_REHAB.test(s) && !DISCHARGED_HOME.test(s)) return null;
+  if (FUTURE.test(s)) return null;
+  return 'Recovering';
+}
+
+/*
+ * Saving a log can also retire a tag the log itself contradicts. `member` is
+ * optional — without it the log is written and nothing is re-filed, which is
+ * what any older caller gets.
+ */
+export async function addLog(log, member = null) {
+  const res = await supabase.from('contact_logs').insert(log).select().single();
+  if (res.error || !member) return res;
+
+  const next = categoryAfterNote(member.category, log.notes);
+  if (next && next !== member.category) {
+    const { error } = await supabase.from('care_members')
+      .update({ category: next }).eq('id', member.id);
+    if (!error) return { ...res, categoryChanged: { from: member.category, to: next } };
+  }
+  return res;
 }
 
 export async function deleteLog(id) {

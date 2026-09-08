@@ -37,8 +37,14 @@ alter table sms_group_members enable row level security;
  * one staff member built was invisible to everyone else. `owner` is kept as a
  * record of who added the row, not as an access boundary.
  */
-drop policy if exists "own groups"   on sms_groups;
-drop policy if exists "own contacts" on sms_contacts;
+drop policy if exists "own groups"     on sms_groups;
+drop policy if exists "own contacts"   on sms_contacts;
+-- Dropped before creating, or a second run fails here with 42710 (policy already
+-- exists) and never reaches the opted_out columns below. The whole file has to be
+-- safe to re-run, because that is how it will be used.
+drop policy if exists "staff groups"   on sms_groups;
+drop policy if exists "staff contacts" on sms_contacts;
+drop policy if exists "own members"    on sms_group_members;
 create policy "staff groups"   on sms_groups   for all using (auth.role() = 'authenticated');
 create policy "staff contacts" on sms_contacts for all using (auth.role() = 'authenticated');
 -- membership rows are reachable via their owned group/contact

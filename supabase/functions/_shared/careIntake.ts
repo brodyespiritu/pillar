@@ -14,9 +14,11 @@
  * Pure functions only — no network — so the whole decision path is testable.
  */
 
+/* Kept in step with CATEGORIES in src/lib/care.js — the app offers fourteen and
+   a record texted in has to be filable as any of them. */
 export const CATEGORIES = [
   'Hospitalized', 'Grieving', 'New Member', 'Homebound', 'Crisis',
-  'Pain', 'Sick', 'Prayer Request', 'Follow Up', 'Surgery',
+  'Pain', 'Sick', 'Cancer', 'Prayer Request', 'Follow Up', 'Surgery',
   'Test/Treatment', 'Recovering', 'Other',
 ];
 
@@ -25,13 +27,16 @@ export const CATEGORIES = [
 const CATEGORY_RULES: Array<[string, RegExp]> = [
   ['Grieving',       /passed away|passed on|died|death of|funeral|memorial service|lost (?:her|his|their) /i],
   ['Surgery',        /surger|operat(?:ion|ing)|going under the knife|procedure to/i],
+  /* The diagnosis, not the appointment: "chemo Tuesday" is still Test/Treatment,
+     but naming the disease files it under the disease. */
+  ['Cancer',         /\bcancer\b|\boncolog|\btumou?rs?\b|\bmalignan|\bleukemia\b|\blymphoma\b|\bcarcinoma\b|\bmetasta/i],
   ['Test/Treatment', /chemo|radiation|dialysis|biopsy|\bscan\b|\bmri\b|\bct\b|x-?ray|blood work|lab work|treatment|infusion/i],
   ['Hospitalized',   /hospital|admitted|icu\b|\ber\b|emergency room|ambulance/i],
   ['Recovering',     /recover|rehab|physical therapy|healing|discharged|home from/i],
   ['Homebound',      /homebound|shut[- ]?in|can'?t get out|housebound/i],
   ['Crisis',         /crisis|urgent|critical|emergency|life support|hospice/i],
   ['Pain',           /\bin pain|hurting|aching|severe pain/i],
-  ['Sick',           /\bsick|\bill\b|\billness|\bflu\b|covid|pneumonia|infection|fever|cancer|stroke|heart attack|brok(?:e|en)|fracture|injur|\bfell\b|\bwreck|accident/i],
+  ['Sick',           /\bsick|\bill\b|\billness|\bflu\b|covid|pneumonia|infection|fever|stroke|heart attack|brok(?:e|en)|fracture|injur|\bfell\b|\bwreck|accident/i],
   ['Follow Up',      /follow[- ]?up|check(?:ing)? in on|touch base/i],
   ['Prayer Request', /pray|prayer|lift (?:her|him|them) up/i],
 ];

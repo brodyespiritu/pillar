@@ -1,6 +1,9 @@
 import { confirmDialog, alertDialog } from "../../lib/dialog";
+import { flashSaved } from '../../lib/flash';
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
+import { useIsMobile } from '../../lib/useIsMobile';
+import MembersMobile from './MembersMobile';
 import TopNav from '../../components/TopNav';
 import { P, Icon } from '../../lib/icons';
 import { useAuth } from '../../context/AuthContext';
@@ -15,6 +18,7 @@ import {
   allGroups, inGroup, assignedToDeacon, deaconOf, DEACON_GROUP, groupByFamily,
   markMemberAsProspect, restoreProspectToMember, isHiddenProspect,
   markMemberInactive, reactivateMember, isInactive, isArchived,
+  createNewHousehold, newHouseholdPatch,
 } from '../../lib/members';
 import ManageGroupsModal from './ManageGroupsModal';
 import AddFamilyModal from './AddFamilyModal';
@@ -23,6 +27,7 @@ import './Members.css';
 
 export default function MembersPage() {
   const location = useLocation();
+  const isMobile = useIsMobile();
   const { profile } = useAuth();
   const isAdmin = normalizeRole(profile?.role) === 'Admin';
   const [data, setData]   = useState({ rows: [], missing: false });
@@ -87,13 +92,40 @@ export default function MembersPage() {
     if (!ok) return;
     const { error } = await markMemberAsProspect(m.id);
     if (error) return alertDialog(`Could not update ${m.name}: ${error.message}`);
+    flashSaved();
     setViewing(null);
     await load();
+  }
+
+  /*
+   * Out of their parents' household and into their own — the eighteenth
+   * birthday case. Nothing is deleted; they keep the record, the roll and the
+   * groups, and simply stop being filed under someone else's family.
+   */
+  async function newHousehold(m) {
+    const others = familyMembers(data.rows, m);
+    const ok = await confirmDialog({
+      title: 'Create new household',
+      message: others.length
+        ? `Move ${m.name} into their own household, separate from ${others.map(o => o.name).join(', ')}? `
+          + `${m.name} becomes the head of it. Nothing is deleted, and the rest of the household is unchanged.`
+        : `${m.name} is not in a household with anyone else. Create one for them anyway?`,
+      confirmLabel: 'Create household',
+    });
+    if (!ok) return;
+    const { error } = await createNewHousehold(m);
+    if (error) return alertDialog(`Could not update ${m.name}: ${error.message}`);
+    flashSaved();
+    await load();
+    /* Kept open, showing the new household — the person doing this usually
+       wants to see it took. */
+    setViewing(v => (v && v.id === m.id ? { ...v, ...newHouseholdPatch(v) } : v));
   }
 
   async function restoreMember(m) {
     // One "Restore" for both states — whichever parked them, this brings them back.
     const { error } = isInactive(m) ? await reactivateMember(m.id) : await restoreProspectToMember(m.id);
+    if (!error) flashSaved();
     if (error) return alertDialog(`Could not restore ${m.name}: ${error.message}`);
     setViewing(null);
     await load();
@@ -107,6 +139,7 @@ export default function MembersPage() {
     });
     if (!ok) return;
     const { error } = await markMemberInactive(m.id);
+    if (!error) flashSaved();
     if (error) return alertDialog(`Could not update ${m.name}: ${error.message}`);
     setViewing(null);
     await load();
@@ -156,6 +189,11 @@ export default function MembersPage() {
   const safePage = Math.min(page, totalPages - 1);
   const pageRows = rows.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE);
 
+  /* The phone gets its own directory — a grid of people rather than a table
+     with a pager, which is unusable at this width. It loads its own rows, so
+     none of the desktop state above applies to it. */
+  if (isMobile) return <MembersMobile />;
+
   return (
     <div className="mbr-wrap">
       <TopNav />
@@ -169,6 +207,7 @@ export default function MembersPage() {
               onChanged={load}
               onBack={() => setViewing(null)}
               onEdit={() => setEdit(viewing)}
+              onNewHousehold={familyMembers(data.rows, viewing).length ? () => newHousehold(viewing) : null}
               onMakeProspect={() => makeProspect(viewing)}
               onMakeInactive={() => makeInactive(viewing)}
               onRestoreMember={() => restoreMember(viewing)}
@@ -291,7 +330,7 @@ function MemberCard({ member, onOpen }) {
 /* ── Full member profile ── */
 const PROFILE_TABS = ['Info', 'Notes', 'Groups', 'Attachments'];
 
-function MemberProfile({ member, allRows = [], onOpenMember, onChanged, onBack, onEdit, onMakeProspect, onMakeInactive, onRestoreMember, onDelete }) {
+function MemberProfile({ member, onNewHousehold, allRows = [], onOpenMember, onChanged, onBack, onEdit, onMakeProspect, onMakeInactive, onRestoreMember, onDelete }) {
   const [tab, setTab] = useState('Info');
   const [menu, setMenu] = useState(false);
   const [addFam, setAddFam] = useState(false);
@@ -339,6 +378,13 @@ function MemberProfile({ member, allRows = [], onOpenMember, onChanged, onBack, 
                           <Icon d={P.archive} size={14} />Mark as Inactive
                         </button>
                       </>}
+                  {/* Only where there is a household to leave — offering it to
+                      someone already on their own says nothing. */}
+                  {onNewHousehold && (
+                    <button onClick={() => { setMenu(false); onNewHousehold(); }}>
+                      <Icon d={P.users} size={14} />Create New Household
+                    </button>
+                  )}
                   <button className="danger" onClick={() => { setMenu(false); onDelete(); }}><Icon d={P.trash} size={14} />Remove Member</button>
                 </div>
               </>)}
@@ -614,7 +660,10 @@ function printMember(m) {
 }
 
 /* ── Add / Edit member ── */
-function MemberModal({ member, onClose, onSaved, onDeleted }) {
+/* Exported so the phone's directory can reuse it — it is a .modal.sheet, which
+   mobileForms.css already restyles for a phone, so a second edit form would be
+   two forms to keep in step for no gain. */
+export function MemberModal({ member, onClose, onSaved, onDeleted }) {
   const editing = !!member.id;
   const [f, setF] = useState({
     name: member.name || '', phone: member.phone || '', email: member.email || '',

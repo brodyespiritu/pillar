@@ -2,88 +2,107 @@
 
 .cv-overlay {
   position: fixed; inset: 0; z-index: 500;
-  background: rgba(11,53,88,0.35);
-  display: flex; align-items: center; justify-content: center; padding: 28px;
+  background: var(--surface);
+  display: block; padding: 0;
   animation: cvFade 0.15s ease;
 }
 @keyframes cvFade { from { opacity: 0; } to { opacity: 1; } }
 
+/*
+ * Full screen rather than a card.
+ *
+ * Both columns carry min-height: 0. A grid item's automatic minimum size is its
+ * own content, so .cv-main grew to the full height of the thread — 2,600px for
+ * forty messages — the modal clipped it, and .cv-scroll never became a scroll
+ * container because nothing was ever constraining it. The compose box sat below
+ * the fold, off screen. min-height: 0 is what lets the row cap them.
+ */
 .cv-modal {
-  width: 940px; max-width: 100%; height: 640px; max-height: calc(100vh - 56px);
-  display: grid; grid-template-columns: 300px 1fr;
-  background: var(--surface); border-radius: var(--radius-lg); overflow: hidden;
-  box-shadow: 0 24px 70px rgba(11,53,88,0.34);
-  animation: cvPop 0.2s cubic-bezier(0.16,1,0.3,1);
+  width: 100%; height: 100%;
+  display: grid; grid-template-columns: 340px 1fr;
+  background: var(--surface); overflow: hidden;
+  animation: cvPop 0.22s cubic-bezier(0.16,1,0.3,1);
 }
-@keyframes cvPop { from { transform: translateY(12px) scale(0.99); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes cvPop { from { transform: translateY(8px); opacity: 0; } to { transform: none; opacity: 1; } }
 
 /* ── Sidebar ── */
-.cv-side { display: flex; flex-direction: column; border-right: 1px solid var(--border); background: var(--surface-2); min-width: 0; }
+.cv-side { display: flex; flex-direction: column; border-right: 1px solid var(--border); background: var(--surface-2); min-width: 0; min-height: 0; }
 .cv-side-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 16px 10px; }
 .cv-side-head h2 { font-size: 20px; font-weight: 800; color: var(--text); letter-spacing: -0.4px; }
 .cv-new {
   width: 34px; height: 34px; border-radius: 9px; background: none; color: var(--accent);
   display: flex; align-items: center; justify-content: center; transition: background 0.12s;
 }
-.cv-new:hover { background: var(--accent-soft); }
+/* The rail is already --surface-2; --accent-soft on it is all but invisible, so
+   a tinted rail lifts to --surface on hover the way .mg-group does. */
+.cv-new:hover { background: var(--surface); }
 
 .cv-search {
   display: flex; align-items: center; gap: 8px; margin: 0 14px 8px;
-  padding: 7px 11px; border-radius: 10px; background: var(--surface); border: 1px solid var(--border);
+  padding: 7px 11px; border-radius: var(--radius-sm); background: var(--surface); border: 1px solid var(--border);
   color: var(--text-3);
+  transition: border-color 0.15s, box-shadow 0.15s;
 }
+.cv-search:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(0,107,255,0.1); }
 .cv-search input { flex: 1; border: none; background: none; font-size: 14px; color: var(--text); outline: none; font-family: inherit; }
 
-.cv-list { flex: 1; overflow-y: auto; padding: 4px 8px 10px; }
+.cv-list { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 8px 10px; }
 .cv-list-empty { font-size: 13px; color: var(--text-3); padding: 18px 10px; line-height: 1.5; }
 .cv-thread {
   display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 11px;
   width: 100%; padding: 10px 10px; border-radius: 12px; background: none; text-align: left;
   transition: background 0.1s;
 }
-.cv-thread:hover { background: rgba(11,53,88,0.05); }
-.cv-thread.on { background: var(--accent); }
-.cv-thread.on .cv-thread-name, .cv-thread.on .cv-thread-prev, .cv-thread.on .cv-thread-time { color: #fff; }
-.cv-thread.on .cv-ava { background: rgba(255,255,255,0.25); color: #fff; }
+.cv-thread:hover { background: var(--surface); }
+/* Pillar never paints a list row solid accent. On a tinted rail the selected
+   row lifts to --surface with a 1px ring — .mg-group.on, .set-group.on. */
+.cv-thread.on { background: var(--surface); }
+.cv-thread.on .cv-thread-name { color: var(--accent); }
 
 .cv-ava {
   width: 40px; height: 40px; border-radius: 50%; flex-shrink: 0;
   display: flex; align-items: center; justify-content: center;
-  background: linear-gradient(160deg, #9BB4CE, #6E86A3); color: #fff;
-  font-size: 13.5px; font-weight: 700;
+  background: var(--accent-soft); color: var(--accent);
+  font-size: 13px; font-weight: 700;
 }
 .cv-ava.sm { width: 34px; height: 34px; font-size: 12px; }
 
 .cv-thread-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .cv-thread-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
-.cv-thread-name { font-size: 14.5px; font-weight: 700; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cv-thread-name { font-size: 14.5px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cv-thread-time { font-size: 12px; color: var(--text-3); flex-shrink: 0; }
 .cv-thread-prev { font-size: 13px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cv-unread { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); flex-shrink: 0; }
-.cv-thread.on .cv-unread { background: #fff; }
 
 /* ── Main / thread ── */
-.cv-main { position: relative; display: flex; flex-direction: column; min-width: 0; background: var(--surface); }
+.cv-main { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--surface); }
 .cv-close {
-  position: absolute; top: 14px; right: 14px; z-index: 2;
-  width: 32px; height: 32px; border-radius: 8px; background: none; color: var(--text-3);
+  position: absolute; top: 16px; right: 20px; z-index: 2;
+  width: 34px; height: 34px; border-radius: 9px;
+  background: var(--surface-2); color: var(--text-2);
   display: flex; align-items: center; justify-content: center; transition: background 0.12s, color 0.12s;
 }
-.cv-close:hover { background: var(--surface-2); color: var(--text); }
+.cv-close:hover { background: var(--border); color: var(--text); }
 
 .cv-conv-head {
   display: flex; align-items: center; gap: 11px;
-  padding: 14px 20px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+  padding: 15px 24px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+  /* Clear of the close button in the same corner. */
+  padding-right: 70px;
 }
 .cv-conv-headinfo { display: flex; flex-direction: column; }
 .cv-conv-name { font-size: 15px; font-weight: 700; color: var(--text); }
 .cv-conv-num { font-size: 12.5px; color: var(--text-3); }
 
 .cv-scroll {
-  flex: 1; overflow-y: auto; padding: 18px 20px 8px;
+  flex: 1; min-height: 0; overflow-y: auto; padding: 22px 24px 10px;
   display: flex; flex-direction: column; gap: 3px;
   background: var(--surface);
 }
+/* Full width would run a bubble the length of the monitor. The thread keeps a
+   reading column and centres it; in/out alignment is relative to that column.
+   flex-shrink: 0 so a long thread cannot squash the rows instead of scrolling. */
+.cv-scroll > * { width: 100%; max-width: 900px; margin-inline: auto; flex-shrink: 0; }
 .cv-thread-empty, .cv-sep {
   text-align: center; font-size: 11.5px; font-weight: 600; color: var(--text-3);
   margin: 12px auto 8px; letter-spacing: 0.2px;
@@ -93,34 +112,51 @@
 .cv-msg { display: flex; margin-top: 2px; }
 .cv-msg.out { justify-content: flex-end; }
 .cv-msg.in  { justify-content: flex-start; }
+/* The house bubble: 18px with a 6px tail, matching .rsp-remind-msg and
+   .tx-bubble. Was Apple's iMessage geometry and palette, which appear in no
+   token and nowhere else in the app. */
 .cv-bubble {
-  max-width: 74%; padding: 9px 14px; font-size: 14.5px; line-height: 1.35;
-  border-radius: 19px; white-space: pre-wrap; word-break: break-word;
+  max-width: 74%; padding: 12px 16px; font-size: 14.5px; line-height: 1.5;
+  border-radius: 18px; white-space: pre-wrap; word-break: break-word;
 }
-.cv-msg.out .cv-bubble { background: #0A84FF; color: #fff; border-bottom-right-radius: 6px; }
-.cv-msg.in  .cv-bubble { background: #E9E9EB; color: #0B0B0C; border-bottom-left-radius: 6px; }
-.cv-bubble.failed { background: #FDECEA; color: var(--red); border: 1px solid var(--red); }
+.cv-msg.out .cv-bubble { background: var(--accent); color: #fff; border-bottom-right-radius: 6px; }
+.cv-msg.in  .cv-bubble { background: var(--surface-2); color: var(--text); border-bottom-left-radius: 6px; }
+/*
+ * Qualified with .cv-msg.out on purpose. A bubble is only ever marked failed
+ * when it is outgoing (ConversationsModal.jsx:186), and a bare .cv-bubble.failed
+ * (0,2,0) loses to .cv-msg.out .cv-bubble (0,3,0) — so this rule's ground never
+ * painted, and an undelivered text rendered as an ordinary accent bubble with a
+ * red outline round it.
+ */
+.cv-msg .cv-bubble.failed { background: var(--red-soft); color: var(--red); border: 1px solid var(--red); }
 .cv-failed { text-align: right; font-size: 11px; color: var(--red); margin: 1px 2px 4px; }
 
 /* ── Compose ── */
 .cv-compose {
   display: flex; align-items: flex-end; gap: 10px;
-  padding: 12px 18px 16px; border-top: 1px solid var(--border); flex-shrink: 0;
+  /* Padded to sit under the 900px reading column, so the input lines up with
+     the bubbles above it instead of stretching the full width. */
+  padding: 14px max(24px, calc((100% - 900px) / 2)) 18px;
+  border-top: 1px solid var(--border); flex-shrink: 0;
 }
 .cv-compose textarea {
   flex: 1; resize: none; max-height: 120px;
-  padding: 9px 15px; border-radius: 20px; border: 1px solid var(--border);
+  /* 10px, not a capsule: it stops reading as one the moment it grows toward
+     its 120px max-height. Same field as .rsp-reply textarea. */
+  padding: 9px 15px; border-radius: 10px; border: 1px solid var(--border);
   font-size: 14.5px; font-family: inherit; color: var(--text); background: var(--surface);
   line-height: 1.4; outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
 }
-.cv-compose textarea:focus { border-color: #B9D2FF; }
+.cv-compose textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(0,107,255,0.1); }
 .cv-send {
   width: 34px; height: 34px; border-radius: 50%; flex-shrink: 0;
-  background: #0A84FF; color: #fff; display: flex; align-items: center; justify-content: center;
-  transition: opacity 0.12s, transform 0.08s;
+  background: var(--accent); color: #fff; display: flex; align-items: center; justify-content: center;
+  transition: background 0.12s, opacity 0.12s;
 }
-.cv-send:hover:not(:disabled) { transform: scale(1.05); }
-.cv-send:disabled { background: var(--border); color: var(--text-3); }
+/* Primary buttons in Pillar darken; none of them scale. */
+.cv-send:hover:not(:disabled) { background: var(--accent-hover); }
+.cv-send:disabled { opacity: 0.5; cursor: default; }
 
 /* ── Placeholder / new-message picker ── */
 .cv-placeholder {
@@ -128,26 +164,34 @@
   gap: 6px; text-align: center; padding: 40px;
 }
 .cv-placeholder-ic {
-  width: 64px; height: 64px; border-radius: 18px; margin-bottom: 8px;
+  width: 60px; height: 60px; border-radius: var(--radius); margin-bottom: 8px;
   background: var(--accent-soft); color: var(--accent);
+  box-shadow: inset 0 0 8px rgba(184,220,255,0.75);
   display: flex; align-items: center; justify-content: center;
 }
-.cv-placeholder p { font-size: 16px; font-weight: 700; color: var(--text); }
+.cv-placeholder p { font-size: 16px; font-weight: 600; color: var(--text); }
 .cv-placeholder span { font-size: 13px; color: var(--text-3); max-width: 300px; line-height: 1.5; }
 
 .cv-pick { display: flex; flex-direction: column; flex: 1; min-height: 0; }
-.cv-pick-head { padding: 16px 20px 12px; font-size: 16px; font-weight: 800; color: var(--text); }
+.cv-pick-head { padding: 16px 20px 12px; font-size: 15px; font-weight: 700; color: var(--text); }
 .cv-pick-search { margin: 0 16px 8px; }
-.cv-pick-list { flex: 1; overflow-y: auto; padding: 4px 10px 12px; }
+.cv-pick-list { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 10px 12px; }
 .cv-pick-row {
   display: flex; align-items: center; gap: 11px; width: 100%;
-  padding: 9px 10px; border-radius: 11px; background: none; text-align: left; transition: background 0.1s;
+  padding: 9px 10px; border-radius: 10px; background: none; text-align: left; transition: background 0.1s;
 }
 .cv-pick-row:hover { background: var(--surface-2); }
 .cv-pick-info { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 
-@media (max-width: 720px) {
-  .cv-overlay { padding: 0; }
-  .cv-modal { grid-template-columns: 1fr; height: 100%; max-height: 100%; border-radius: 0; }
-  .cv-side { display: none; }
+/*
+ * Narrow window: stack instead of hiding the list. The old rule dropped
+ * .cv-side entirely, which left no way to pick a conversation at all — the
+ * pane was unusable rather than merely cramped. Both tracks are minmax(0, …)
+ * so each keeps its own scrollbar.
+ */
+@media (max-width: 860px) {
+  .cv-modal { grid-template-columns: 1fr; grid-template-rows: minmax(0, 38%) minmax(0, 1fr); }
+  .cv-side { border-right: none; border-bottom: 1px solid var(--border); }
+  .cv-scroll { padding-inline: 16px; }
+  .cv-compose { padding-inline: 16px; }
 }
