@@ -253,7 +253,19 @@
  * switch; only the panel below widens. The conversation stays readable at any
  * width because .cv-scroll caps its own reading column at 900px and centres it.
  */
-.sms-container.pane { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; max-width: none; padding-bottom: 24px; }
+/*
+ * margin-inline MUST be 0, not the base rule's `auto`.
+ *
+ * .sms-scroll.pane makes this a flex item, and auto margins on a flex item's
+ * cross axis beat the default align-self: stretch — so with `margin: 26px auto`
+ * it stops filling the row, shrink-wraps to its content and centres. Measured
+ * 584px inside a 1500px window. max-width: none alone looks correct in the
+ * cascade and does nothing, which is what made this hard to see.
+ */
+.sms-container.pane {
+  flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column;
+  max-width: none; margin-inline: 0; padding-bottom: 24px;
+}
 .rsp-shell { flex: 1; min-height: 0; }
 .rsp-shell > .rsp-head-row, .rsp-shell > .rsp-search { flex-shrink: 0; }
 
