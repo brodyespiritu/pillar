@@ -69,7 +69,7 @@ export default function SmsOverview({ threads, library, scheduled, groups, membe
               <button key={c.key} className="ov-row" onClick={() => onOpen('responses')}>
                 <span className="ov-row-main">
                   <span className="ov-row-title">
-                    {c.unread > 0 && <span className="ov-dot" />}{c.key}
+                    {c.unread > 0 && <span className="ov-dot" />}{c.label}
                   </span>
                   <span className="ov-row-sub">
                     {c.replies.length} {c.replies.length === 1 ? 'reply' : 'replies'} · {when(c.lastAt)}

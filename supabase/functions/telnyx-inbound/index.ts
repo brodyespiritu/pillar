@@ -14,6 +14,7 @@ import { keyword } from '../_shared/careReply.ts';
 import { dinnerAck, rsvpName } from '../_shared/dinnerAck.ts';
 import { pollAnswer } from '../_shared/poll.ts';
 import { CARE_SIGNAL } from '../_shared/careIntake.ts';
+import { activeMaintenance } from '../_shared/maintenance.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -32,33 +33,50 @@ const START_WORDS = ['start', 'unstop', 'yes'];
  * every broadcast — Telnyx refused each one, so nobody was ever texted against
  * their wishes, but Pillar never knew.
  *
- * Matches on the last 10 digits so formatting differences in the stored number
- * do not cause a miss.
+ * Matched on the stored ten-digit columns (staff.phone10, sms_contacts.phone10).
+ * The ilike '%7065550100' this used never matched a number stored as
+ * "(706) 555-0100", which is how nearly the whole contact list is stored — so a
+ * STOP from most members flagged nothing.
+ *
+ * START only ever UNDOES a STOP. It used to switch Cares alerts on for any staff
+ * member who texted "yes" to anything — care texts, with medical details, that
+ * only an admin may grant. And because "yes" counted as handled, it never
+ * reached care intake, so "Reply YES to add them to Cares anyway" did nothing.
+ * Now a start word from somebody who has not opted out changes nothing and the
+ * message carries on to be read as what it is.
  */
 async function applyOptOut(supabase: any, fromNumber: string, optOut: boolean) {
   const last10 = fromNumber.replace(/\D/g, '').slice(-10);
-  if (!last10) return null;
+  if (last10.length !== 10) return null;
   let touched = 0;
 
   /* ── Staff: the Cares alert preference ── */
   const { data: staff } = await supabase
     .from('staff')
-    .select('id, phone, preferences')
-    .ilike('phone', `%${last10}`);
+    .select('id, preferences')
+    .eq('phone10', last10);
 
   for (const s of staff || []) {
-    const prefs = { ...(s.preferences || {}), caresSmsOptIn: !optOut, caresStopOptedOut: optOut };
-    // Resuming means the next message should carry the opt-out notice again.
-    if (!optOut) delete prefs.caresStopNoticeSent;
+    const prefs = { ...(s.preferences || {}) };
+    if (optOut) {
+      /* Remember whether they were on the list, so START can put back exactly
+         that and nothing more. */
+      if (prefs.caresSmsOptIn === true) prefs.caresStopOptedOut = true;
+      prefs.caresSmsOptIn = false;
+    } else {
+      if (prefs.caresStopOptedOut !== true) continue;      // never opted out: nothing to undo
+      prefs.caresSmsOptIn = true;
+      delete prefs.caresStopOptedOut;
+      delete prefs.caresStopNoticeSent;                    // resuming carries the notice again
+    }
     await supabase.from('staff').update({ preferences: prefs }).eq('id', s.id);
     touched += 1;
   }
 
   /* ── Congregation contacts: the opt-out flag ── */
-  const { data: contacts } = await supabase
-    .from('sms_contacts')
-    .select('id')
-    .ilike('phone', `%${last10}`);
+  let q = supabase.from('sms_contacts').select('id').eq('phone10', last10);
+  if (!optOut) q = q.eq('opted_out', true);               // only undo a real opt-out
+  const { data: contacts } = await q;
 
   if (contacts?.length) {
     const { error } = await supabase
@@ -99,12 +117,15 @@ Deno.serve(async (req) => {
     // Best-effort: carry over a known contact/guest name for the thread label.
     let name = '';
     const last10 = fromNumber.replace(/\D/g, '').slice(-10);
-    if (last10) {
+    if (last10.length === 10) {
       const { data } = await supabase
         .from('sms_messages')
         .select('to_name')
-        .ilike('to_number', `%${last10}`)
+        .eq('to10', last10)
+        .eq('channel', 'sms')
         .not('to_name', 'is', null)
+        .neq('to_name', '')
+        .order('created_at', { ascending: false })
         .limit(1);
       name = data?.[0]?.to_name || '';
     }
@@ -113,14 +134,18 @@ Deno.serve(async (req) => {
      * Who sent this decides which channel it is logged to. A Cares-alert staff
      * member's text is pastoral traffic — it must never land in the SMS log the
      * Responses tab reads, not even briefly before intake reclassifies it.
+     *
+     * Every staff row on that number is considered, not just the first one the
+     * database hands back: an old inactive row sharing the number would
+     * otherwise hide the active one, and a care report would land in the
+     * congregation log for every staff member to read.
      */
     let sender: any = null;
-    if (last10) {
+    if (last10.length === 10) {
       const { data } = await supabase
         .from('staff').select('id, name, active, preferences')
-        .ilike('phone', `%${last10}`).limit(1);
-      const s = data?.[0];
-      if (s && s.active !== false && s.preferences?.caresSmsOptIn === true) sender = s;
+        .eq('phone10', last10);
+      sender = (data || []).find((s: any) => s.active !== false && s.preferences?.caresSmsOptIn === true) || null;
     }
 
     /*
@@ -201,6 +226,36 @@ Deno.serve(async (req) => {
                 if (p?.id) await supabase.from('sms_messages').update({ channel: 'sms' }).eq('provider_id', p.id);
                 return;
               }
+            }
+
+            /*
+             * Not during maintenance — the one inbound path that must stop
+             * rather than merely go quiet.
+             *
+             * Intake is a conversation. It can ask "which Mary — 1 or 2?" and
+             * wait on the answer, and it can create a care record. With the
+             * reply blocked the question never arrives, but the thread is still
+             * left waiting on it, so the next text gets read as an answer to
+             * something nobody saw.
+             *
+             * HELD, AND MARKED — because unmarked it would simply be lost. This
+             * row is on channel 'care', and row-level security hides care rows
+             * from everyone in the app (sms-care-isolation.sql), so nobody would
+             * ever see the report. status 'HeldMaintenance' is what the query
+             * in sms-maintenance-schema.sql finds them by once the window ends,
+             * so someone with Cares access can enter each one by hand.
+             *
+             * Poll answers and dinner RSVPs above keep running. They are one
+             * turn each, the answer is worth keeping, and only their "thanks"
+             * text is withheld — by send-prospect-sms.
+             */
+            if (await activeMaintenance(supabase)) {
+              if (p?.id) {
+                const { error: holdErr } = await supabase.from('sms_messages')
+                  .update({ status: 'HeldMaintenance' }).eq('provider_id', p.id);
+                if (holdErr) console.error('could not mark held care report:', holdErr.message);
+              }
+              return;
             }
 
             const answer = await careIntake(supabase, fromNumber, text, s.name || 'staff');

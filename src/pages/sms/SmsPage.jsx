@@ -7,7 +7,8 @@ import {
   fetchContacts, addContact, addContacts, updateContact, deleteContact,
   fetchGroups, addGroup, deleteGroup,
   fetchMemberships, setContactGroups, importFromPillar,
-  sendBroadcast, smsSegments,
+  sendBroadcast, smsSegments, fetchLandlines, fetchDeaconDirectory, planRecipients, leftOutText,
+  targetSpec, reachedPhones, sendSummary, isDeaconsGroup, fetchPollAnswers,
   fetchLibrary, deleteLibraryItem, recordSend, saveToLibrary, createRsvpLink, fetchRsvpInfo,
   silentRecipients, REMINDER_TEXT, REMIND_STATUS,
   fetchScheduled, scheduleBroadcast, cancelScheduled,
@@ -20,13 +21,14 @@ import { fetchThreads, sendText, markRead, setRsvp, normPhone, formatPhone, sepL
 import '../guests/conversations.css';
 import { tallyReplies, parseHeadcount } from '../../lib/rsvp';
 import { groupCampaigns, campaignLabel } from '../../lib/campaigns';
-import { pollOptions } from '../../lib/poll';
+import { pollOptions, pollChoice } from '../../lib/poll';
 import RsvpLink, { MenuEditor } from './RsvpLink';
 import SmsOverview from './SmsOverview';
 import PillMenu from './PillMenu';
 import { splitByHours, windowOpen, WINDOW_LABEL } from '../../lib/quietHours';
 import { REPEATS, repeatSummary } from '../../lib/recurrence';
 import { NEW_GROUP, DISCLOSURE_DEFAULT, STOP_LINE, withStopLine, clearApproved } from '../../lib/consent';
+import { useMaintenance, maintenanceLabel } from '../../lib/maintenance';
 import '../care/Modal.css';
 import '../admin/Admin.css';
 import { useIsMobile } from '../../lib/useIsMobile';
@@ -61,13 +63,19 @@ export default function SmsPage() {
   const [library, setLibrary] = useState({ rows: [], missing: false });
   const [scheduled, setScheduled] = useState({ rows: [], missing: false });
   const [draft, setDraft] = useState({ body: '', n: 0 }); // n bumps to remount compose
+  /* Who a send can actually reach: numbers Telnyx refuses as landlines, and the
+     directory's deacons, which a Deacons-group text is limited to. */
+  const [landlines, setLandlines] = useState(() => new Set());
+  const [deacons, setDeacons] = useState(null);
+  const [pollAnswers, setPollAnswers] = useState([]);
 
   async function load() {
-    const [c, g, m, l, s, th] = await Promise.all([
+    const [c, g, m, l, s, th, ll, dd, pa] = await Promise.all([
       fetchContacts(), fetchGroups(), fetchMemberships(), fetchLibrary(), fetchScheduled(),
-      fetchThreads(),
+      fetchThreads(), fetchLandlines(), fetchDeaconDirectory(), fetchPollAnswers(),
     ]);
     setContacts(c); setGroups(g); setMembers(m); setLibrary(l); setScheduled(s); setThreads(th);
+    setLandlines(ll); setDeacons(dd); setPollAnswers(pa);
   }
   useEffect(() => { load(); }, []);
 
@@ -84,6 +92,9 @@ export default function SmsPage() {
         members={members}
         threads={threads.rows}
         library={library.rows}
+        landlines={landlines}
+        deacons={deacons}
+        pollAnswers={pollAnswers}
         reload={load}
       />
     );
@@ -121,7 +132,8 @@ export default function SmsPage() {
           ) : (<>
             {tab === 'broadcast' && (<>
               <Broadcast key={draft.n} owner={user?.id} initialBody={draft.body}
-                         contacts={contacts.rows} groups={groups.rows} members={members} reload={load} />
+                         contacts={contacts.rows} groups={groups.rows} members={members}
+                         landlines={landlines} deacons={deacons} reload={load} />
               <SmsOverview threads={threads} library={library} scheduled={scheduled}
                            groups={groups.rows} members={members} contacts={contacts.rows}
                            onOpen={setTab} />
@@ -129,9 +141,9 @@ export default function SmsPage() {
             {tab === 'library'   && <Library library={library} scheduled={scheduled} onUse={useMessage} reload={load} />}
             {tab === 'contacts'  && <Contacts owner={user?.id} contacts={contacts.rows} groups={groups.rows} members={members} reload={load} />}
             {tab === 'groups'    && <Groups owner={user?.id} groups={groups.rows} members={members}
-                                 contacts={contacts.rows} reload={load} />}
+                                 contacts={contacts.rows} deacons={deacons} reload={load} />}
             {tab === 'responses' && <Responses threads={threads} contacts={contacts.rows}
-              library={library.rows} reload={load} />}
+              library={library.rows} pollAnswers={pollAnswers} reload={load} />}
           </>)}
         </div>
       </main>
@@ -140,13 +152,17 @@ export default function SmsPage() {
 }
 
 /* ═══════════ Broadcast ═══════════ */
-function Broadcast({ owner, initialBody = '', contacts, groups, members, reload }) {
+function Broadcast({ owner, initialBody = '', contacts, groups, members, landlines, deacons, reload }) {
   const [target, setTarget] = useState('all');   // 'all' | groupId
   const [body, setBody] = useState(initialBody);
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState(null);
   const [scheduling, setScheduling] = useState(false);   // modal open
   const [scheduledFor, setScheduledFor] = useState(null); // confirmation banner
+  /* Scheduled texting maintenance: the composer greys out, locks, and says until
+     when. The send functions refuse during a window regardless — this is so
+     nobody writes a whole message only to be told so when they press send. */
+  const paused = useMaintenance();
   /* A Dinner send has its replies counted into a headcount on the Responses
      tab; everything else is just a message. */
   const [msgType, setMsgType] = useState('General');
@@ -177,24 +193,16 @@ function Broadcast({ owner, initialBody = '', contacts, groups, members, reload 
   useEffect(() => { setLink(''); setMenu(null); setLinkErr(''); }, [body, msgType]);
 
   /*
-   * Anyone still in New has not been told they are on the list, so a
-   * congregation-wide send leaves them out — being told is what puts them on
-   * the regular list. Choosing the New group by name still reaches them, which
-   * is how the approval itself goes out.
+   * Who this reaches, by the same rules the server applies at the moment of
+   * sending: nobody who texted STOP, nobody still waiting in New (unless this is
+   * the New group), no landlines, one text per phone, and for the Deacons group
+   * only numbers belonging to a deacon in the member directory.
    */
-  const awaitingIds = useMemo(() => {
-    const g = groups.find(x => x.name === NEW_GROUP);
-    if (!g) return new Set();
-    return new Set(members.filter(m => m.group_id === g.id).map(m => m.contact_id));
-  }, [groups, members]);
-
-  const recipients = useMemo(() => {
-    /* Anyone who texted STOP is out of every list. Telnyx would refuse them
-       anyway; excluding them here keeps the count honest. */
-    if (target === 'all') return contacts.filter(c => c.phone?.trim() && !c.opted_out && !awaitingIds.has(c.id));
-    const ids = new Set(members.filter(m => m.group_id === target).map(m => m.contact_id));
-    return contacts.filter(c => ids.has(c.id) && c.phone?.trim() && !c.opted_out);
-  }, [target, contacts, members, awaitingIds]);
+  const { list: recipients, left } = useMemo(
+    () => planRecipients({ target, contacts, groups, members, landlines, deacons }),
+    [target, contacts, groups, members, landlines, deacons],
+  );
+  const leftOut = leftOutText(left);
 
   const targetLabel = target === 'all'
     ? 'All congregation'
@@ -203,20 +211,23 @@ function Broadcast({ owner, initialBody = '', contacts, groups, members, reload 
   const seg = smsSegments(body);
 
   async function send() {
-    if (!body.trim() || !recipients.length) return;
+    if (paused || !body.trim() || !recipients.length) return;
     if (!(await confirmDialog({ message: `Send this message to ${recipients.length} ${recipients.length === 1 ? 'person' : 'people'}?` }))) return;
     setSending(true); setResult(null); setScheduledFor(null);
-    const res = await sendBroadcast(recipients, body);
+    const res = await sendBroadcast(recipients, body, undefined, undefined, targetSpec(target));
     setResult(res);
     setSending(false);
     if (res.sent) {
-      await recordSend(owner, body.trim(), targetLabel, recipients.length, null, msgType);
+      await recordSend(owner, body.trim(), targetLabel, res.sent, null, msgType);
       setBody('');
       reload?.();
     }
   }
 
   async function onScheduled({ sendAt, save, title, repeat }) {
+    /* A scheduling sheet opened just before the window began must not slip one
+       through: the bar is inert during maintenance, but the sheet is not in it. */
+    if (paused) { setScheduling(false); return; }
     const when = sendAt.toISOString();
     const { error } = await scheduleBroadcast({
       owner, body: body.trim(), target_label: targetLabel, recipients, send_at: when,
@@ -246,23 +257,30 @@ function Broadcast({ owner, initialBody = '', contacts, groups, members, reload 
         * than labelled rows — the bar has room for two controls, and the send
         * is the only round thing on the page.
         */}
-      <div className="sms-compose">
-        <textarea className="sms-body" rows={5} value={body}
-          onChange={e => setBody(e.target.value)}
-          placeholder="What do you want to say to the congregation?" />
+      <div className={`sms-compose ${paused ? 'paused' : ''}`}>
+        <div className="sms-body-wrap">
+          <textarea className="sms-body" rows={5} value={body}
+            onChange={e => setBody(e.target.value)}
+            disabled={!!paused}
+            placeholder={paused ? '' : 'What do you want to say to the congregation?'} />
+          {paused && <p className="sms-paused" role="status">{maintenanceLabel(paused)}</p>}
+        </div>
 
-        <div className="sms-bar">
+        {/* inert: every pill, the schedule button and Send stop taking clicks and
+            keyboard focus at once, rather than disabling each one by hand. */}
+        <div className="sms-bar" inert={paused ? true : undefined}>
           <PillMenu
             ariaLabel="Who to send to"
             icon={P.users}
             value={target}
             onChange={setTarget}
             options={[
+              /* The number each option would actually text, not the size of the list. */
               { key: 'all', label: 'All congregation',
-                badge: contacts.filter(c => c.phone?.trim() && !c.opted_out && !awaitingIds.has(c.id)).length },
+                badge: planRecipients({ target: 'all', contacts, groups, members, landlines, deacons }).list.length },
               ...groups.map(g => ({
                 key: g.id, label: g.name,
-                badge: members.filter(m => m.group_id === g.id).length,
+                badge: planRecipients({ target: g.id, contacts, groups, members, landlines, deacons }).list.length,
               })),
             ]}
           />
@@ -289,10 +307,9 @@ function Broadcast({ owner, initialBody = '', contacts, groups, members, reload 
 
       <p className="sms-meta">
         {recipients.length} recipient{recipients.length === 1 ? '' : 's'} · {targetLabel}
-        {seg.len > 0 && ` · ${seg.segments} segment${seg.segments === 1 ? '' : 's'}`}
+        {seg.len > 0 && ` · ${seg.segments} segment${seg.segments === 1 ? '' : 's'} each, ${(seg.segments * recipients.length).toLocaleString()} billed`}
         {' · '}Each person gets their own text, not a group thread.
-        {target === 'all' && awaitingIds.size > 0 &&
-          ` ${awaitingIds.size} new contact${awaitingIds.size === 1 ? '' : 's'} left out until approval is sent.`}
+        {leftOut && ` Left out: ${leftOut}.`}
       </p>
 
       {/* What a poll will actually accept, read back from the wording. Written
@@ -322,13 +339,16 @@ function Broadcast({ owner, initialBody = '', contacts, groups, members, reload 
         </div>
       )}
 
-      {result && (
-        <div className={`sms-result ${result.failed?.length ? 'warn' : 'ok'}`}>
-          <Icon d={result.failed?.length ? P.shield : P.check} size={15} />
-          {result.sent} sent{result.failed?.length ? ` · ${result.failed.length} failed` : ''}
-          {result.failed?.length > 0 && <span className="sms-result-err">{result.failed[0].error}</span>}
-        </div>
-      )}
+      {result && (() => {
+        const r = sendSummary(result);
+        return (
+          <div className={`sms-result ${r.notSent || !r.sent ? 'warn' : 'ok'}`}>
+            <Icon d={r.notSent || !r.sent ? P.shield : P.check} size={15} />
+            {r.sent} sent{r.notSent ? ` · ${r.notSent} not sent` : ''}{r.skipped ? ` · ${r.skipped} skipped` : ''}
+            {r.reason && <span className="sms-result-err">{r.reason}</span>}
+          </div>
+        );
+      })()}
       {scheduledFor && (
         <div className="sms-result ok">
           <Icon d={P.clock} size={15} />
@@ -819,7 +839,7 @@ function ContactModal({ owner, contact, groups, members, onClose, onSaved }) {
  * inbound reply is attributed to the last thing we sent that person.
  */
 
-function Responses({ threads, contacts, library = [], reload }) {
+function Responses({ threads, contacts, library = [], pollAnswers = [], reload }) {
   /*
    * Which message is open, and which person inside it.
    *
@@ -856,6 +876,8 @@ function Responses({ threads, contacts, library = [], reload }) {
   const listRef = useRef(null);      // column 2 list
   const scrollRef = useRef(null);    // column 3 thread
   const keepScroll = useRef(null);   // scroll positions held across a reload
+  /* Scheduled texting maintenance greys out the reply box and Remind. */
+  const paused = useMaintenance();
   /* Replies that were still unread when this list was opened. They come up
      green and fade out, so what arrived since the last look is obvious without
      leaving a highlight sitting there afterwards. */
@@ -924,7 +946,7 @@ function Responses({ threads, contacts, library = [], reload }) {
     const { ok, held } = splitByHours(silent);
     setLinking(null);
     setRemind({
-      title: c.key, prompt: c.prompt, who: ok, held,
+      title: c.label, prompt: c.prompt, who: ok, held,
       covered: everyone.length - silent.length,
       text: REMINDER_TEXT, sent: null, error: '',
     });
@@ -932,7 +954,7 @@ function Responses({ threads, contacts, library = [], reload }) {
 
   async function sendReminder() {
     const text = String(remind?.text ?? '').trim();
-    if (reminding || !remind?.who?.length || !text) return;
+    if (paused || reminding || !remind?.who?.length || !text) return;
 
     /*
      * Re-checked at the moment of sending, not just when the dialog opened —
@@ -954,7 +976,8 @@ function Responses({ threads, contacts, library = [], reload }) {
     setReminding(true);
     const res = await sendBroadcast(ok, text, REMIND_STATUS, remind.prompt);
     setReminding(false);
-    setRemind(r => ({ ...r, sent: res?.sent ?? 0, error: res?.failed?.[0]?.error || '' }));
+    const sum = sendSummary(res);
+    setRemind(r => ({ ...r, sent: sum.sent, notSent: sum.notSent + sum.skipped, error: sum.reason }));
     reload();
   }
 
@@ -980,7 +1003,7 @@ function Responses({ threads, contacts, library = [], reload }) {
     const info = await fetchRsvpInfo(c.prompt);
     setLinking(null);
     setLinkMenu(info.menu.length ? info.menu : ['']);
-    setLinkFor({ title: c.key, prompt: c.prompt, url: null, wasDinner: c.showTally });
+    setLinkFor({ title: c.label, prompt: c.prompt, url: null, wasDinner: c.showTally });
   }
 
   async function saveLink() {
@@ -1041,7 +1064,7 @@ function Responses({ threads, contacts, library = [], reload }) {
   const digits = needle.replace(/\D/g, '');
   const shown = useMemo(() => (!needle ? campaigns : campaigns.filter(c =>
        c.key === pickedKey
-    || (c.key || '').toLowerCase().includes(needle)
+    || `${c.label || ''} ${c.prompt || ''}`.toLowerCase().includes(needle)
     || (c.prompt || '').toLowerCase().includes(needle)
     || c.replies.some(r =>
          (r.who || '').toLowerCase().includes(needle) ||
@@ -1054,6 +1077,41 @@ function Responses({ threads, contacts, library = [], reload }) {
      `shown` — that is what keeps a searched pane from contradicting itself and
      what makes the count picker correct after decide()'s full re-read. */
   const picked = useMemo(() => campaigns.find(c => c.key === pickedKey) || null, [campaigns, pickedKey]);
+
+  /*
+   * Poll results. The answers were being recorded all along (sms_poll_answers)
+   * but no screen read them, so a poll's outcome was only knowable by counting
+   * replies by eye. Matched to the message with spacing ignored, the same way
+   * the webhook matches them.
+   */
+  const pollNorm = t => String(t || '').replace(/\s+/g, ' ').trim();
+  const answeredBy = useMemo(() => {
+    const m = new Map();
+    for (const a of pollAnswers) {
+      const k = pollNorm(a.poll_body);
+      m.set(k, (m.get(k) || 0) + 1);
+    }
+    return m;
+  }, [pollAnswers]);
+  const pollResult = useMemo(() => {
+    if (!picked?.isPoll || !picked.prompt) return null;
+    const asked = pollNorm(picked.prompt);
+    const opts = pollOptions(picked.prompt);
+    const answers = pollAnswers.filter(a => pollNorm(a.poll_body) === asked);
+    const threadByPhone = new Map(threads.rows.map(t => [t.key, t]));
+    const who = a => {
+      const t = threadByPhone.get(normPhone(a.to_number));
+      return (t && nameFor(t)) || formatPhone(a.to_number);
+    };
+    const sentTo = threads.rows.filter(t => t.messages.some(m =>
+      (m.direction || 'out') !== 'in' && m.status !== 'Failed' && pollNorm(m.body) === asked)).length;
+    return {
+      sentTo,
+      answered: answers.length,
+      byPhone: new Map(answers.map(a => [normPhone(a.to_number), a])),
+      options: opts.map(o => ({ ...o, names: answers.filter(a => a.choice === o.n).map(who).sort() })),
+    };
+  }, [picked, pollAnswers, threads.rows, nameFor]);
   const person = useMemo(() => {
     if (!pickedPhone) return null;
     /* The threads fallback matters: after you reply, that person's next message
@@ -1115,7 +1173,7 @@ function Responses({ threads, contacts, library = [], reload }) {
 
   async function send() {
     const body = draft.trim();
-    if (!body || !person || webOnly || sendingRef.current) return;
+    if (paused || !body || !person || webOnly || sendingRef.current) return;
     sendingRef.current = true; setSending(true);
     const key = person.key;
     setSendErrs(s => ({ ...s, [key]: '' }));
@@ -1243,7 +1301,7 @@ function Responses({ threads, contacts, library = [], reload }) {
                   aria-controls="rsp-replies">
                   <span className="rsp-camp-main">
                     <span className="rsp-camp-title">
-                      {c.unread > 0 && <span className="ov-dot" />}{c.key}
+                      {c.unread > 0 && <span className="ov-dot" />}{c.label}
                     </span>
                     <span className="rsp-camp-sub">
                       {[c.unread ? `${c.unread} new` : null,
@@ -1253,7 +1311,9 @@ function Responses({ threads, contacts, library = [], reload }) {
                   </span>
                   {c.showTally
                     ? <span className="rsp-camp-tally">{c.tally.total}<em>coming</em></span>
-                    : <span className="rsp-camp-n">{c.replies.length}</span>}
+                    : c.isPoll
+                      ? <span className="rsp-camp-tally poll">{answeredBy.get(pollNorm(c.prompt)) || 0}<em>answered</em></span>
+                      : <span className="rsp-camp-n">{c.replies.length}</span>}
                 </button>
               ))}
             </div>
@@ -1261,7 +1321,7 @@ function Responses({ threads, contacts, library = [], reload }) {
 
           {/* ── 2 · The replies to that message. Slides in; renders nothing while closed. ── */}
           <section className="rsp-col rsp-col-replies" id="rsp-replies"
-            aria-label={picked ? `Replies to ${picked.key}` : 'Replies'}>
+            aria-label={picked ? `Replies to ${picked.label}` : 'Replies'}>
             {picked && (
               <div className="rsp-col-inner">
                 <div className="rsp-col-head">
@@ -1300,6 +1360,14 @@ function Responses({ threads, contacts, library = [], reload }) {
                           </span>
                           <p className="rsp-item-body">{r.body}</p>
                         </button>
+
+                        {pollResult && (() => {
+                          const a = pollResult.byPhone.get(r.thread.key);
+                          const opts = pollResult.options;
+                          /* Only on the reply that made the choice — not on "which one was that again?" */
+                          if (!a || pollChoice(r.body, opts) !== a.choice) return null;
+                          return <span className="rsp-poll-pick" title={opts.find(o => o.n === a.choice)?.label || ''}>{a.choice}</span>;
+                        })()}
 
                         {picked.showTally && (
                           <div className="rsp-count-wrap">
@@ -1356,7 +1424,7 @@ function Responses({ threads, contacts, library = [], reload }) {
                 <div className="rsp-brief-head">
                   <div className="rsp-brief-main">
                     <span className="rsp-brief-when">Last reply {when(picked.lastAt)}</span>
-                    <h2 className="rsp-brief-title">{picked.key}</h2>
+                    <h2 className="rsp-brief-title">{picked.label}</h2>
                   </div>
                   {picked.showTally && (
                     <span className="rsp-box-tally" aria-live="polite">
@@ -1377,8 +1445,35 @@ function Responses({ threads, contacts, library = [], reload }) {
                   </p>
                 )}
 
+                {pollResult && (
+                  <section className="rsp-poll" aria-label="Poll results">
+                    <p className="rsp-poll-h">Results</p>
+                    {pollResult.options.length === 0 && (
+                      <p className="rsp-poll-none">No numbered options could be read from this message.</p>
+                    )}
+                    {pollResult.options.map(o => {
+                      const pct = pollResult.answered ? Math.round((100 * o.names.length) / pollResult.answered) : 0;
+                      return (
+                        <div key={o.n} className="rsp-poll-row">
+                          <div className="rsp-poll-top">
+                            <b>{o.n}</b>
+                            <span className="rsp-poll-label">{o.label}</span>
+                            <span className="rsp-poll-n">{o.names.length}</span>
+                          </div>
+                          <div className="rsp-poll-bar" aria-hidden="true"><span style={{ width: `${pct}%` }} /></div>
+                          {o.names.length > 0 && <p className="rsp-poll-who">{o.names.join(', ')}</p>}
+                        </div>
+                      );
+                    })}
+                  </section>
+                )}
+
                 <div className="rsp-brief-stats">
                   <span className="rsp-stat"><b>{picked.replies.length}</b><span>replies</span></span>
+                  {pollResult && (<>
+                    <span className="rsp-stat"><b>{pollResult.answered}</b><span>answered</span></span>
+                    <span className="rsp-stat"><b>{Math.max(0, pollResult.sentTo - pollResult.answered)}</b><span>no answer yet</span></span>
+                  </>)}
                   {picked.showTally && (<>
                     <span className="rsp-stat"><b>{picked.tally.counted.length}</b><span>coming</span></span>
                     <span className="rsp-stat"><b>{picked.tally.declined.length}</b><span>not coming</span></span>
@@ -1394,8 +1489,9 @@ function Responses({ threads, contacts, library = [], reload }) {
                     {linking ? 'Opening…' : picked.showTally ? 'Reservation link' : 'Count as dinner'}
                   </button>
                   <button className="rsp-act" onClick={() => openRemind(picked)}
-                    disabled={!canRemind || !!linking || !picked.prompt}
-                    title={!picked.prompt ? 'There is no original message to chase'
+                    disabled={!!paused || !canRemind || !!linking || !picked.prompt}
+                    title={paused ? maintenanceLabel(paused)
+                         : !picked.prompt ? 'There is no original message to chase'
                          : canRemind ? '' : `Texts can only go out between ${WINDOW_LABEL}`}>
                     {linking ? 'Checking…' : 'Remind'}
                   </button>
@@ -1441,17 +1537,21 @@ function Responses({ threads, contacts, library = [], reload }) {
                     This reservation came in through the website, so there is no number to text back.
                   </p>
                 ) : (<>
-                  <div className="cv-compose">
-                    <textarea rows={1} placeholder={`Text ${nameFor(person) || 'them'}`} value={draft}
-                      onChange={e => {
-                        const v = e.target.value, k = person.key;
-                        setDrafts(d => ({ ...d, [k]: v }));
-                        setSendErrs(s => ({ ...s, [k]: '' }));
-                      }}
-                      onKeyDown={e => {
-                        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
-                      }} />
-                    <button className="cv-send" onClick={send} disabled={sending || !draft.trim()} title="Send">
+                  <div className={`cv-compose ${paused ? 'paused' : ''}`}>
+                    {paused ? (
+                      <div className="cv-paused-field" role="status">{maintenanceLabel(paused)}</div>
+                    ) : (
+                      <textarea rows={1} placeholder={`Text ${nameFor(person) || 'them'}`} value={draft}
+                        onChange={e => {
+                          const v = e.target.value, k = person.key;
+                          setDrafts(d => ({ ...d, [k]: v }));
+                          setSendErrs(s => ({ ...s, [k]: '' }));
+                        }}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+                        }} />
+                    )}
+                    <button className="cv-send" onClick={send} disabled={!!paused || sending || !draft.trim()} title="Send">
                       <Icon d={P.arrowUp} size={18} />
                     </button>
                   </div>
@@ -1485,11 +1585,16 @@ function Responses({ threads, contacts, library = [], reload }) {
 
             {remind.sent !== null ? (
               <div className="modal-body">
+                {/* The tick only for a send that reached someone. It used to show
+                    for "0 reminders sent" as well, which read as success. */}
                 <div className="rsp-remind-done">
-                  <span className="rsp-remind-tick"><Icon d={P.check} size={26} /></span>
+                  <span className={`rsp-remind-tick ${remind.sent ? '' : 'none'}`}>
+                    <Icon d={remind.sent ? P.check : P.shield} size={26} />
+                  </span>
                   <p className="rsp-remind-num">{remind.sent}</p>
                   <p className="rsp-remind-cap">
-                    {remind.sent === 1 ? 'reminder sent' : 'reminders sent'}
+                    {!remind.sent ? 'Nothing was sent' : remind.sent === 1 ? 'reminder sent' : 'reminders sent'}
+                    {remind.sent > 0 && remind.notSent > 0 && ` · ${remind.notSent} not sent`}
                   </p>
                   {remind.error && <p className="rsp-remind-err">{remind.error}</p>}
                 </div>
@@ -1548,9 +1653,10 @@ function Responses({ threads, contacts, library = [], reload }) {
               </div>
 
               <div className="rsp-remind-foot">
+                {paused && <p className="maintenance-note" role="status">{maintenanceLabel(paused)}</p>}
                 <button className="rsp-act" onClick={() => setRemind(null)}>Cancel</button>
                 <button className="btn-primary" onClick={sendReminder}
-                  disabled={reminding || !remind.text.trim()}>
+                  disabled={!!paused || reminding || !remind.text.trim()}>
                   {reminding ? 'Sending…' : `Send to ${remind.who.length}`}
                 </button>
               </div>
@@ -1600,7 +1706,7 @@ function Responses({ threads, contacts, library = [], reload }) {
 
 
 /* ═══════════ Groups ═══════════ */
-function Groups({ owner, groups, members, contacts = [], reload }) {
+function Groups({ owner, groups, members, contacts = [], deacons = null, reload }) {
   const [name, setName] = useState('');
 
   /*
@@ -1614,11 +1720,33 @@ function Groups({ owner, groups, members, contacts = [], reload }) {
     const t = setInterval(() => setCanSend(windowOpen()), 60_000);
     return () => clearInterval(t);
   }, []);
+  /* Scheduled texting maintenance greys out Send Approval. */
+  const paused = useMaintenance();
 
   const waiting = g => {
     const ids = new Set(members.filter(m => m.group_id === g.id).map(m => m.contact_id));
-    return contacts.filter(c => ids.has(c.id) && String(c.phone || '').trim());
+    return contacts.filter(c => ids.has(c.id) && String(c.phone || '').trim() && !c.opted_out);
   };
+
+  /*
+   * The Deacons texting group against the member directory. Deacon texts only
+   * reach numbers that belong to a deacon in the directory, so anyone who does
+   * not line up is shown here, by name, where it can be fixed — rather than
+   * being quietly left out of every deacon message.
+   */
+  const deaconCheck = useMemo(() => {
+    const g = groups.find(isDeaconsGroup);
+    if (!g || !deacons) return null;
+    const ids = new Set(members.filter(m => m.group_id === g.id).map(m => m.contact_id));
+    const inGroup = contacts.filter(c => ids.has(c.id));
+    const dirPhones = new Set(deacons.map(d => d.phone10).filter(p => p.length === 10));
+    const groupPhones = new Set(inGroup.filter(c => !c.opted_out).map(c => normPhone(c.phone)));
+    return {
+      groupId: g.id,
+      notDeacons: inGroup.filter(c => !dirPhones.has(normPhone(c.phone))).map(c => c.name || formatPhone(c.phone)),
+      unreachable: deacons.filter(d => d.phone10.length !== 10 || !groupPhones.has(d.phone10)).map(d => d.name),
+    };
+  }, [groups, members, contacts, deacons]);
 
   function openApprove(g) {
     const who = waiting(g);
@@ -1628,7 +1756,7 @@ function Groups({ owner, groups, members, contacts = [], reload }) {
 
   async function sendApproval() {
     const body = String(approve?.body ?? '').trim();
-    if (sending || !approve?.who?.length || !body) return;
+    if (paused || sending || !approve?.who?.length || !body) return;
 
     /* Re-checked at the moment of sending: leaving this dialog open across five
        o'clock would otherwise turn a legal send into an illegal one. */
@@ -1642,12 +1770,19 @@ function Groups({ owner, groups, members, contacts = [], reload }) {
     }))) return;
 
     setSending(true);
-    const res = await sendBroadcast(ok, withStopLine(body), 'Approval');
-    /* Only the people actually texted leave New. Anyone held back by the hour
-       stays there for next time. */
-    if (res?.sent) await clearApproved(approve.group.id, ok.map(c => c.id));
+    const res = await sendBroadcast(ok, withStopLine(body), 'Approval', undefined, targetSpec(approve.group.id));
+    /*
+     * Only the people whose approval actually went out leave New. This cleared
+     * everyone in the batch whenever at least one text succeeded, so a landline
+     * or a refused number joined the regular list without ever being told.
+     * Anyone held back by the hour, or not reached, stays for next time.
+     */
+    const reached = reachedPhones(ok, res);
+    const told = ok.filter(c => reached.has(normPhone(c.phone)));
+    if (told.length) await clearApproved(approve.group.id, told.map(c => c.id));
     setSending(false);
-    setApprove(a => ({ ...a, sent: res?.sent ?? 0, error: res?.failed?.[0]?.error || '' }));
+    const sum = sendSummary(res);
+    setApprove(a => ({ ...a, sent: told.length, notSent: ok.length - told.length, error: sum.reason }));
     reload();
   }
 
@@ -1677,11 +1812,27 @@ function Groups({ owner, groups, members, contacts = [], reload }) {
                   {members.filter(m => m.group_id === g.id).length} contacts
                   {g.name === NEW_GROUP && ' · waiting to be told they are on the list'}
                 </span>
+                {deaconCheck?.groupId === g.id && (deaconCheck.notDeacons.length > 0 || deaconCheck.unreachable.length > 0) && (
+                  <span className="sms-group-check">
+                    {deaconCheck.notDeacons.length > 0 && (
+                      <span>
+                        <b>Not getting deacon texts:</b> {deaconCheck.notDeacons.join(', ')} — this number
+                        isn&rsquo;t a deacon&rsquo;s in the member directory.
+                      </span>
+                    )}
+                    {deaconCheck.unreachable.length > 0 && (
+                      <span>
+                        <b>Deacons who can&rsquo;t be texted:</b> {deaconCheck.unreachable.join(', ')} — no matching
+                        number in this group, so their families get no alerts.
+                      </span>
+                    )}
+                  </span>
+                )}
               </div>
             </div>
             {g.name === NEW_GROUP && waiting(g).length > 0 && (
-              <button className="sms-approve-btn" onClick={() => openApprove(g)} disabled={!canSend}
-                title={canSend ? '' : `Texts can only go out between ${WINDOW_LABEL}`}>
+              <button className="sms-approve-btn" onClick={() => openApprove(g)} disabled={!!paused || !canSend}
+                title={paused ? maintenanceLabel(paused) : canSend ? '' : `Texts can only go out between ${WINDOW_LABEL}`}>
                 <Icon d={P.send} size={15} />Send Approval
               </button>
             )}
@@ -1703,10 +1854,15 @@ function Groups({ owner, groups, members, contacts = [], reload }) {
             {approve.sent !== null ? (
               <div className="modal-body">
                 <div className="rsp-remind-done">
-                  <span className="rsp-remind-tick"><Icon d={P.check} size={26} /></span>
+                  <span className={`rsp-remind-tick ${approve.sent ? '' : 'none'}`}>
+                    <Icon d={approve.sent ? P.check : P.shield} size={26} />
+                  </span>
                   <p className="rsp-remind-num">{approve.sent}</p>
                   <p className="rsp-remind-cap">
-                    {approve.sent === 1 ? 'person told' : 'people told'} — they are on the regular list now
+                    {!approve.sent
+                      ? 'Nobody was told — they stay in New'
+                      : `${approve.sent === 1 ? 'person told' : 'people told'} — on the regular list now`}
+                    {approve.sent > 0 && approve.notSent > 0 && ` · ${approve.notSent} still in New`}
                   </p>
                   {approve.error && <p className="rsp-remind-err">{approve.error}</p>}
                 </div>
@@ -1757,9 +1913,10 @@ function Groups({ owner, groups, members, contacts = [], reload }) {
               </div>
 
               <div className="rsp-remind-foot">
+                {paused && <p className="maintenance-note" role="status">{maintenanceLabel(paused)}</p>}
                 <button className="rsp-act" onClick={() => setApprove(null)}>Cancel</button>
                 <button className="btn-primary" onClick={sendApproval}
-                        disabled={sending || !approve.body.trim()}>
+                        disabled={!!paused || sending || !approve.body.trim()}>
                   {sending ? 'Sending…' : `Send to ${approve.who.length}`}
                 </button>
               </div>

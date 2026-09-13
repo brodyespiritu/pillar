@@ -30,6 +30,9 @@ export default function EditUserModal({ user, testMode, onClose, onSave }) {
 
   const canOptIn = isValidUsPhone(phone);
   const optedOutBySms = user.preferences?.caresStopOptedOut === true;
+  /* Set by the database when this person changed their own number while on the
+     Cares list — care texts stop until an admin has seen the new number. */
+  const pausedForNumber = user.preferences?.caresPausedForNewNumber === true;
 
   function onPhone(v) {
     setPhone(formatAsTyped(v));
@@ -42,6 +45,8 @@ export default function EditUserModal({ user, testMode, onClose, onSave }) {
     setSaving(true);
     const e164 = toE164(phone);
     const prefs = { ...(user.preferences || {}), caresSmsOptIn: canOptIn && caresSms };
+    // Saving here is an admin looking at the number, which is what the pause waits for.
+    delete prefs.caresPausedForNewNumber;
     // A new number hasn't seen the opt-out notice yet — send it on the next text.
     if (phoneKey(e164) !== phoneKey(user.phone)) {
       delete prefs.caresStopNoticeSent;
@@ -107,6 +112,12 @@ export default function EditUserModal({ user, testMode, onClose, onSave }) {
               <p className="adm-opt-warn">
                 <Icon d={P.shield} size={13} />
                 This number replied STOP. Turning alerts back on requires their permission.
+              </p>
+            )}
+            {pausedForNumber && !optedOutBySms && (
+              <p className="adm-opt-warn">
+                <Icon d={P.shield} size={13} />
+                Cares texts were paused because this number was changed. Check it, then turn them back on.
               </p>
             )}
           </div>

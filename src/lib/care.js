@@ -1,5 +1,4 @@
 import { supabase } from './supabase';
-import { sendProspectSms } from './sms';
 
 export const CATEGORIES = [
   'Hospitalized', 'Grieving', 'New Member', 'Homebound', 'Crisis',
@@ -34,28 +33,12 @@ export const CATEGORY_COLORS = {
 const PRIORITY_RANK = { High: 0, Medium: 1, Low: 2 };
 
 
-/* ── Cares SMS alerts to staff ──
-   Recipients are staff an admin gave a mobile number AND switched
-   "Cares alerts" on for (Admin → Users → Edit User). Carrier rules require
-   an opt-out notice on the first message to any number, so the first send
-   carries "Reply STOP to opt out" and we remember that it went. */
-
-const SEGMENT = 160;
-const STOP_NOTICE = 'Reply STOP to opt out.';
+/* Care texts to staff are sent only by the cares-recap edge function, on the
+   care channel, to the admin-managed Cares list. The browser used to carry its
+   own sender here — unused, and it would have logged care details where every
+   staff member can read them and skipped the server's care-audience check. */
 
 const clean = s => String(s || '').replace(/\s+/g, ' ').trim();
-
-/* The spec's formats end without punctuation ("Reason: Broken wrist"), so
-   anything we append needs a separator or the words run together. */
-const joinSentence = (text, clause) =>
-  clause ? `${text}${/[.!?…]$/.test(text) ? '' : '.'} ${clause}` : text;
-
-/* Trim the message so it stays a single segment, leaving room for the tail. */
-function fit(base, tail = '') {
-  const room = SEGMENT - (tail ? tail.length + 2 : 0);   // +2 for ". "
-  const body = base.length <= room ? base : `${base.slice(0, Math.max(0, room - 1))}…`;
-  return joinSentence(body, tail);
-}
 
 /*
  * The reason someone joined the list is the first sentence of the care note
@@ -67,20 +50,6 @@ export function splitReason(careNotes, category) {
   if (!note) return { reason: clean(category) || 'Care need', extra: '' };
   const m = note.match(/^(.+?[.!?])\s+(.*)$/);
   return m ? { reason: m[1].replace(/[.!?]$/, ''), extra: m[2] } : { reason: note, extra: '' };
-}
-
-/** "Bethesda Cares: Gail Sheppard has been added to cares list. Reason: Broken wrist" */
-export function addedToCaresSms(member, { withStop = false } = {}) {
-  const { reason, extra } = splitReason(member?.care_notes, member?.category);
-  const base = joinSentence(
-    `Bethesda Cares: ${clean(member?.full_name)} has been added to cares list. Reason: ${reason}`,
-    extra);
-  return fit(base, withStop ? STOP_NOTICE : '');
-}
-
-/** "Cares Update: Gail Sheppard. Note: Went to hospital" */
-export function caresUpdateSms({ memberName, note }, { withStop = false } = {}) {
-  return fit(`Cares Update: ${clean(memberName)}. Note: ${clean(note)}`, withStop ? STOP_NOTICE : '');
 }
 
 /* ── Profile photos ──
@@ -104,61 +73,6 @@ export async function fetchCarePhotos() {
 }
 
 export const carePhotoFor = (photos, name) => photos?.get(normalizeName(name)) || '';
-
-/* Staff who can receive Cares texts: opted in, active, with a mobile number. */
-export async function fetchCaresSmsStaff() {
-  const { data, error } = await supabase.from('staff').select('id, name, phone, active, preferences');
-  if (error) return [];
-  return (data || []).filter(s =>
-    s.active !== false
-    && String(s.phone || '').trim()
-    && s.preferences?.caresSmsOptIn === true);
-}
-
-/* Remember that a number has seen the opt-out notice, so we send it once. */
-async function markStopNoticeSent(staffRow) {
-  const prefs = { ...(staffRow.preferences || {}), caresStopNoticeSent: true };
-  await supabase.from('staff').update({ preferences: prefs }).eq('id', staffRow.id);
-}
-
-/*
- * Send a Cares text to the opted-in staff.
- * `build(staff, opts)` returns the message body for that person.
- * Returns { sent, failed, skipped }.
- */
-export async function sendCaresSms(build) {
-  const staff = await fetchCaresSmsStaff();
-  if (!staff.length) return { sent: 0, failed: [], skipped: true };
-
-  const messages = staff.map(s => ({
-    to_number: s.phone.trim(),
-    to_name: s.name || '',
-    body: build(s, { withStop: s.preferences?.caresStopNoticeSent !== true }),
-  }));
-
-  try {
-    const res = await sendProspectSms(messages);
-    // Only record the notice for people we actually reached.
-    const failedNames = new Set((res.failed || []).map(f => f.to_name));
-    await Promise.all(staff
-      .filter(s => s.preferences?.caresStopNoticeSent !== true && !failedNames.has(s.name || ''))
-      .map(markStopNoticeSent));
-    return { ...res, skipped: false };
-  } catch (e) {
-    return { sent: 0, failed: [{ error: String(e?.message || e) }], skipped: false };
-  }
-}
-
-/* Someone was added to the cares list. */
-export function notifyCareSms(member) {
-  return sendCaresSms((s, o) => addedToCaresSms(member, o));
-}
-
-/* An update was posted to someone's care record. */
-export function notifyCareUpdateSms({ memberName, note }) {
-  if (!clean(note)) return Promise.resolve({ sent: 0, failed: [], skipped: true });
-  return sendCaresSms((s, o) => caresUpdateSms({ memberName, note }, o));
-}
 
 /* Appointment & surgery watcher — shared verbatim with the nightly
    cares-recap edge function so the text and the screen never disagree. */

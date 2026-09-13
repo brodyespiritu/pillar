@@ -48,14 +48,20 @@ create policy "staff write sched"   on sms_scheduled for all    using (auth.role
 --     (Telnyx secrets are already set for send-prospect-sms.)
 --  2) Schedule it every minute. Easiest: Supabase Dashboard →
 --     Integrations → Cron (enable pg_cron + pg_net), then run
---     the block below with YOUR project ref + anon key filled in:
+--     the block below with YOUR project ref and CARES_CRON_SECRET filled in.
+--
+--     NOT the anon key. The function rejects it (403): the anon key ships in the
+--     public browser bundle, so accepting it would let anyone trigger a broadcast
+--     to the whole congregation. It takes CARES_CRON_SECRET or the service role.
+--     This is the SAME secret the cares-alerts cron uses — rotate one and you must
+--     update both (supabase/deacon-alert-triggers.sql does).
 --
 -- select cron.schedule(
 --   'send-scheduled-sms', '* * * * *',
 --   $$
 --   select net.http_post(
 --     url     := 'https://<PROJECT_REF>.supabase.co/functions/v1/send-scheduled-sms',
---     headers := '{"Content-Type":"application/json","Authorization":"Bearer <ANON_KEY>"}'::jsonb,
+--     headers := '{"Content-Type":"application/json","Authorization":"Bearer <CARES_CRON_SECRET>"}'::jsonb,
 --     body    := '{}'::jsonb
 --   );
 --   $$

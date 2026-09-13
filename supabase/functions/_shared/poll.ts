@@ -15,6 +15,16 @@
 /* Numbers are stored one way outbound and another inbound; compare the tail. */
 const last10 = (p: unknown) => String(p ?? '').replace(/\D/g, '').slice(-10);
 
+/*
+ * Two copies of a message are the same message when they differ only in
+ * spacing. The composer logged whatever was typed — a trailing blank line
+ * included — while the library keeps it trimmed, so an exact comparison said a
+ * poll had never been sent and the answer was filed under an older poll.
+ */
+export const sameText = (a: unknown, b: unknown) =>
+  String(a ?? '').replace(/\s+/g, ' ').trim() === String(b ?? '').replace(/\s+/g, ' ').trim();
+const normText = (s: unknown) => String(s ?? '').replace(/\s+/g, ' ').trim();
+
 /* [1] Label · 1) Label · 1. Label — the three ways people write a numbered list. */
 const OPTION_RE = /(?:^|\n)\s*(?:\[(\d{1,2})\]|(\d{1,2})[).\]])\s*(.+?)\s*(?=\n|$)/g;
 
@@ -56,6 +66,52 @@ export function pollChoice(text = '', options: PollOption[] = []): number | null
 
 /* ── Recording an answer ── */
 
+/* Our own answers, and texts that never arrived, are not questions. */
+const NOT_ASKING = new Set(['AutoReply', 'Reply', 'Failed', 'Blocked']);
+
+/*
+ * The last poll or dinner this number was actually asked, newest first, walked
+ * the way the Responses tab walks a thread (lib/campaigns.js): a reminder asks
+ * about the campaign it chases, "how many plates?" is a dinner question, and an
+ * announcement in between changes nothing.
+ */
+export async function lastAsk(
+  supabase: any,
+  mine: string,
+  asks: Map<string, { type: string; body: string }>,
+): Promise<{ type: string; body: string } | null> {
+  let { data: sent, error } = await supabase
+    .from('sms_messages')
+    .select('body, status, campaign, created_at')
+    .eq('to10', mine)
+    .neq('direction', 'in')
+    .eq('channel', 'sms')
+    .order('created_at', { ascending: false })
+    .limit(200);
+
+  /* Before the to10 column existed: every row carrying a known body, matched by
+     number here. Slower, and blind to reminders, but never wrong about a poll. */
+  if (error) {
+    const legacy = await supabase
+      .from('sms_messages')
+      .select('body, status, campaign, created_at, to_number')
+      .in('body', [...asks.values()].map(a => a.body))
+      .neq('direction', 'in')
+      .order('created_at', { ascending: false })
+      .limit(2000);
+    sent = (legacy.data || []).filter((r: any) => last10(r.to_number) === mine);
+  }
+
+  for (const r of sent || []) {
+    if (NOT_ASKING.has(r.status)) continue;
+    if (r.status === 'DinnerAsk') return { type: 'Dinner', body: '' };
+    const asked = r.status === 'Reminder' ? r.campaign : r.body;
+    const hit = asks.get(normText(asked));
+    if (hit) return hit;
+  }
+  return null;
+}
+
 /*
  * Finds the last poll this number was sent, records their choice, and returns
  * the acknowledgement to send back. Null when the reply is not answering a poll,
@@ -96,23 +152,16 @@ export async function pollAnswer(
     .from('sms_library').select('body, message_type').in('message_type', ['Poll', 'Dinner']);
   if (!lib?.length) return null;
 
-  const typeOf = new Map<string, string>();
-  for (const r of lib as any[]) if (r.body) typeOf.set(r.body, r.message_type);
-  const bodies = [...typeOf.keys()];
-  if (!bodies.length) return null;
+  /* Keyed by the text with spacing collapsed; the value keeps the library's own
+     copy, which is what an answer is recorded against. */
+  const asks = new Map<string, { type: string; body: string }>();
+  for (const r of lib as any[]) if (r.body) asks.set(normText(r.body), { type: r.message_type, body: r.body });
+  if (!asks.size) return null;
 
-  const { data: sent } = await supabase
-    .from('sms_messages')
-    .select('body, to_number, created_at')
-    .in('body', bodies)
-    .neq('direction', 'in')
-    .order('created_at', { ascending: false })
-    .limit(2000);
-
-  const latest = (sent || []).find((r: any) => last10(r.to_number) === mine);
+  const latest = await lastAsk(supabase, mine, asks);
   if (!latest) return null;
   /* The last thing they were asked was a dinner — not ours to answer. */
-  if (typeOf.get(latest.body) !== 'Poll') return null;
+  if (latest.type !== 'Poll') return null;
 
   const options = pollOptions(latest.body);
   const choice = pollChoice(text, options);

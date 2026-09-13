@@ -1,12 +1,13 @@
 import { useMemo, useState, useEffect } from 'react';
 import { P, Icon } from '../../lib/icons';
 import { confirmDialog } from '../../lib/dialog';
-import { sendBroadcast, recordSend, smsSegments, scheduleBroadcast } from '../../lib/broadcast';
+import { sendBroadcast, recordSend, smsSegments, scheduleBroadcast, planRecipients, targetSpec } from '../../lib/broadcast';
 import { REPEATS } from '../../lib/recurrence';
 import { groupCampaigns } from '../../lib/campaigns';
 import { sendText, markRead, formatPhone } from '../../lib/conversations';
 import { NEW_GROUP } from '../../lib/consent';
 import { tapSelect, tapOpen, tapClose, tapSaved, tapFailed } from '../../lib/haptics';
+import { useMaintenance, maintenanceLabel } from '../../lib/maintenance';
 import './SmsMobile.css';
 
 /*
@@ -37,7 +38,7 @@ const shortWhen = iso => {
   return days < 7 ? `${days}d` : new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 };
 
-export default function SmsMobile({ owner, contacts, groups, members, threads, library = [], reload }) {
+export default function SmsMobile({ owner, contacts, groups, members, threads, library = [], landlines, deacons, reload }) {
   const [body, setBody] = useState('');
   const [target, setTarget] = useState('all');
   const [type, setType] = useState('General');
@@ -48,20 +49,16 @@ export default function SmsMobile({ owner, contacts, groups, members, threads, l
   const [openCamp, setOpenCamp] = useState(null);
   const [open, setOpen] = useState(null);      // thread being read
 
-  /* Nobody in the New group has agreed to be texted yet. */
-  const awaitingIds = useMemo(() => {
-    const g = groups.find(x => x.name === NEW_GROUP);
-    if (!g) return new Set();
-    return new Set(members.filter(m => m.group_id === g.id).map(m => m.contact_id));
-  }, [groups, members]);
-
-  const recipients = useMemo(() => {
-    if (target === 'all') {
-      return contacts.filter(c => c.phone?.trim() && !c.opted_out && !awaitingIds.has(c.id));
-    }
-    const ids = new Set(members.filter(m => m.group_id === target).map(m => m.contact_id));
-    return contacts.filter(c => ids.has(c.id) && c.phone?.trim() && !c.opted_out);
-  }, [target, contacts, members, awaitingIds]);
+  /*
+   * Who this reaches — the same rules as the desktop composer and the server:
+   * nobody who texted STOP or is still waiting in New, no landlines, one text
+   * per phone, and the Deacons group only to deacons in the member directory.
+   */
+  const plan = useMemo(
+    () => planRecipients({ target, contacts, groups, members, landlines, deacons }),
+    [target, contacts, groups, members, landlines, deacons],
+  );
+  const recipients = plan.list;
 
   const targetLabel = target === 'all'
     ? 'All congregation'
@@ -80,18 +77,20 @@ export default function SmsMobile({ owner, contacts, groups, members, threads, l
   const unread = campaigns.reduce((n, c) => n + c.unread, 0);
 
   const seg = smsSegments(body);
+  /* Scheduled texting maintenance greys out and locks the composer. */
+  const paused = useMaintenance();
 
   async function send() {
-    if (!body.trim() || !recipients.length || sending) return;
+    if (paused || !body.trim() || !recipients.length || sending) return;
     const ok = await confirmDialog({
       message: `Send this to ${recipients.length} ${recipients.length === 1 ? 'person' : 'people'}?`,
     });
     if (!ok) return;
     setSending(true);
-    const res = await sendBroadcast(recipients, body);
+    const res = await sendBroadcast(recipients, body, undefined, undefined, targetSpec(target));
     setSending(false);
     if (res.sent) {
-      await recordSend(owner, body.trim(), targetLabel, recipients.length, null, type);
+      await recordSend(owner, body.trim(), targetLabel, res.sent, null, type);
       tapSaved();
       setBody('');
       reload?.();
@@ -109,17 +108,21 @@ export default function SmsMobile({ owner, contacts, groups, members, threads, l
         </header>
 
         {/* ── Say something ── */}
-        <section className="sm-compose">
-          <textarea
-            className="sm-input"
-            value={body}
-            onChange={e => setBody(e.target.value)}
-            placeholder="What do you want to say to the congregation?"
-            rows={4}
-            aria-label="Message"
-          />
+        <section className={`sm-compose ${paused ? 'paused' : ''}`}>
+          <div className="sm-input-wrap">
+            <textarea
+              className="sm-input"
+              value={body}
+              onChange={e => setBody(e.target.value)}
+              disabled={!!paused}
+              placeholder={paused ? '' : 'What do you want to say to the congregation?'}
+              rows={4}
+              aria-label="Message"
+            />
+            {paused && <p className="sm-paused" role="status">{maintenanceLabel(paused)}</p>}
+          </div>
 
-          <div className="sm-row-actions">
+          <div className="sm-row-actions" inert={paused ? true : undefined}>
             {/* Everything about WHO and WHAT KIND lives behind here, so the row
                 itself stays three buttons wide however long a group is named. */}
             <button className="sm-icon" onClick={() => { tapOpen(); setSettingsOpen(true); }} aria-label="Message settings">
@@ -182,7 +185,7 @@ export default function SmsMobile({ owner, contacts, groups, members, threads, l
                 <span className={`sm-dot ${c.unread ? 'on' : ''}`} />
                 <span className="sm-camp-txt">
                   <span className="sm-camp-top">
-                    <span className="sm-camp-name">{c.key}</span>
+                    <span className="sm-camp-name">{c.label}</span>
                     <span className="sm-row-when">{shortWhen(c.lastAt)}</span>
                   </span>
                   <span className="sm-camp-meta">
@@ -207,7 +210,8 @@ export default function SmsMobile({ owner, contacts, groups, members, threads, l
           groups={groups}
           members={members}
           contacts={contacts}
-          awaitingIds={awaitingIds}
+          landlines={landlines}
+          deacons={deacons}
           target={target}
           type={type}
           onTarget={setTarget}
@@ -220,6 +224,9 @@ export default function SmsMobile({ owner, contacts, groups, members, threads, l
         <ScheduleSheet
           onClose={() => setScheduling(false)}
           onConfirm={async ({ sendAt, repeat }) => {
+            /* A schedule sheet opened just before the window began must not slip
+               one through; the sheet sits outside the locked row. */
+            if (paused) { setScheduling(false); return; }
             const { error } = await scheduleBroadcast({
               owner,
               body: body.trim(),
@@ -257,12 +264,9 @@ export default function SmsMobile({ owner, contacts, groups, members, threads, l
 }
 
 /* ── Who it goes to, and what kind of message it is ── */
-function SettingsSheet({ groups, members, contacts, awaitingIds, target, type, onTarget, onType, onClose }) {
-  const countFor = id => {
-    if (id === 'all') return contacts.filter(c => c.phone?.trim() && !c.opted_out && !awaitingIds.has(c.id)).length;
-    const ids = new Set(members.filter(m => m.group_id === id).map(m => m.contact_id));
-    return contacts.filter(c => ids.has(c.id) && c.phone?.trim() && !c.opted_out).length;
-  };
+function SettingsSheet({ groups, members, contacts, landlines, deacons, target, type, onTarget, onType, onClose }) {
+  /* The number each choice would actually text. */
+  const countFor = id => planRecipients({ target: id, contacts, groups, members, landlines, deacons }).list.length;
   const rows = [
     { id: 'all', name: 'All congregation' },
     ...groups.filter(g => g.name !== NEW_GROUP),
@@ -393,7 +397,7 @@ function CampaignSheet({ campaign: c, onClose, onOpenThread, reload }) {
         </button>
 
         <div className="sm-camp-head">
-          <h2 className="sm-sheet-h">{c.key}</h2>
+          <h2 className="sm-sheet-h">{c.label}</h2>
           {c.showTally && (
             <p className="sm-total">
               <strong>{c.tally.total}</strong> plates
@@ -426,6 +430,9 @@ function CampaignSheet({ campaign: c, onClose, onOpenThread, reload }) {
 function ThreadSheet({ thread, onClose, reload }) {
   const [reply, setReply] = useState('');
   const [sending, setSending] = useState(false);
+  const [sendErr, setSendErr] = useState('');
+  /* Scheduled texting maintenance greys out the reply box. */
+  const paused = useMaintenance();
 
   useEffect(() => {
     const prev = document.body.style.overflow;
@@ -436,11 +443,21 @@ function ThreadSheet({ thread, onClose, reload }) {
   }, [onClose]);
 
   async function send() {
-    if (!reply.trim() || sending) return;
+    if (paused || !reply.trim() || sending) return;
     setSending(true);
     const res = await sendText({ number: thread.number, name: thread.name, body: reply.trim(), status: 'Reply' });
     setSending(false);
-    if (res?.error) { tapFailed(); return; }
+    /*
+     * `sent`, not `error`. sendProspectSms never returns an `error` key — a
+     * failure comes back as { sent: 0, failed: [...] } — so this check was
+     * never true: a reply that did not go played the saved chime, cleared the
+     * box and closed the sheet. The draft is kept and the reason is shown.
+     */
+    if (!res?.sent) {
+      tapFailed();
+      setSendErr(res?.failed?.[0]?.error || 'That reply did not send.');
+      return;
+    }
     tapSaved();
     setReply('');
     reload?.();
@@ -474,18 +491,23 @@ function ThreadSheet({ thread, onClose, reload }) {
           ))}
         </div>
 
-        <div className="sm-reply">
-          <input
-            value={reply}
-            onChange={e => setReply(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && send()}
-            placeholder="Reply"
-            aria-label="Reply"
-          />
-          <button onClick={send} disabled={!reply.trim() || sending} aria-label="Send reply">
+        <div className={`sm-reply ${paused ? 'paused' : ''}`}>
+          {paused ? (
+            <div className="sm-paused-field" role="status">{maintenanceLabel(paused)}</div>
+          ) : (
+            <input
+              value={reply}
+              onChange={e => { setReply(e.target.value); setSendErr(''); }}
+              onKeyDown={e => e.key === 'Enter' && send()}
+              placeholder="Reply"
+              aria-label="Reply"
+            />
+          )}
+          <button onClick={send} disabled={!!paused || !reply.trim() || sending} aria-label="Send reply">
             <Icon d={P.send} size={19} />
           </button>
         </div>
+        {sendErr && <p className="sm-warn" role="alert">{sendErr}</p>}
       </div>
     </div>
   );

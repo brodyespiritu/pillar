@@ -1,8 +1,10 @@
 import { supabase } from './supabase';
 import { sendProspectSms } from './sms';
-import { markAwaitingApproval, findNewGroup } from './consent';
+import { markAwaitingApproval, findNewGroup, NEW_GROUP } from './consent';
 import { fetchMembers } from './care';
 import { fetchGuests } from './guests';
+/* The exact file the send functions use, so the cost shown is the cost billed. */
+import { smsCost, toGsm } from '../../supabase/functions/_shared/smsEncoding.ts';
 
 /* ── Contacts ── */
 /*
@@ -119,6 +121,17 @@ export async function latestDinnerSend() {
   return data?.[0] || null;
 }
 
+/*
+ * Every recorded poll answer — one per person per poll, a later reply replacing
+ * an earlier one. The inbound webhook writes these; the Responses tab reads them.
+ */
+export async function fetchPollAnswers() {
+  const { data, error } = await supabase.from('sms_poll_answers')
+    .select('poll_body, to_number, choice, answered_at');
+  if (error) return [];
+  return data || [];
+}
+
 /* ── Message library (saved broadcasts, resendable) ── */
 export async function fetchLibrary() {
   const { data, error } = await supabase
@@ -189,12 +202,127 @@ export async function cancelScheduled(id) {
   return supabase.from('sms_scheduled').update({ status: 'canceled' }).eq('id', id).eq('status', 'pending');
 }
 
+/* ── Who a send reaches ── */
+
+/*
+ * Numbers Telnyx has refused as not mobile — the sms_landlines view. They are
+ * skipped on every send, so they are left out of the count too.
+ */
+export async function fetchLandlines() {
+  const { data, error } = await supabase.from('sms_landlines').select('to10');
+  if (error) return new Set();
+  return new Set((data || []).map(r => r.to10).filter(Boolean));
+}
+
+/*
+ * The directory's deacons — members tagged Deacons. A text to the Deacons group
+ * only reaches numbers that belong to one of them (the server enforces it), and
+ * the Groups tab uses the same list to show who does not line up.
+ */
+export async function fetchDeaconDirectory() {
+  const { data, error } = await supabase.from('church_members')
+    .select('id, name, phone, tags').ilike('tags', '%deacon%');
+  if (error) return null;
+  return (data || [])
+    .filter(m => String(m.tags || '').split(',').some(t => t.trim().toLowerCase() === 'deacons'))
+    .map(m => ({ id: m.id, name: m.name || '', phone10: normalizePhone(m.phone) }));
+}
+
+export const isDeaconsGroup = g => String(g?.name || '').trim().toLowerCase() === 'deacons';
+
+/*
+ * The people a composer send will actually reach, and why anyone else is left
+ * out — the same rules as supabase/functions/_shared/recipients.ts, so the
+ * number on the button is the number that goes. The server checks again at the
+ * moment of sending regardless; this is so nobody is surprised by it.
+ */
+export function planRecipients({ target, contacts = [], groups = [], members = [], landlines = new Set(), deacons = null }) {
+  const newGroup = groups.find(g => g.name === NEW_GROUP);
+  const group = target === 'all' ? null : groups.find(g => g.id === target);
+  const inGroup = group ? new Set(members.filter(m => m.group_id === group.id).map(m => m.contact_id)) : null;
+  const awaiting = new Set(newGroup ? members.filter(m => m.group_id === newGroup.id).map(m => m.contact_id) : []);
+  const isNew = !!(group && newGroup && group.id === newGroup.id);
+  const deaconPhones = isDeaconsGroup(group) && deacons ? new Set(deacons.map(d => d.phone10)) : null;
+
+  const list = [];
+  const left = { waiting: 0, landlines: 0, duplicates: 0, notDeacons: 0 };
+  const seen = new Set();
+  for (const c of contacts) {
+    if (!String(c.phone || '').trim() || c.opted_out) continue;
+    if (inGroup && !inGroup.has(c.id)) continue;
+    if (target !== 'all' && !group) continue;
+    const p = normalizePhone(c.phone);
+    if (!isNew && awaiting.has(c.id)) { left.waiting++; continue; }
+    if (deaconPhones && !deaconPhones.has(p)) { left.notDeacons++; continue; }
+    if (landlines.has(p)) { left.landlines++; continue; }
+    if (seen.has(p)) { left.duplicates++; continue; }
+    seen.add(p);
+    list.push(c);
+  }
+  return { list, left };
+}
+
+/* "3 waiting for approval · 29 landlines" — the people left out, in words. */
+export function leftOutText(left) {
+  const n = (k, one, many) => (left[k] ? `${left[k]} ${left[k] === 1 ? one : many}` : null);
+  return [
+    n('waiting', 'waiting for approval', 'waiting for approval'),
+    n('notDeacons', 'not a deacon in the member directory', 'not deacons in the member directory'),
+    n('landlines', 'landline', 'landlines'),
+    n('duplicates', 'duplicate number', 'duplicate numbers'),
+  ].filter(Boolean).join(' · ');
+}
+
+export const targetSpec = target => (target === 'all' ? { kind: 'all' } : { kind: 'group', id: target });
+
 /* ── Send broadcast (reuses the Telnyx edge function) ── */
-export async function sendBroadcast(contacts, body, status, campaign) {
-  const messages = contacts
-    .filter(c => c.phone?.trim())
-    .map(c => ({ to_number: c.phone.trim(), to_name: c.name || '', body }));
-  return sendProspectSms(messages, status, campaign);
+/*
+ * One message per phone: two contacts sharing a number used to get two copies
+ * of every broadcast — 22 extra texts on each send to the whole list.
+ * `target` lets the server re-check the group as it stands at the moment of
+ * sending, not as it stood when this screen loaded.
+ */
+export async function sendBroadcast(contacts, body, status, campaign, target) {
+  const text = String(body || '').trim();
+  const seen = new Set();
+  const messages = [];
+  for (const c of contacts) {
+    if (!c.phone?.trim()) continue;
+    const key = normalizePhone(c.phone);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    messages.push({ to_number: c.phone.trim(), to_name: c.name || '', body: text });
+  }
+  return sendProspectSms(messages, status, campaign, target);
+}
+
+/*
+ * The phones a send actually reached. Anyone the server refused or skipped as a
+ * landline is left out; a copy skipped only because the same phone already got
+ * one counts as reached. An answer that does not say which numbers failed can
+ * only vouch for a send in which nothing failed.
+ */
+export function reachedPhones(contacts, res) {
+  if (!res?.sent) return new Set();
+  const misses = [
+    ...(res.failed || []),
+    ...(res.skipped || []).filter(x => !/same number/i.test(x.reason || '')),
+  ];
+  if (misses.some(x => !x.to_number)) return new Set();
+  const missed = new Set(misses.map(x => normalizePhone(x.to_number)));
+  return new Set(contacts.map(c => normalizePhone(c.phone)).filter(p => p && !missed.has(p)));
+}
+
+/* What happened, for a result line: counts and the first reason given. */
+export function sendSummary(res) {
+  const failed = res?.failed || [];
+  const skipped = res?.skipped || [];
+  return {
+    sent: res?.sent || 0,
+    notSent: failed.length,
+    skipped: skipped.length,
+    reason: failed[0]?.error || skipped[0]?.reason || '',
+  };
 }
 
 /* ── Chasing the people who never answered ── */
@@ -269,11 +397,23 @@ export function silentRecipients(prompt, threads, familyOf = null) {
 }
 
 /* SMS segment math (GSM-7 = 160, unicode = 70) */
+/*
+ * What this text will actually cost, in segments.
+ *
+ * Measured by the same file the send functions use, on the text as it goes to
+ * Telnyx — punctuation straightened — so the number here is the number billed.
+ * The old estimate was wrong in both directions: it called any non-ASCII
+ * character Unicode (é, £ and ñ are plain SMS characters), and it divided long
+ * texts by 160 and 70 when a split message holds 153 and 67 a segment.
+ *
+ * `len` stays the length as typed — that is what the person is looking at.
+ */
 export function smsSegments(text) {
-  const len = text.length;
-  const unicode = /[^\x00-\x7f]/.test(text);
-  const per = unicode ? 70 : 160;
-  return { len, segments: len === 0 ? 0 : Math.ceil(len / per), per };
+  const typed = String(text ?? '');
+  const cost = smsCost(toGsm(typed));
+  const multipart = cost.segments > 1;
+  const per = cost.encoding === 'GSM-7' ? (multipart ? 153 : 160) : (multipart ? 67 : 70);
+  return { len: typed.length, segments: typed.length === 0 ? 0 : cost.segments, per, encoding: cost.encoding };
 }
 
 /* ── Public RSVP link ── */

@@ -6,11 +6,15 @@ import {
   assembleMessage, getLastMassTexts, sendProspectSms,
   saveSession, loadSession, clearSession,
 } from '../../lib/sms';
+import { useMaintenance, maintenanceLabel } from '../../lib/maintenance';
 import '../care/Modal.css';
 import './Guests.css';
 
 export default function TextProspectsModal({ guests, onClose }) {
   const { user } = useAuth();
+  /* Scheduled texting maintenance locks the final Send. Writing and personalising
+     still work — the session is saved, so the texts can go once the window closes. */
+  const paused = useMaintenance();
 
   const prospects = useMemo(() => guests.filter(isProspect), [guests]);
   const withPhone = useMemo(() => prospects.filter(p => p.phone?.trim()), [prospects]);
@@ -69,6 +73,7 @@ export default function TextProspectsModal({ guests, onClose }) {
   }
 
   async function fireSend() {
+    if (paused) return;
     setPhase('sending');
     const messages = recipients.map(r => ({
       to_number: r.phone.trim(),
@@ -208,14 +213,19 @@ export default function TextProspectsModal({ guests, onClose }) {
         {/* ── DONE ── */}
         {phase === 'done' && results && (
           <div className="modal-body tx-center">
-            <div className={`tx-done-icon ${results.failed?.length ? 'warn' : 'ok'}`}>
-              <Icon d={results.failed?.length ? P.shield : P.check} size={30} />
+            <div className={`tx-done-icon ${results.failed?.length || !results.sent ? 'warn' : 'ok'}`}>
+              <Icon d={results.failed?.length || !results.sent ? P.shield : P.check} size={30} />
             </div>
-            <p className="tx-done-title">{results.sent} sent{results.failed?.length ? ` · ${results.failed.length} failed` : ''}</p>
-            {results.failed?.length > 0 && (
+            <p className="tx-done-title">
+              {results.sent} sent{results.failed?.length ? ` · ${results.failed.length} not sent` : ''}
+              {results.skipped?.length ? ` · ${results.skipped.length} skipped` : ''}
+            </p>
+            {/* Who did not get one, and why — refused (opted out, not a mobile) or skipped (a landline, the same phone twice). */}
+            {(results.failed?.length > 0 || results.skipped?.length > 0) && (
               <div className="tx-failed">
-                {results.failed.map((f, i) => (
-                  <div key={i} className="tx-failed-row"><strong>{f.to_name}</strong><span>{f.error}</span></div>
+                {[...(results.failed || []).map(f => ({ name: f.to_name, why: f.error })),
+                  ...(results.skipped || []).map(x => ({ name: x.to_name, why: x.reason }))].map((f, i) => (
+                  <div key={i} className="tx-failed-row"><strong>{f.name}</strong><span>{f.why}</span></div>
                 ))}
               </div>
             )}
@@ -238,7 +248,8 @@ export default function TextProspectsModal({ guests, onClose }) {
           </>)}
           {phase === 'review' && (<>
             <button className="btn-ghost" onClick={() => { setPIndex(recipients.length - 1); setPhase('personalize'); }}>Back</button>
-            <button className="btn-primary" onClick={fireSend}><Icon d={P.send} size={15} />Send {recipients.length} Texts</button>
+            {paused && <p className="maintenance-note" role="status">{maintenanceLabel(paused)}</p>}
+            <button className="btn-primary" onClick={fireSend} disabled={!!paused}><Icon d={P.send} size={15} />Send {recipients.length} Texts</button>
           </>)}
           {phase === 'done' && (
             <button className="btn-primary" onClick={() => { clearSession(); onClose(); }} style={{ marginLeft: 'auto' }}>Done</button>

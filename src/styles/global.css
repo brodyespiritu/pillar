@@ -40,6 +40,14 @@ body {
 #root { height: 100vh; display: flex; flex-direction: column; }
 
 button { cursor: pointer; font-family: inherit; border: none; outline: none; }
+
+/* The words beside a send button during scheduled texting maintenance —
+   src/lib/maintenance.js. One style, so every dialog says it the same way.
+   It takes only the room the buttons leave; sized to its text instead, it
+   squeezed "Send to 142" onto two lines in the 460px Remind dialog. */
+.maintenance-note { flex: 1 1 0; align-self: center; margin: 0; font-size: 13.5px; font-weight: 600; line-height: 1.45; color: var(--text-2); text-wrap: balance; }
+/* Phone sheets stack their footer buttons, so the note sits centred between them. */
+@media (max-width: 767px) { .modal.sheet .modal-foot .maintenance-note { flex: none; text-align: center; } }
 /* Browsers default textarea to monospace and select to their own UI font —
    without these, text boxes render in a different typeface than the inputs
    beside them. */

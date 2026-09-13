@@ -42,10 +42,22 @@ export async function getLastMassTexts(numbers = []) {
 }
 
 /* ── Send (via Supabase Edge Function → Telnyx) ── */
-export async function sendProspectSms(messages, status, campaign) {
+export async function sendProspectSms(messages, status, campaign, target) {
   const { data, error } = await supabase.functions.invoke('send-prospect-sms',
-    { body: { messages, ...(status ? { status } : {}), ...(campaign ? { campaign } : {}) } });
+    { body: { messages, ...(status ? { status } : {}), ...(campaign ? { campaign } : {}), ...(target ? { target } : {}) } });
   if (error) {
+    /*
+     * Refused as a caller, not broken. The function only accepts signed-in active
+     * staff, and says why in its body — an expired session, or an account that
+     * is not staff. Checked before the generic mapping below, which would call
+     * any non-2xx answer "not deployed" and send someone after the wrong problem.
+     */
+    const status = error.context?.status;
+    if (status === 401 || status === 403) {
+      const said = await error.context.json().catch(() => ({}));
+      const reason = said?.error || 'Sign in again to send texts.';
+      return { sent: 0, failed: messages.map(m => ({ to_name: m.to_name, error: reason })) };
+    }
     // Function not deployed / not configured → report all as failed with a clear reason.
     const reason = /not found|Failed to fetch|non-2xx/i.test(error.message || '')
       ? 'SMS backend not deployed. Deploy supabase/functions/send-prospect-sms and set Telnyx secrets.'

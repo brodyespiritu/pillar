@@ -158,6 +158,25 @@
 .cv-send:hover:not(:disabled) { background: var(--accent-hover); }
 .cv-send:disabled { opacity: 0.5; cursor: default; }
 
+/* Scheduled maintenance: the field is replaced by a grey one of the same size
+   saying until when, so the row keeps its shape. The draft is kept in state and
+   comes back when the window closes. Used by the Guests conversations and the
+   Responses person pane alike. */
+.cv-compose.paused .cv-send { opacity: 0.4; }
+.cv-paused-field {
+  flex: 1; min-width: 0;
+  padding: 9px 15px; border-radius: 10px; border: 1px solid var(--border);
+  background: var(--surface-2); color: var(--text-2);
+  font-size: 14.5px; font-weight: 600; line-height: 1.4; cursor: not-allowed;
+}
+/* Why a message did not go. Lined up under the same reading column as the
+   compose box above it; the house error type, as .rsp-err. */
+.cv-send-err {
+  flex-shrink: 0; margin: 0;
+  padding: 0 max(24px, calc((100% - 900px) / 2)) 14px;
+  font-size: 13px; line-height: 1.5; color: var(--red);
+}
+
 /* ── Placeholder / new-message picker ── */
 .cv-placeholder {
   flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;

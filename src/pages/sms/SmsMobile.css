@@ -350,6 +350,29 @@
 }
 .sm-reply button:disabled { opacity: 0.4; }
 
+/*
+ * Scheduled texting maintenance. The composer keeps its shape: the notice sits
+ * where the placeholder does, at the same size, and the action row fades and
+ * stops taking taps (it is `inert`). The reply field is swapped for a grey one of
+ * the same height. Drafts are kept in state and come back when the window closes.
+ */
+.sm-input-wrap { position: relative; }
+.sm-compose.paused .sm-input { color: transparent; -webkit-text-fill-color: transparent; }
+.sm-compose.paused .sm-row-actions { opacity: 0.4; }
+.sm-paused {
+  position: absolute; top: 0; left: 0; right: 0; margin: 0;
+  font-size: 17px; line-height: 1.45; font-weight: 600; color: var(--text-2);
+  pointer-events: none;
+}
+.sm-paused-field {
+  flex: 1; min-width: 0; min-height: 52px; padding: 8px 18px;
+  display: flex; align-items: center;
+  border-radius: 20px;
+  corner-shape: squircle;
+  background: var(--surface-2);
+  font-size: 15px; font-weight: 600; line-height: 1.3; color: var(--text-2);
+}
+
 @keyframes sm-fade { from { opacity: 0; } to { opacity: 1; } }
 @keyframes sm-rise { from { transform: translateY(100%); } to { transform: translateY(0); } }
 

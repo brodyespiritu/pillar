@@ -1,6 +1,6 @@
 // Supabase Edge Function — dispatch due scheduled SMS broadcasts via Telnyx.
 //
-// Deploy:  supabase functions deploy send-scheduled-sms
+// Deploy:  supabase functions deploy send-scheduled-sms --no-verify-jwt
 // Cron:    run every minute (see supabase/sms-library-schema.sql for the
 //          cron.schedule block, or add a Dashboard cron job hitting this URL).
 //
@@ -11,6 +11,11 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { nextOccurrence } from '../_shared/recurrence.ts';
+import { activeMaintenance } from '../_shared/maintenance.ts';
+import { toGsm } from '../_shared/smsEncoding.ts';
+import { systemCaller } from '../_shared/callers.ts';
+import { toE164 } from '../_shared/phone.ts';
+import { loadRoster, screenMessages, parseTarget } from '../_shared/recipients.ts';
 
 const TELNYX_API_KEY = Deno.env.get('TELNYX_API_KEY')!;
 const TELNYX_FROM    = Deno.env.get('TELNYX_FROM_NUMBER')!;
@@ -22,38 +27,12 @@ const SERVICE_ROLE   = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
    congregation. Deployed with --no-verify-jwt; this check is the gate. */
 const CRON_SECRET    = Deno.env.get('CARES_CRON_SECRET') || '';
 
-const enc = new TextEncoder();
-function timingSafeEqual(a: string, b: string) {
-  const x = enc.encode(a), y = enc.encode(b);
-  if (x.length !== y.length) return false;
-  let diff = 0;
-  for (let i = 0; i < x.length; i++) diff |= x[i] ^ y[i];
-  return diff === 0;
-}
-function roleOf(token: string) {
-  const part = token.split('.')[1];
-  if (!part) return '';
-  try {
-    const pad = part.replace(/-/g, '+').replace(/_/g, '/');
-    return JSON.parse(atob(pad + '='.repeat((4 - pad.length % 4) % 4)))?.role || '';
-  } catch { return ''; }
-}
+/* The cron secret or the service-role key, each matched exactly — see
+   _shared/callers.ts. This also used to accept any token that merely claimed
+   role "service_role", decoded with atob and never verified, so a token typed by
+   hand could set every due scheduled text going. */
 function authorized(req: Request) {
-  const token = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '').trim();
-  if (!token) return false;
-  if (roleOf(token) === 'service_role') return true;
-  if (CRON_SECRET && timingSafeEqual(token, CRON_SECRET)) return true;
-  return !!SERVICE_ROLE && timingSafeEqual(token, SERVICE_ROLE);
-}
-
-// Telnyx requires E.164 (e.g. +14045551234).
-function toE164(raw: string): string {
-  const s = String(raw || '').trim();
-  if (s.startsWith('+')) return '+' + s.slice(1).replace(/\D/g, '');
-  const d = s.replace(/\D/g, '');
-  if (d.length === 10) return '+1' + d;
-  if (d.length === 11 && d.startsWith('1')) return '+' + d;
-  return d ? '+' + d : '';
+  return systemCaller(req, { serviceRole: SERVICE_ROLE, cronSecret: CRON_SECRET }) !== null;
 }
 
 const cors = {
@@ -62,12 +41,14 @@ const cors = {
 };
 
 /*
- * Who a recurring send should reach this time round.
+ * Who a send should reach this time round.
  *
- * The stored recipient list is a snapshot from when the schedule was made, so a
- * weekly text would keep going to the congregation as it was months ago and
- * never reach anyone who joined since. When the schedule records who it was
- * aimed at, the list is rebuilt at send time instead.
+ * The stored recipient list is a snapshot from when the schedule was made. That
+ * used to be rebuilt only for repeating texts, so a one-off text scheduled on
+ * Monday for Sunday still went to everyone who was in the group on Monday —
+ * including somebody taken off the Deacons list in between. Any schedule that
+ * records who it was aimed at is rebuilt at send time now; only a hand-picked
+ * list, which has no group to rebuild from, keeps its snapshot.
  */
 async function resolveRecipients(supabase: any, targetKey: string | null) {
   if (!targetKey) return null;
@@ -76,22 +57,28 @@ async function resolveRecipients(supabase: any, targetKey: string | null) {
   for (let from = 0; ; from += 1000) {
     const { data, error } = await supabase
       .from('sms_contacts').select('id, name, phone, opted_out').order('id').range(from, from + 999);
-    if (error) return null;                       // fall back to the snapshot
+    if (error) return null;                       // fall back to the snapshot, still screened below
     contacts.push(...(data || []));
     if (!data || data.length < 1000) break;
   }
-  /* A schedule set up before somebody opted out must not text them when it
-     finally fires. */
   const withPhone = contacts.filter(c => String(c.phone || '').trim() && !c.opted_out);
   const shape = (c: any) => ({ name: c.name || '', phone: String(c.phone).trim() });
 
   if (targetKey === 'all') return withPhone.map(shape);
 
-  const { data: mem } = await supabase
-    .from('sms_group_members').select('contact_id').eq('group_id', targetKey);
-  const ids = new Set((mem || []).map((m: any) => m.contact_id));
+  const ids = new Set<string>();
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await supabase
+      .from('sms_group_members').select('contact_id').eq('group_id', targetKey).order('contact_id').range(from, from + 999);
+    if (error) return null;
+    for (const m of data || []) ids.add(m.contact_id);
+    if (!data || data.length < 1000) break;
+  }
   return withPhone.filter(c => ids.has(c.id)).map(shape);
 }
+
+const targetOf = (key: string | null) =>
+  key === 'all' ? { kind: 'all' as const } : parseTarget({ kind: 'group', id: key });
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
@@ -105,6 +92,18 @@ Deno.serve(async (req) => {
       throw new Error('Telnyx not configured — set TELNYX_API_KEY and TELNYX_FROM_NUMBER secrets.');
     }
     const supabase = createClient(SUPABASE_URL, SERVICE_ROLE);
+
+    /*
+     * Before the claim, not after. A claimed row flips to 'processing' and
+     * nothing ever sets it back, so blocking the send later would strand it for
+     * good. Left 'pending', a due row simply waits for the window to close.
+     */
+    const paused = await activeMaintenance(supabase);
+    if (paused) {
+      return new Response(JSON.stringify({ dispatched: 0, skipped: 'maintenance', until: paused.ends_at }), {
+        headers: { ...cors, 'Content-Type': 'application/json' },
+      });
+    }
 
     // Claim due rows (atomic: only rows still 'pending' flip to 'processing').
     const { data: due, error } = await supabase
@@ -120,9 +119,40 @@ Deno.serve(async (req) => {
       });
     }
 
+    /* Who may put a text on the schedule: active staff, as of now. */
+    const { data: staffRows } = await supabase.from('staff').select('id, active');
+    const activeStaff = new Set((staffRows || []).filter((s: any) => s.active !== false).map((s: any) => s.id));
+
     let dispatched = 0;
     for (const job of due) {
-      const recipients = Array.isArray(job.recipients) ? job.recipients : [];
+      const body = String(job.body ?? '').trim();
+
+      /*
+       * The send functions only take texts from active staff; a scheduled row is
+       * a text too. A row written by anyone else — or by someone who has since
+       * left — is refused, and so is the series it belongs to.
+       */
+      if (!activeStaff.has(job.owner)) {
+        await supabase.from('sms_scheduled').update({
+          status: 'failed', sent_count: 0, sent_at: new Date().toISOString(),
+          error: 'Not sent: scheduled by someone who is not active staff',
+        }).eq('id', job.id);
+        console.warn('refused scheduled text from a non-staff owner:', job.id);
+        continue;
+      }
+
+      const fresh = await resolveRecipients(supabase, job.target_key ?? null);
+      const recipients = fresh ?? (Array.isArray(job.recipients) ? job.recipients : []);
+      const target = job.target_key ? targetOf(job.target_key) : null;
+
+      /* The same rules as every other send — see _shared/recipients.ts. */
+      const roster = await loadRoster(supabase, { channel: 'sms', target });
+      const { send, blocked, skipped } = screenMessages(
+        recipients.map((r: any) => ({ to_number: String(r.phone ?? ''), to_name: r.name || '', body })),
+        roster, { channel: 'sms', status: 'MassText' },
+      );
+      for (const b of blocked) console.warn(`scheduled ${job.id} blocked: ${b.reason}`);
+
       let sent = 0;
       let firstError: string | null = null;
       const rows: Record<string, unknown>[] = [];
@@ -139,9 +169,8 @@ Deno.serve(async (req) => {
         if (error) logErrors.push(error.message);
       };
 
-      for (const r of recipients) {
-        const to = toE164(r.phone);
-        if (to.length < 12) continue;
+      for (const r of send) {
+        const to = toE164(r.to_number);
         /* Stamped per message, not per batch — see send-prospect-sms. A reply
            that arrives mid-broadcast must not be older than the text it
            answers, or it gets filed under the previous campaign. */
@@ -150,15 +179,18 @@ Deno.serve(async (req) => {
           const res = await fetch('https://api.telnyx.com/v2/messages', {
             method: 'POST',
             headers: { Authorization: `Bearer ${TELNYX_API_KEY}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ from: TELNYX_FROM, to, text: job.body }),
+            /* Plain punctuation on the wire, the typed text in the log — the
+               reasons are with the same line in send-prospect-sms. The library
+               lookup below matches on the body, so the log must keep it as is. */
+            body: JSON.stringify({ from: TELNYX_FROM, to, text: toGsm(body) }),
           });
           const data = await res.json();
           if (!res.ok) throw new Error(data?.errors?.[0]?.detail || `HTTP ${res.status}`);
           sent++;
-          rows.push({ to_number: to, to_name: r.name || '', body: job.body, status: 'MassText', provider_id: data?.data?.id, owner: job.owner, created_at: at });
+          rows.push({ to_number: to, to_name: r.to_name || '', body, status: 'MassText', provider_id: data?.data?.id, owner: job.owner, created_at: at });
         } catch (e) {
           firstError ??= String((e as Error).message || e);
-          rows.push({ to_number: to, to_name: r.name || '', body: job.body, status: 'Failed', error: String((e as Error).message || e), owner: job.owner, created_at: at });
+          rows.push({ to_number: to, to_name: r.to_name || '', body, status: 'Failed', error: String((e as Error).message || e), owner: job.owner, created_at: at });
         }
         if (rows.length >= LOG_BATCH) await flushLog();
       }
@@ -166,10 +198,11 @@ Deno.serve(async (req) => {
       await flushLog();
       if (logErrors.length) console.error('sms_messages log failed:', logErrors.join('; '));
 
+      const refused = blocked.length ? `${blocked.length} not sent: ${blocked[0].reason}` : null;
       await supabase.from('sms_scheduled').update({
         status: sent > 0 ? 'sent' : 'failed',
         sent_count: sent,
-        error: firstError,
+        error: firstError || refused || (sent === 0 && skipped.length ? skipped[0].reason : null),
         sent_at: new Date().toISOString(),
       }).eq('id', job.id);
 
@@ -187,10 +220,9 @@ Deno.serve(async (req) => {
         nextAt = nextOccurrence(nextAt, job.repeat_rule);
       }
       if (nextAt) {
-        const fresh = await resolveRecipients(supabase, job.target_key ?? null);
         const { error: repErr } = await supabase.from('sms_scheduled').insert({
           owner: job.owner,
-          body: job.body,
+          body,
           target_label: job.target_label,
           recipients: fresh ?? job.recipients,
           send_at: nextAt,
@@ -208,18 +240,18 @@ Deno.serve(async (req) => {
        * recognisable as one sent by hand.
        */
       const messageType = job.message_type || 'General';
-      const { data: lib } = await supabase.from('sms_library').select('id').eq('body', job.body).limit(1);
+      const { data: lib } = await supabase.from('sms_library').select('id').eq('body', body).limit(1);
       if (lib?.length) {
         await supabase.from('sms_library').update({
           last_sent_at: new Date().toISOString(),
-          recipient_count: recipients.length,
+          recipient_count: send.length,
           target_label: job.target_label,
           message_type: messageType,
         }).eq('id', lib[0].id);
       } else {
         await supabase.from('sms_library').insert({
-          owner: job.owner, body: job.body, target_label: job.target_label,
-          recipient_count: recipients.length, last_sent_at: new Date().toISOString(),
+          owner: job.owner, body, target_label: job.target_label,
+          recipient_count: send.length, last_sent_at: new Date().toISOString(),
           message_type: messageType,
         });
       }

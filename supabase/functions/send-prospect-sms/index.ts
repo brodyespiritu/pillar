@@ -1,13 +1,29 @@
-// Supabase Edge Function — send mass prospect texts via Telnyx (one thread per person).
+// Supabase Edge Function — every text Pillar sends goes out through here, via Telnyx
+// (one thread per person). The scheduler is the one exception; it applies the same
+// recipient rules itself (see send-scheduled-sms).
 //
-// Deploy:
-//   supabase functions deploy send-prospect-sms
+// Deploy (the function checks its own callers — see _shared/callers.ts):
+//   supabase functions deploy send-prospect-sms --no-verify-jwt
 //   supabase secrets set TELNYX_API_KEY=KEY123 TELNYX_FROM_NUMBER=+15551234567
 //
 // The frontend calls it with:
-//   supabase.functions.invoke('send-prospect-sms', { body: { messages: [{ to_number, to_name, body }] } })
+//   supabase.functions.invoke('send-prospect-sms', { body: {
+//     messages: [{ to_number, to_name, body }],
+//     status?,             // what to file it as: 'Reply', 'Reminder', 'Approval', ...
+//     campaign?,           // the message a reminder chases
+//     target?,             // { kind: 'all' } | { kind: 'group', id } — a group send is
+//                          //   re-checked against the group as it stands now
+//   } })
+// Pillar's own functions may also pass:
+//   channel: 'care', audience: 'staff' | 'deacons'
+//   dryRun: true         // every check, no Telnyx, no log — returns what would happen
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { activeMaintenance, maintenanceNotice } from '../_shared/maintenance.ts';
+import { toGsm } from '../_shared/smsEncoding.ts';
+import { authorizeSender } from '../_shared/callers.ts';
+import { toE164 } from '../_shared/phone.ts';
+import { loadRoster, screenMessages, parseTarget, parseAudience } from '../_shared/recipients.ts';
 
 const TELNYX_API_KEY   = Deno.env.get('TELNYX_API_KEY')!;
 const TELNYX_FROM       = Deno.env.get('TELNYX_FROM_NUMBER')!;
@@ -19,100 +35,127 @@ const cors = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Telnyx requires E.164 (e.g. +14045551234). Normalize however the number was stored.
-function toE164(raw: string): string {
-  const s = String(raw || '').trim();
-  if (s.startsWith('+')) return '+' + s.slice(1).replace(/\D/g, '');
-  const d = s.replace(/\D/g, '');
-  if (d.length === 10) return '+1' + d;                    // US 10-digit
-  if (d.length === 11 && d.startsWith('1')) return '+' + d; // US with country code
-  return d ? '+' + d : '';
-}
+const reply = (payload: unknown, status = 200) =>
+  new Response(JSON.stringify(payload), { status, headers: { ...cors, 'Content-Type': 'application/json' } });
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
 
   try {
-    if (!TELNYX_API_KEY || !TELNYX_FROM) {
+    const supabase = createClient(SUPABASE_URL, SERVICE_ROLE);
+
+    /*
+     * Before anything else — before the body is read, before maintenance, before
+     * the Telnyx configuration is so much as mentioned. Only Pillar's own
+     * functions and signed-in active staff may send; see _shared/callers.ts.
+     * This function ran with no check at all, so its public URL would text
+     * anyone, from the church's number, for anyone who found it.
+     */
+    const caller = await authorizeSender(req, supabase, SERVICE_ROLE);
+    if (!caller.ok) return reply({ error: caller.error }, caller.status);
+
+    const input = await req.json();
+    const dryRun = input?.dryRun === true;
+    if (dryRun && caller.kind !== 'system') return reply({ error: 'Dry runs are for Pillar itself.' }, 403);
+
+    if (!dryRun && (!TELNYX_API_KEY || !TELNYX_FROM)) {
       throw new Error('Telnyx not configured — set TELNYX_API_KEY and TELNYX_FROM_NUMBER secrets.');
     }
-    /* `channel` marks pastoral-care traffic so it is written out of reach of
-       the SMS views. Defaults to ordinary congregation SMS. */
-    const { messages, channel, status, campaign } = await req.json();
-    const chan = channel === 'care' ? 'care' : 'sms';
+
+    /*
+     * `channel` marks pastoral-care traffic so it is written out of reach of the
+     * SMS views, and — with `audience` — decides who may receive it at all.
+     * Only Pillar's own functions may send care traffic: a signed-in person
+     * asking for channel 'care' is sending an ordinary text.
+     */
+    const chan: 'sms' | 'care' = input?.channel === 'care' && caller.kind === 'system' ? 'care' : 'sms';
+    const audience = chan === 'care' ? parseAudience(input?.audience) : null;
+    const target = chan === 'sms' ? parseTarget(input?.target) : null;
     /*
      * What to file a delivered message as. The Responses tab reads the last
      * thing we sent someone as the question their next reply answers, so an
      * automatic acknowledgement has to be labelled — otherwise it becomes the
      * question and splits the campaign it was answering.
      */
+    const status = input?.status;
     const label = typeof status === 'string' && /^[A-Za-z]{1,24}$/.test(status) ? status : 'MassText';
     /* The message this send is about, when it is not the send itself — a
        reminder chases a campaign whose text it does not repeat. */
+    const campaign = input?.campaign;
     const about = typeof campaign === 'string' && campaign.trim() ? campaign.trim().slice(0, 2000) : null;
-    const supabase = createClient(SUPABASE_URL, SERVICE_ROLE);
+
+    /*
+     * Trimmed before anything reads it. The composer handed over whatever was
+     * typed, trailing blank lines included, while the library saves the trimmed
+     * text — so replies were matched against a copy that differed by a newline
+     * and polls were answered under the wrong question.
+     */
+    const messages = (Array.isArray(input?.messages) ? input.messages : []).map((m: any) => ({
+      to_number: String(m?.to_number ?? ''),
+      to_name: String(m?.to_name ?? ''),
+      body: String(m?.body ?? '').trim(),
+    }));
+
+    /*
+     * Scheduled maintenance — the backstop behind every other sender's own check.
+     *
+     * Answered 200 with a failure per message, not an error status. The web app
+     * reads any non-2xx as "SMS backend not deployed", which would have staff
+     * chasing a broken deployment during a planned pause. This way the reason
+     * lands in the same place a Telnyx failure would, in words.
+     */
+    if (!dryRun) {
+      const paused = await activeMaintenance(supabase);
+      if (paused) {
+        const notice = maintenanceNotice(paused);
+        return reply({
+          sent: 0,
+          maintenance: true,
+          until: paused.ends_at,
+          failed: messages.map((m: any) => ({ to_name: m.to_name, to_number: m.to_number, error: notice })),
+        });
+      }
+    }
+
+    /*
+     * Who may receive this, decided here and now — see _shared/recipients.ts.
+     * Care content reaches only the audience named, checked against the Cares
+     * staff list or the directory's deacons; a group send reaches only who is in
+     * that group today; nobody who opted out; one copy per phone.
+     */
+    const roster = await loadRoster(supabase, { channel: chan, audience, target });
+    const { send, blocked, skipped } = screenMessages(messages, roster, { channel: chan, audience, status: label });
+
+    for (const b of blocked) console.warn(`blocked (${chan}${audience ? '/' + audience : ''}): ${b.reason}`);
+
+    if (dryRun) {
+      return reply({
+        dryRun: true, channel: chan, audience, target,
+        wouldSend: send.length,
+        blocked: blocked.map(b => ({ to_name: b.to_name, reason: b.reason })),
+        skipped: skipped.map(s => ({ to_name: s.to_name, reason: s.reason })),
+      });
+    }
 
     let sent = 0;
-    const failed: { to_name: string; error: string }[] = [];
+    const failed: { to_name: string; to_number: string; error: string; blocked?: boolean }[] = [];
     const rows: any[] = [];
 
     /*
-     * Hard stop for pastoral care.
-     *
-     * Care content may only ever reach staff who an admin put on the Cares
-     * alert list. Every care message in the system funnels through this one
-     * function, so the rule is enforced here rather than trusting each caller:
-     * a bug upstream, a bad recipient list, or a future feature cannot text a
-     * congregation member somebody's medical detail. Blocked messages are
-     * recorded, never delivered.
+     * Care messages that were refused are recorded (on the care channel, out of
+     * the SMS views) so an admin can see a bug trying to text the wrong person.
+     * Ordinary refusals — an opt-out, somebody no longer in the group — are not
+     * written to the log: a row there reads as a text we sent them.
      */
-    let careAllowed: Set<string> | null = null;
-    if (chan === 'care') {
-      const { data: staffRows, error: staffErr } = await supabase
-        .from('staff').select('phone, active, preferences');
-      // If the roster can't be read we refuse everything rather than guess.
-      const allowed = new Set(
-        (staffErr ? [] : (staffRows || []))
-          .filter((s: any) => s.active !== false && s.preferences?.caresSmsOptIn === true)
-          .map((s: any) => String(s.phone || '').replace(/\D/g, '').slice(-10))
-          .filter(Boolean),
-      );
-
-      /*
-       * Deacons as well.
-       *
-       * A deacon told that one of the families they shepherd is in hospital is
-       * care content reaching somebody entitled to it — that is the whole point
-       * of the alerts. Without this the rule above blocks every one of them,
-       * because a deacon is a congregation contact, not Cares-alert staff.
-       *
-       * Widened only as far as the Deacons SMS group. WHICH family reaches
-       * WHICH deacon is settled upstream by deacon_id; this is the coarser
-       * question of whether a person may receive care content at all.
-       */
-      if (!staffErr) {
-        const tail = (v: unknown) => String(v ?? '').replace(/\D/g, '').slice(-10);
-        const { data: groups } = await supabase.from('sms_groups').select('id, name');
-        const deaconGroup = (groups || []).find(
-          (g: any) => String(g.name || '').trim().toLowerCase() === 'deacons');
-        if (deaconGroup) {
-          const { data: gm } = await supabase.from('sms_group_members')
-            .select('contact_id').eq('group_id', deaconGroup.id);
-          const ids = new Set((gm || []).map((r: any) => r.contact_id));
-          if (ids.size) {
-            const { data: cs } = await supabase.from('sms_contacts').select('id, phone');
-            for (const c of cs || []) {
-              if (!ids.has(c.id)) continue;
-              const t = tail(c.phone);
-              if (t) allowed.add(t);
-            }
-          }
-        }
+    const at0 = new Date().toISOString();
+    for (const b of blocked) {
+      failed.push({ to_name: b.to_name || '', to_number: b.to_number, error: b.reason, blocked: true });
+      if (chan === 'care') {
+        rows.push({ to_number: b.to_number, to_name: b.to_name, body: b.body, status: 'Blocked',
+                    channel: 'care', created_at: at0, error: `Blocked: ${b.reason}` });
       }
-      careAllowed = allowed;
     }
 
-    // Send each individually — no group chats.
     /*
      * The log is written as the send runs, not after it.
      *
@@ -138,53 +181,53 @@ Deno.serve(async (req) => {
       else logged += batch.length;
     };
 
-    for (const m of messages) {
+    // Send each individually — no group chats.
+    for (const m of send) {
       /*
-       * When this one actually went out.
-       *
-       * The rows are batched and written after the whole loop, so letting
-       * created_at default to now() stamped every message in a broadcast with
-       * the moment the LAST one was sent. Anyone who replied while the send was
-       * still running then had an inbound row older than the outbound it was
-       * answering — and the Responses tab, which reads a reply as answering the
-       * last thing sent before it, filed them under the previous campaign.
+       * When this one actually went out, stamped per message. A reply that
+       * arrives while a broadcast is still running must not be older than the
+       * text it answers, or the Responses tab files it under the previous one.
        */
       const at = new Date().toISOString();
       try {
-        const toNumber = toE164(m.to_number);
-        if (toNumber.length < 12) throw new Error(`Invalid phone number: "${m.to_number}"`);
-
-        if (careAllowed && !careAllowed.has(toNumber.replace(/\D/g, '').slice(-10))) {
-          rows.push({ to_number: m.to_number, to_name: m.to_name, body: m.body,
-                      status: 'Blocked', channel: 'care', created_at: at,
-                      error: 'Blocked: care content may only go to Cares-alert staff' });
-          failed.push({ to_name: m.to_name, error: 'Blocked: not a Cares-alert staff number' });
-          continue;
-        }
         const res = await fetch('https://api.telnyx.com/v2/messages', {
           method: 'POST',
           headers: { Authorization: `Bearer ${TELNYX_API_KEY}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ from: TELNYX_FROM, to: toNumber, text: m.body }),
+          /*
+           * Plain punctuation on the wire; the text as typed in the log.
+           *
+           * One curly apostrophe sends the whole text as UCS-2 at 67 characters a
+           * segment instead of 153 — the Sep 12 11:01 AM broadcast went out at 5
+           * segments a person when 2 would have done. toGsm swaps typographic
+           * quotes and dashes for plain ones and leaves anything genuinely outside
+           * the alphabet (emoji, accented names) as written.
+           *
+           * The row below still records m.body, deliberately. Reply matching
+           * compares the logged text with the library's copy, so logging the
+           * normalised wire text would stop dinner headcounts and poll answers
+           * matching the message they answer. Nothing reads the wire copy.
+           */
+          body: JSON.stringify({ from: TELNYX_FROM, to: toE164(m.to_number), text: toGsm(m.body) }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data?.errors?.[0]?.detail || `HTTP ${res.status}`);
         sent++;
         rows.push({ to_number: m.to_number, to_name: m.to_name, body: m.body, status: label, provider_id: data?.data?.id, channel: chan, campaign: about, created_at: at });
       } catch (e) {
-        failed.push({ to_name: m.to_name, error: String(e.message || e) });
-        rows.push({ to_number: m.to_number, to_name: m.to_name, body: m.body, status: 'Failed', error: String(e.message || e), channel: chan, created_at: at });
+        const error = String((e as Error).message || e);
+        failed.push({ to_name: m.to_name || '', to_number: m.to_number, error });
+        rows.push({ to_number: m.to_number, to_name: m.to_name, body: m.body, status: 'Failed', error, channel: chan, created_at: at });
       }
       if (rows.length >= LOG_BATCH) await flushLog();
     }
 
     await flushLog();
 
-    return new Response(JSON.stringify({ sent, failed, logged, logErrors }), {
-      headers: { ...cors, 'Content-Type': 'application/json' },
+    return reply({
+      sent, failed, logged, logErrors,
+      skipped: skipped.map(s => ({ to_name: s.to_name || '', to_number: s.to_number, reason: s.reason })),
     });
   } catch (e) {
-    return new Response(JSON.stringify({ error: String(e.message || e) }), {
-      status: 400, headers: { ...cors, 'Content-Type': 'application/json' },
-    });
+    return reply({ error: String((e as Error).message || e) }, 400);
   }
 });

@@ -17,7 +17,9 @@ export async function reply(baseUrl: string, key: string, to: string, body: stri
   await fetch(`${baseUrl}/functions/v1/send-prospect-sms`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
-    body: JSON.stringify({ messages: [{ to_number: to, to_name: '', body }], channel: 'care' }),
+    /* Staff audience: intake only ever answers the Cares staff member who texted
+       in, and send-prospect-sms refuses the reply to anyone else. */
+    body: JSON.stringify({ messages: [{ to_number: to, to_name: '', body }], channel: 'care', audience: 'staff' }),
   }).catch(e => console.error('reply failed:', e));
 }
 

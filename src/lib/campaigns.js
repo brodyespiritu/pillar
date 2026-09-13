@@ -108,8 +108,14 @@ export function groupCampaigns(threads = [], library = [], nameFor = () => '') {
        */
       const answers = lastAsk && askedStatus !== 'CareIntake' && parseHeadcount(m.body)
         ? lastAsk.body : asked;
-      const key = campaignLabel(answers) || 'Other replies';
-      if (!map.has(key)) map.set(key, { key, prompt: answers, replies: [] });
+      /*
+       * Keyed by the whole message, labelled by its first 46 characters. Keying
+       * by the label merged two different messages that happened to open the
+       * same way — "Wednesday night supper this week is…" every week — into one
+       * card, with one prompt and one headcount between them.
+       */
+      const key = answers ? `m:${norm(answers)}` : 'orphan';
+      if (!map.has(key)) map.set(key, { key, label: campaignLabel(answers), prompt: answers, replies: [] });
       map.get(key).replies.push({ ...m, thread: t, who: nameFor(t) });
     }
   }
@@ -124,6 +130,8 @@ export function groupCampaigns(threads = [], library = [], nameFor = () => '') {
       ...c,
       tally,
       showTally: dinners.has(norm(c.prompt)),
+      /* A poll's answers are recorded as choices (sms_poll_answers), not counted. */
+      isPoll: polls.has(norm(c.prompt)),
       unread: c.replies.filter(r => !r.read_at).length,
       lastAt: c.replies.reduce((a, r) => (a > r.created_at ? a : r.created_at), ''),
     };

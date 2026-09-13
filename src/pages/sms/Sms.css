@@ -65,6 +65,29 @@
 
 /* One bar of controls, and the only round thing on the page is Send. */
 .sms-bar { display: flex; align-items: center; gap: 8px; padding: 10px 12px 12px; }
+
+/*
+ * Scheduled maintenance. The sheet greys, its controls fade and stop taking
+ * clicks (the bar is `inert`), and the notice sits exactly where the placeholder
+ * does — the same padding, size and line height as .sms-body — so it reads as
+ * the box saying so, not a banner bolted on. A draft typed before the window is
+ * kept, only hidden, and reappears when the window closes.
+ */
+.sms-body-wrap { position: relative; }
+.sms-compose.paused { background: var(--surface-2); box-shadow: none; }
+.sms-compose.paused .sms-body {
+  cursor: not-allowed;
+  /* Safari paints a disabled field's text with -webkit-text-fill-color, which
+     ignores color — both are needed to hide a draft. */
+  color: transparent; -webkit-text-fill-color: transparent;
+}
+.sms-compose.paused .sms-bar { opacity: 0.4; }
+.sms-paused {
+  position: absolute; top: 0; left: 0; right: 0; margin: 0;
+  padding: 20px 22px 6px;
+  font-size: 16px; line-height: 1.6; font-weight: 600; color: var(--text-2);
+  pointer-events: none;
+}
 .sms-bar-gap { flex: 1; }
 
 /* The pill controls now live with the component, in PillMenu.css. */
@@ -789,3 +812,41 @@
 }
 .sms-poll-warn { margin: 0; font-size: 13px; line-height: 1.5; color: var(--yellow); }
 .sms-poll-warn code { background: var(--surface); padding: 1px 5px; border-radius: 5px; font-size: 12.5px; }
+
+/* ══════════ Poll results (Responses) ══════════
+   The answers a poll recorded, per option. Same badge as the composer's poll
+   preview, so an option reads the same before it goes out and after. */
+.rsp-camp-tally.poll { background: var(--accent); }
+.rsp-poll { margin-top: 22px; display: flex; flex-direction: column; gap: 14px; }
+.rsp-poll-h { margin: 0; font-size: 12.5px; font-weight: 700; color: var(--text-3); }
+.rsp-poll-none { margin: 0; font-size: 13.5px; color: var(--text-3); }
+.rsp-poll-row { display: flex; flex-direction: column; gap: 7px; }
+.rsp-poll-top { display: flex; align-items: center; gap: 10px; }
+.rsp-poll-top b {
+  flex-shrink: 0; min-width: 22px; height: 22px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 7px; background: var(--accent); color: #FFFFFF;
+  font-size: 12px; font-weight: 700;
+}
+.rsp-poll-label { flex: 1; min-width: 0; font-size: 14.5px; font-weight: 600; color: var(--text); }
+.rsp-poll-n { font-size: 15px; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
+.rsp-poll-bar { height: 6px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
+.rsp-poll-bar span { display: block; height: 100%; border-radius: inherit; background: var(--accent); }
+.rsp-poll-who { margin: 0; font-size: 12.5px; line-height: 1.5; color: var(--text-3); }
+/* The choice a reply recorded, where a dinner reply shows its headcount. */
+.rsp-poll-pick {
+  align-self: center; flex-shrink: 0; min-width: 26px; height: 26px; margin-right: 12px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 8px; background: var(--accent-soft); color: var(--accent);
+  font-size: 13px; font-weight: 700;
+}
+
+/* A result that reached nobody is not a success — no green tick. */
+.rsp-remind-tick.none { color: var(--yellow); background: var(--yellow-soft); }
+
+/* Deacons group vs the member directory, under the group's name. */
+.sms-group-check {
+  display: flex; flex-direction: column; gap: 6px; margin-top: 8px; max-width: 560px;
+  font-size: 12.5px; line-height: 1.5; color: var(--text-2);
+}
+.sms-group-check b { font-weight: 600; color: var(--yellow); }

@@ -10,8 +10,9 @@
 -- also arrive by text through the SMS intake, and that path would never run a
 -- browser callback.
 --
--- BEFORE RUNNING: replace BOTH occurrences of <CARES_CRON_SECRET> with one new
--- value of your choosing (openssl rand -hex 32), and set that same value as the
+-- BEFORE RUNNING: replace every occurrence of the placeholder in the SQL below —
+-- three: the trigger, the digest cron and the scheduler cron — with one new value
+-- of your choosing (openssl rand -hex 32), and set that same value as the
 -- CARES_CRON_SECRET function secret.
 --
 -- Supabase never shows a secret's value once set, so the original is gone. The
@@ -81,6 +82,24 @@ select cron.schedule('cares-alerts', '0,30 * * * *', $$
   );
 $$);
 
--- Check both landed:
---   select jobname, schedule, active from cron.job where jobname = 'cares-alerts';
+-- ── And the scheduler, which carries its OWN copy of the same secret ─────
+-- Leaving this out is exactly how scheduled texts stopped working on Sep 3 2026:
+-- the secret was rotated, cares-alerts above got the new value, and the
+-- send-scheduled-sms cron kept the old one. Every call after that was refused
+-- with 403 for ten days while cron.job_run_details reported each run as a
+-- success — pg_net only queues the request, so "succeeded" says nothing about
+-- the answer. Swapped in place, so the rest of the job is left exactly as is.
+select cron.alter_job(
+  job_id  := jobid,
+  command := regexp_replace(command, 'Bearer [^''"]+', 'Bearer <CARES_CRON_SECRET>')
+) from cron.job where jobname = 'send-scheduled-sms';
+
+-- Check everything landed:
+--   select jobname, schedule, active from cron.job where jobname in ('cares-alerts', 'send-scheduled-sms');
 --   select tgname from pg_trigger where tgname like 'trg_deacon_alert%';
+-- And that both crons now carry the SAME token, without printing it:
+--   select count(distinct (regexp_match(command, 'Bearer ([^''"]+)'))[1]) = 1 as same_token
+--     from cron.job where jobname in ('cares-alerts', 'send-scheduled-sms');
+-- Then confirm the ANSWERS, not the runs, a couple of minutes later:
+--   select status_code, left(content::text, 60), count(*) from net._http_response
+--    where created > now() - interval '5 minutes' group by 1, 2;

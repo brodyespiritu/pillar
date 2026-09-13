@@ -26,7 +26,15 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { upcomingCareEvents } from '../_shared/careEvents.ts';
-import { deaconFor, cadenceOf, addedText, updateText, dailyText, last10 } from '../_shared/deacons.ts';
+import {
+  matchDeacon, cadenceByPhone, DEFAULT_CADENCE, addedAlert, updateAlert, alertText, alertParts,
+  dailyParts, loadDirectory, last10,
+} from '../_shared/deacons.ts';
+import { activeMaintenance } from '../_shared/maintenance.ts';
+import { smsCost, toGsm } from '../_shared/smsEncoding.ts';
+import { systemCaller } from '../_shared/callers.ts';
+import { packLines, PART_SEGMENTS } from '../_shared/smsParts.ts';
+import { verifiedDeaconPhones } from '../_shared/recipients.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -46,39 +54,24 @@ const STOP_NOTICE = 'Reply STOP to opt out.';
 const NOTE_FRESH_DAYS = 2;       // how stale a note may be and still say "today"
 
 /*
- * Only the service role may run this. verify_jwt is NOT an authorization check —
- * it accepts any project-signed JWT, and the anon key is one of those and ships
- * in the public browser bundle.
+ * Only Pillar's own machinery may run this: the half-hourly cron's secret, or
+ * the service-role key — each matched exactly (_shared/callers.ts). verify_jwt
+ * is NOT an authorization check: it accepts any project-signed JWT, and the
+ * anon key is one of those and ships in the public browser bundle.
+ *
+ * This used to accept, as well, any token whose payload merely CLAIMED role
+ * "service_role" — read with atob, never verified. A token typed by hand passed,
+ * and a dry run then returned the full care digest to whoever sent it. Gone.
  */
-const enc = new TextEncoder();
-function timingSafeEqual(a: string, b: string) {
-  const x = enc.encode(a), y = enc.encode(b);
-  if (x.length !== y.length) return false;
-  let diff = 0;
-  for (let i = 0; i < x.length; i++) diff |= x[i] ^ y[i];
-  return diff === 0;
-}
-function roleOf(token: string) {
-  const part = token.split('.')[1];
-  if (!part) return '';
-  try {
-    const pad = part.replace(/-/g, '+').replace(/_/g, '/');
-    return JSON.parse(atob(pad + '='.repeat((4 - pad.length % 4) % 4)))?.role || '';
-  } catch { return ''; }
-}
 function authorized(req: Request) {
-  const token = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '').trim();
-  if (!token) return false;
-  if (roleOf(token) === 'service_role') return true;                      // a real service-role JWT
-  if (CRON_SECRET && timingSafeEqual(token, CRON_SECRET)) return true;    // the scheduler
-  return !!SERVICE_ROLE && timingSafeEqual(token, SERVICE_ROLE);
+  return systemCaller(req, { serviceRole: SERVICE_ROLE, cronSecret: CRON_SECRET }) !== null;
 }
 
-/* The scheduler may only trigger a send. Reading care data back (dryRun) still
-   requires the service role, so the cron secret can't be used to pull records. */
+/* The scheduler may only trigger a send. Reading care data back (dryRun) or
+   forcing a re-send requires the service role, so the cron secret can't be used
+   to pull records. */
 function isServiceRole(req: Request) {
-  const token = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '').trim();
-  return roleOf(token) === 'service_role' || (!!SERVICE_ROLE && timingSafeEqual(token, SERVICE_ROLE));
+  return systemCaller(req, { serviceRole: SERVICE_ROLE }) === 'service';
 }
 
 /*
@@ -139,7 +132,11 @@ function windowFor(today: Date, slot: number) {
 /* ── Message ── */
 const clean = (s: string) => String(s || '').replace(/\s+/g, ' ').trim();
 
-const renderAdded   = (m: any) => `- ${m.full_name}${m.category ? ` — ${m.category}` : ''}`;
+/* Plain hyphens throughout. The digest's own copy used em dashes, and one is
+   enough to send the entire text as UCS-2 at less than half the capacity —
+   see _shared/smsEncoding.ts. buildDigest also normalises everything it sends,
+   staff notes included, so this is belt and braces rather than the fix. */
+const renderAdded   = (m: any) => `- ${m.full_name}${m.category ? ` - ${m.category}` : ''}`;
 const renderUpdate  = (u: any) => `- ${u.name}: ${clean(u.notes)}`;
 /*
  * An edit, with what it consisted of.
@@ -159,7 +156,7 @@ const renderEdit = (e: any) => {
     e.room_number ? `Rm ${e.room_number}` : (e.floor ? `Floor ${e.floor}` : ''),
   ].filter(Boolean).join(', ');
   const note = clean(e.care_notes || '');
-  return `- ${e.name}: ${now || 'record updated'}${note ? ` — ${note}` : ''}`;
+  return `- ${e.name}: ${now || 'record updated'}${note ? ` - ${note}` : ''}`;
 };
 const renderEvent   = (e: any) => {
   // Time and place only when actually recorded — no "time TBD" filler.
@@ -176,7 +173,7 @@ const renderEvent   = (e: any) => {
    */
   const what = e.label || e.kind;
   const named = what === 'Appointment' ? 'Appointment - Details not given' : what;
-  return `- ${when}${e.member.full_name} — ${named}${where}`;
+  return `- ${when}${e.member.full_name} - ${named}${where}`;
 };
 
 /*
@@ -203,41 +200,17 @@ function sectionLines(title: string, items: any[], render: (x: any) => string) {
  * trimmed — staff act on these, and a note that stops mid-sentence ("…to see
  * what") is worse than a second message.
  */
-const PART_MAX = 1400;          // Telnyx takes 1600; leave room for the (n/m) tag
-
-/* Break at the last space that fits; only mid-word if a single word is
-   longer than the whole allowance. */
-function splitAt(s: string, room: number): [string, string] {
-  const space = s.lastIndexOf(' ', room);
-  const at = space > room * 0.5 ? space : room;      // avoid a runt first half
-  return [s.slice(0, at).trimEnd(), s.slice(at).trimStart()];
-}
-
 /*
- * Packs against the space actually left in the current part, rather than
- * pre-chopping each line to the full budget — otherwise a note longer than one
- * text pushes itself to a fresh part and leaves a near-empty one behind.
+ * A part's size is measured in SEGMENTS, not characters — PART_SEGMENTS and the
+ * packing live in _shared/smsParts.ts, shared with the deacon alerts.
+ *
+ * This was PART_MAX = 1400 characters, on the reasoning that "Telnyx takes
+ * 1600". That holds only while every character is in the GSM-7 alphabet. One
+ * that is not — an em dash, a curly apostrophe typed on an iPhone — sends the
+ * whole text as UCS-2 at 67 characters a segment, and 1,400 characters becomes
+ * 21 segments. Telnyx refuses anything over 10, which is how the Sep 12 4:00 PM
+ * digest reached nobody while reporting itself as a single part.
  */
-function packLines(lines: string[], budget: number): string[][] {
-  const chunks: string[][] = [];
-  let cur: string[] = [];
-  const used = () => cur.reduce((n, l) => n + l.length + 1, 0);
-  const flush = () => { if (cur.length) { chunks.push(cur); cur = []; } };
-
-  for (const raw of lines) {
-    let rest = raw;
-    for (;;) {
-      const room = budget - used();
-      if (rest.length <= room) { cur.push(rest); break; }
-      // Too little left to be worth a fragment — start the next part.
-      if (room < 60) { flush(); continue; }
-      const [head, tail] = splitAt(rest, room);
-      cur.push(head); flush(); rest = tail;
-    }
-  }
-  flush();
-  return chunks.length ? chunks : [[]];
-}
 
 /*
  * Returns the digest as one or more message bodies — one entry per text to
@@ -252,7 +225,13 @@ export function buildDigest(
   /* Someone still in a hospital bed counts as something to report, so a slot
      carrying only them is not a quiet one. */
   const nothing = !added.length && !updates.length && !edited.length && !ongoing.length;
-  const suffix = tail ? `\n\n${tail}` : '';
+  /*
+   * Everything that goes out is normalised to plain punctuation first — the
+   * header, every staff note, the tail. Measured after, not before: "…" becomes
+   * "..." and grows by two characters, so sizing the un-normalised text would
+   * under-count exactly the parts this is here to keep under the limit.
+   */
+  const suffix = toGsm(tail ? `\n\n${tail}` : '');
   const tidy = (s: string) => s.replace(/\n{3,}/g, '\n\n').trim();
 
   /*
@@ -261,10 +240,12 @@ export function buildDigest(
    * day's schedule when there is one.
    */
   if (nothing && !morning) {
-    return [`CARES - No recent updates. Next check at ${slotLabel(nextSlot(slot))}` + suffix];
+    return [toGsm(`CARES - No recent updates. Next check at ${slotLabel(nextSlot(slot))}`) + suffix];
   }
 
-  const header = nothing ? 'CARES - No updates yesterday' : `Bethesda Cares — ${slotLabel(slot)}`;
+  /* A plain hyphen. The em dash that was here sat on the first line of every
+     digest with news in it, so every one of them went out as UCS-2. */
+  const header = toGsm(nothing ? 'CARES - No updates yesterday' : `Bethesda Cares - ${slotLabel(slot)}`);
 
   const content: string[] = [];
   if (!nothing) {
@@ -289,13 +270,32 @@ export function buildDigest(
       : ['Today: no appointments or surgeries']));
   }
 
-  const whole = tidy([header, '', ...content].join('\n'));
-  if (whole.length + suffix.length <= PART_MAX) return [whole + suffix];
+  const lines = content.map(toGsm);
+  const whole = tidy([header, '', ...lines].join('\n'));
+  if (smsCost(whole + suffix).segments <= PART_SEGMENTS) return [whole + suffix];
 
-  // Every part repeats the header and carries an (n/m) tag, since texts can
-  // arrive out of order. Reserve room for both, plus the opt-out tail.
-  const budget = PART_MAX - header.length - 12 - suffix.length;
-  const chunks = packLines(content, Math.max(80, budget));
+  /*
+   * Every part repeats the header and carries an (n/m) tag, since texts can
+   * arrive out of order. Each candidate is measured with a tag as wide as the
+   * count could make it, and with the opt-out tail — even though only the last
+   * part keeps the tail — so no part comes in over the limit once its real tag
+   * is set.
+   *
+   * The count is not known until packing is done. If it turns out to need more
+   * digits than were allowed for, pack again with the wider tag. Widening only
+   * ever adds parts, so this settles, normally on the first pass.
+   */
+  let width = 2;
+  let chunks: string[][] = [];
+  for (;;) {
+    const widest = `(${'9'.repeat(width)}/${'9'.repeat(width)})`;
+    const fits = (part: string[]) =>
+      smsCost([`${header} ${widest}`, '', ...part].join('\n') + suffix).segments <= PART_SEGMENTS;
+    chunks = packLines(lines, fits);
+    const need = String(chunks.length).length;
+    if (need <= width) break;
+    width = need;
+  }
   const n = chunks.length;
   return chunks.map((c, i) => {
     const part = tidy([`${header} (${i + 1}/${n})`, '', ...c].join('\n'));
@@ -346,125 +346,165 @@ export function reminderText(e: any) {
  * Deacon alerts.
  *
  * Runs on every firing, so "as it happens" means within the half hour the recap
- * already wakes on rather than needing a second schedule. The morning slot also
- * carries the summary for everyone who asked for one instead.
+ * already wakes on even when the database trigger's own call is lost. The
+ * morning slot also carries the summary for everyone who asked for one instead.
  *
  * Every send is claimed first, the way reminders are: the same admission must
- * not be texted twice because the function ran again.
+ * not be texted twice because the function ran again. A claim whose text never
+ * went out is handed back, so the next firing tries again — it used to stand,
+ * and a refused text was recorded as delivered for good.
  */
-async function sendDeaconAlerts(supabase: any, now: Date, isMorning: boolean) {
-  /* Who is reachable: the phones actually on the Deacons SMS group. */
-  const { data: grp } = await supabase.from('sms_groups').select('id, name');
-  const deaconGroup = (grp || []).find((g: any) => String(g.name || '').trim().toLowerCase() === 'deacons');
-  if (!deaconGroup) return { skipped: 'no Deacons SMS group' };
 
-  const { data: gm } = await supabase.from('sms_group_members')
-    .select('contact_id').eq('group_id', deaconGroup.id);
-  const ids = new Set((gm || []).map((r: any) => r.contact_id));
-  if (!ids.size) return { skipped: 'Deacons group is empty' };
+/*
+ * How far back the half-hourly sweep looks.
+ *
+ * It looked back 4½ hours, not the half hour intended: `now` here is a wall
+ * clock (Eastern values in a UTC runtime), and subtracting from it produced an
+ * instant four hours early. Timestamps are real instants now. The lookback is
+ * two hours rather than exactly thirty minutes on purpose — the claim table
+ * makes overlap free, and an exact window loses anything written in the seconds
+ * between one firing's query and the next firing's start.
+ */
+const SWEEP_LOOKBACK_MS = 2 * 3600_000;
+/* The morning summary covers everything since that deacon's previous summary,
+   never more than two days back, and a day when there was no previous one. */
+const DAILY_FIRST_MS = 24 * 3600_000;
+const DAILY_MAX_MS = 48 * 3600_000;
 
-  const { data: contacts } = await supabase.from('sms_contacts').select('id, name, phone, opted_out');
-  const onGroup = (contacts || []).filter((c: any) => ids.has(c.id) && !c.opted_out && String(c.phone || '').trim());
-  const deaconPhones = new Set(onGroup.map((c: any) => last10(c.phone)));
-  if (!deaconPhones.size) return { skipped: 'no reachable deacons' };
+type Planned = { phone: string; deacon: string; kind: string; ref: string; parts: string[] };
 
-  /* How each wants to hear. The most recent poll answer for that number wins. */
+/*
+ * What the deacon alerts would do now, without doing it. Shared by the real run
+ * and the dry run, so a dry run cannot drift from what actually happens.
+ */
+async function planDeaconAlerts(
+  supabase: any, nowMs: number, isMorning: boolean, stamp: string, sinceMs?: number,
+) {
+  const counts = { events: 0, unmatched: 0, ambiguous: 0, 'no deacon': 0, 'not a deacon': 0, unreachable: 0, daily_cadence: 0 };
+
+  /* Who is reachable: deacons in the directory who are also on the texting group. */
+  const { phones: deaconPhones, error: rosterErr } = await verifiedDeaconPhones(supabase);
+  if (rosterErr) throw new Error(`deacon roster unavailable: ${rosterErr.message}`);
+  if (!deaconPhones.size) return { skipped: 'no reachable deacons', counts, immediate: [] as Planned[], daily: [] as Planned[] };
+
+  /* How each wants to hear — from the deacon poll only, never any other poll. */
   const { data: answers } = await supabase.from('sms_poll_answers')
-    .select('to_number, choice, answered_at').order('answered_at', { ascending: true });
-  const cadence = new Map<string, string>();
-  for (const a of answers || []) cadence.set(last10(a.to_number), cadenceOf(a.choice));
+    .select('poll_body, to_number, choice, answered_at');
+  const cadence = cadenceByPhone(answers || []);
 
-  const { data: directory } = await supabase.from('church_members')
-    .select('id, name, phone, deacon_id');
+  const directory = await loadDirectory(supabase);
 
-  /* Everything that happened in the window this firing covers. */
-  const since = new Date(now.getTime() - SLOT_WINDOW * 60_000).toISOString();
-  const { data: added } = await supabase.from('care_members')
+  const since = new Date(sinceMs ?? nowMs - SWEEP_LOOKBACK_MS).toISOString();
+  const { data: added, error: aErr } = await supabase.from('care_members')
     .select('id, full_name, phone, category, care_notes, hospital_name, room_number, created_at')
     .gte('created_at', since);
-  const { data: logs } = await supabase.from('contact_logs')
+  if (aErr) throw aErr;
+  const { data: logs, error: lErr } = await supabase.from('contact_logs')
     .select('id, notes, created_at, member_id, care_members(full_name, phone)')
     .gte('created_at', since);
+  if (lErr) throw lErr;
 
-  const events: { kind: string; ref: string; care: any; line: string }[] = [];
-  for (const m of added || []) {
-    events.push({ kind: 'added', ref: m.id, care: m, line: addedText(m) });
-  }
+  const events: { kind: string; ref: string; care: any; alert: any }[] = [];
+  for (const m of added || []) events.push({ kind: 'added', ref: m.id, care: m, alert: addedAlert(m) });
   for (const l of logs || []) {
     const cm = (l as any).care_members;
     if (!cm || !String(l.notes || '').trim()) continue;
-    events.push({ kind: 'update', ref: l.id, care: cm, line: updateText(cm.full_name, l.notes) });
+    events.push({ kind: 'update', ref: l.id, care: cm, alert: updateAlert(cm.full_name, l.notes) });
   }
+  counts.events = events.length;
 
-  const send = async (to: string, body: string) => {
-    const res = await fetch(`${SUPABASE_URL}/functions/v1/send-prospect-sms`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SERVICE_ROLE}` },
-      body: JSON.stringify({ channel: 'care', messages: [{ to_number: to, to_name: '', body }] }),
-    });
-    if (!res.ok) console.error('deacon alert send failed:', res.status);
-    return res.ok;
-  };
-
-  let immediate = 0;
-  const forDaily = new Map<string, { name: string; line: string }[]>();
-
+  const immediate: Planned[] = [];
   for (const e of events) {
-    const hit = deaconFor(e.care, directory || [], deaconPhones);
-    if (!hit) continue;                       // unmatched, or unreachable — never guessed
-    const how = cadence.get(hit.phone) || cadenceOf(null);
-    if (how === 'daily') {
-      if (!forDaily.has(hit.phone)) forDaily.set(hit.phone, []);
-      forDaily.get(hit.phone)!.push({ name: e.care.full_name, line: e.line });
-      continue;
-    }
-    /* Claim before sending — a repeat firing must not text again. */
-    const { error } = await supabase.from('deacon_alerts_sent')
-      .insert({ deacon_phone: hit.phone, kind: e.kind, ref_id: String(e.ref) });
-    if (error) continue;                      // 23505 = already told
-    if (await send(hit.phone, e.line)) immediate++;
+    const m = matchDeacon(e.care, directory, deaconPhones);
+    if (!m.ok) { counts[m.why]++; continue; }      // unmatched, ambiguous or unreachable — never guessed
+    if ((cadence.get(m.phone) || DEFAULT_CADENCE) === 'daily') { counts.daily_cadence++; continue; }
+    immediate.push({ phone: m.phone, deacon: m.deacon.name || '', kind: e.kind, ref: String(e.ref), parts: alertParts(e.alert) });
   }
 
-  /*
-   * The morning summary covers a full day, not the half hour above, so it is
-   * gathered separately — otherwise it would only ever report what happened
-   * between 7:30 and 8:00.
-   */
-  let daily = 0;
+  const daily: Planned[] = [];
   if (isMorning) {
-    const dayAgo = new Date(now.getTime() - 24 * 3600_000).toISOString();
-    const { data: dAdded } = await supabase.from('care_members')
-      .select('id, full_name, phone, category, care_notes, hospital_name, room_number')
-      .gte('created_at', dayAgo);
-    const { data: dLogs } = await supabase.from('contact_logs')
-      .select('id, notes, member_id, care_members(full_name, phone)')
-      .gte('created_at', dayAgo);
+    /* Each deacon's previous summary, so today's picks up exactly where it left off. */
+    const { data: prior } = await supabase.from('deacon_alerts_sent')
+      .select('deacon_phone, ref_id, sent_at').eq('kind', 'daily')
+      .gte('sent_at', new Date(nowMs - DAILY_MAX_MS - 3600_000).toISOString());
+    const lastSummary = new Map<string, number>();
+    for (const p of prior || []) {
+      if (p.ref_id === stamp) continue;
+      const t = Date.parse(p.sent_at);
+      if (!lastSummary.has(p.deacon_phone) || t > lastSummary.get(p.deacon_phone)!) lastSummary.set(p.deacon_phone, t);
+    }
+    const startFor = (phone: string) => Math.max(lastSummary.get(phone) ?? nowMs - DAILY_FIRST_MS, nowMs - DAILY_MAX_MS);
 
-    const byDeacon = new Map<string, { name: string; line: string }[]>();
-    const push = (care: any, line: string) => {
-      const hit = deaconFor(care, directory || [], deaconPhones);
-      if (!hit) return;
-      if ((cadence.get(hit.phone) || cadenceOf(null)) !== 'daily') return;
-      if (!byDeacon.has(hit.phone)) byDeacon.set(hit.phone, []);
-      byDeacon.get(hit.phone)!.push({ name: care.full_name, line });
+    const from = new Date(nowMs - DAILY_MAX_MS).toISOString();
+    const { data: dAdded } = await supabase.from('care_members')
+      .select('id, full_name, phone, category, care_notes, hospital_name, room_number, created_at')
+      .gte('created_at', from);
+    const { data: dLogs } = await supabase.from('contact_logs')
+      .select('id, notes, created_at, member_id, care_members(full_name, phone)')
+      .gte('created_at', from);
+
+    const byDeacon = new Map<string, { deacon: string; lines: { line: string }[] }>();
+    const push = (care: any, at: string, line: string) => {
+      const m = matchDeacon(care, directory, deaconPhones);
+      if (!m.ok) return;
+      if ((cadence.get(m.phone) || DEFAULT_CADENCE) !== 'daily') return;
+      if (Date.parse(at) < startFor(m.phone)) return;
+      if (!byDeacon.has(m.phone)) byDeacon.set(m.phone, { deacon: m.deacon.name || '', lines: [] });
+      byDeacon.get(m.phone)!.lines.push({ line });
     };
-    for (const m of dAdded || []) push(m, addedText(m));
+    for (const m of dAdded || []) push(m, m.created_at, alertText(addedAlert(m)));
     for (const l of dLogs || []) {
       const cm = (l as any).care_members;
-      if (cm && String(l.notes || '').trim()) push(cm, updateText(cm.full_name, l.notes));
+      if (cm && String(l.notes || '').trim()) push(cm, l.created_at, alertText(updateAlert(cm.full_name, l.notes)));
     }
-
-    const stamp = isoDay(now);
-    for (const [phone, items] of byDeacon) {
-      if (!items.length) continue;
-      const { error } = await supabase.from('deacon_alerts_sent')
-        .insert({ deacon_phone: phone, kind: 'daily', ref_id: stamp });
-      if (error) continue;                    // already summarised today
-      if (await send(phone, dailyText(items))) daily++;
+    for (const [phone, v] of byDeacon) {
+      if (v.lines.length) daily.push({ phone, deacon: v.deacon, kind: 'daily', ref: stamp, parts: dailyParts(v.lines) });
     }
   }
 
-  return { deacons: deaconPhones.size, events: events.length, immediate, daily };
+  return { deacons: deaconPhones.size, counts, immediate, daily };
+}
+
+/* Every part to one deacon. How many actually went, so a claim is only kept for
+   a text that arrived. */
+async function deliverToDeacon(phone: string, parts: string[]) {
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/send-prospect-sms`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SERVICE_ROLE}` },
+    body: JSON.stringify({
+      channel: 'care', audience: 'deacons',
+      messages: parts.map(body => ({ to_number: phone, to_name: '', body })),
+    }),
+  });
+  const out = await res.json().catch(() => ({}));
+  if (!res.ok || out?.maintenance || typeof out?.sent !== 'number') {
+    console.error('deacon alert send failed:', res.status, out?.error || (out?.maintenance ? 'maintenance' : ''));
+    return 0;
+  }
+  if (out.failed?.length) console.error('deacon alert part refused:', out.failed[0]?.error);
+  return out.sent as number;
+}
+
+async function sendDeaconAlerts(supabase: any, nowMs: number, isMorning: boolean, stamp: string, sinceMs?: number) {
+  const plan = await planDeaconAlerts(supabase, nowMs, isMorning, stamp, sinceMs);
+  if ('skipped' in plan && plan.skipped) return { skipped: plan.skipped };
+
+  let immediate = 0, daily = 0, released = 0;
+  for (const p of [...plan.immediate, ...plan.daily]) {
+    /* Claim before sending — a repeat firing, or the trigger's own call, must not text again. */
+    const { error } = await supabase.from('deacon_alerts_sent')
+      .insert({ deacon_phone: p.phone, kind: p.kind, ref_id: p.ref });
+    if (error) continue;                                   // 23505 = already told
+
+    const went = await deliverToDeacon(p.phone, p.parts);
+    if (went > 0) { if (p.kind === 'daily') daily++; else immediate++; continue; }
+
+    /* Nothing arrived: give the claim back so the next firing tries again. */
+    await supabase.from('deacon_alerts_sent').delete()
+      .eq('deacon_phone', p.phone).eq('kind', p.kind).eq('ref_id', p.ref);
+    released++;
+  }
+  return { deacons: plan.deacons, ...plan.counts, immediate, daily, released };
 }
 
 async function sendReminders(supabase: any, members: any[], now: Date, today: Date) {
@@ -495,7 +535,7 @@ async function sendReminders(supabase: any, members: any[], now: Date, today: Da
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SERVICE_ROLE}` },
       body: JSON.stringify({
-        channel: 'care',
+        channel: 'care', audience: 'staff',
         messages: recipients.map((s: any) => ({ to_number: String(s.phone).trim(), to_name: s.name || '', body })),
       }),
     });
@@ -518,8 +558,35 @@ Deno.serve(async (req) => {
     const manual = opts?.manual === true;
     const force  = opts?.force === true && isServiceRole(req);   // deliberate re-send
     const forceSlot = Number.isInteger(opts?.slot) ? opts.slot : null;
+    /*
+     * Catching up deacon alerts after a gap — a maintenance window, an outage.
+     * The sweep normally looks back two hours; this widens it for one run. The
+     * claim table still stops anyone being told twice. Service role only, and
+     * with deaconsOnly the reminders and the digest are left alone entirely.
+     */
+    const deaconsSince = isServiceRole(req) && typeof opts?.deaconsSince === 'string'
+      && !Number.isNaN(Date.parse(opts.deaconsSince)) ? Date.parse(opts.deaconsSince) : undefined;
+    const deaconsOnly = opts?.deaconsOnly === true && isServiceRole(req);
 
     const supabase = createClient(SUPABASE_URL, SERVICE_ROLE);
+
+    /*
+     * Scheduled maintenance: stop here, ahead of all three senders below.
+     *
+     * Reminders, deacon alerts and the digest each claim their row BEFORE they
+     * send, so that a repeat firing cannot text twice. Blocking only at
+     * send-prospect-sms would let every claim land and every send fail —
+     * leaving all three recorded as delivered with nothing delivered, and a
+     * claimed row is never retried.
+     *
+     * A dry run is let through on purpose. It claims nothing and sends nothing,
+     * and reading the digest back is exactly what you want while working on it.
+     */
+    if (!dryRun) {
+      const paused = await activeMaintenance(supabase);
+      if (paused) return json({ ok: true, skipped: 'maintenance', until: paused.ends_at });
+    }
+
     const now = wallClock();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
@@ -529,7 +596,7 @@ Deno.serve(async (req) => {
       .from('care_members')
       .select('id, full_name, status, care_notes, surgery_date, surgery_type, hospital_name, room_number, floor, updated_at, created_at, contact_logs(notes, created_at)')
       .neq('status', 'Inactive');
-    const reminders = dryRun
+    const reminders = deaconsOnly ? { skipped: 'deaconsOnly' } : dryRun
       ? { due: upcomingCareEvents(allMembers || [], now, { pastDays: 0, aheadDays: 0 })
             .filter((e: any) => e.date === isoDay(today) && e.time).length, sent: 0, dryRun: true }
       : await sendReminders(supabase, allMembers || [], now, today);
@@ -537,12 +604,23 @@ Deno.serve(async (req) => {
     /* Deacon alerts run on every firing too, for the same reason reminders do:
        the slot gate below returns early, and "as it happens" cannot wait for
        8:00 or 4:00. The morning firing also carries the daily summaries. */
+    const isMorningFiring = currentSlot(now) === MORNING;
+    /* A dry run reports what the alerts would do in numbers only — who and how
+       many, never what the texts say. */
     const deacons = dryRun
-      ? { dryRun: true }
-      : await sendDeaconAlerts(supabase, now, currentSlot(now) === MORNING).catch((e: any) => {
+      ? await planDeaconAlerts(supabase, Date.now(), isMorningFiring || opts?.morning === true, isoDay(today), deaconsSince)
+          .then((p: any) => p.skipped ? { dryRun: true, skipped: p.skipped } : {
+            dryRun: true, deacons: p.deacons, ...p.counts,
+            immediate: p.immediate.length, daily: p.daily.length,
+            texts: [...p.immediate, ...p.daily].reduce((n: number, x: any) => n + x.parts.length, 0),
+            longestSegments: Math.max(0, ...[...p.immediate, ...p.daily].flatMap((x: any) => x.parts.map((b: string) => smsCost(b).segments))),
+          })
+          .catch((e: any) => ({ dryRun: true, error: String(e?.message || e) }))
+      : await sendDeaconAlerts(supabase, Date.now(), isMorningFiring, isoDay(today), deaconsSince).catch((e: any) => {
           console.error('deacon alerts failed:', e?.message || e);
           return { error: String(e?.message || e) };
         });
+    if (deaconsOnly) return json({ ok: true, deacons });
 
     const slot = forceSlot ?? currentSlot(now)
       ?? ((dryRun || manual) ? (SLOTS.find(s => s >= now.getHours() * 60) ?? MORNING) : null);
@@ -678,6 +756,9 @@ Deno.serve(async (req) => {
       return json({ ok: true, dryRun: true, sentOn, slot: slotLabel(slot),
         body: parts.join('\n\n— — —\n\n'), parts: parts.length,
         longest: Math.max(...parts.map(p => p.length)),
+        /* What Telnyx will actually count. Characters alone were how a digest
+           that needed 21 segments reported itself as one part. */
+        segments: parts.map(p => smsCost(p)),
         window: { from: start.toISOString(), to: end.toISOString() },
         added: added.length, updates: updates.length, edited: edited.length, events: events.length,
         ongoing: ongoing.length,
@@ -713,7 +794,7 @@ Deno.serve(async (req) => {
     const res = await fetch(`${SUPABASE_URL}/functions/v1/send-prospect-sms`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SERVICE_ROLE}` },
-      body: JSON.stringify({ messages, channel: 'care' }),   // never into the SMS log
+      body: JSON.stringify({ messages, channel: 'care', audience: 'staff' }),   // never into the SMS log
     });
     const out = await res.json().catch(() => ({}));
 
@@ -730,17 +811,21 @@ Deno.serve(async (req) => {
       return json({ ok: false, sentOn, slot, error: reason, attempted: recipients.length }, 502);
     }
 
-    // Only mark the opt-out notice delivered for people we actually reached.
-    const failed = new Set((out?.failed || []).map((f: any) => f.to_name));
+    /* Only mark the opt-out notice delivered for people we actually reached —
+       matched by number, not name: two staff can share a name, and a refused
+       part must not mark a different person as told. */
+    const failed = new Set([...(out?.failed || []), ...(out?.skipped || []).filter((x: any) => /landline/i.test(x.reason || ''))]
+      .map((f: any) => last10(f.to_number)).filter(Boolean));
+    const missed = (s: any) => failed.has(last10(s.phone));
     await Promise.all(recipients
-      .filter(s => s.preferences?.caresStopNoticeSent !== true && !failed.has(s.name || ''))
+      .filter(s => s.preferences?.caresStopNoticeSent !== true && !missed(s))
       .map(s => supabase.from('staff')
         .update({ preferences: { ...(s.preferences || {}), caresStopNoticeSent: true } })
         .eq('id', s.id)));
 
     /* out.sent counts MESSAGES; with a split digest that is people × parts.
        Report people, or a 2-part send to 5 staff reads as 10 recipients. */
-    const reached = recipients.filter(s => !failed.has(s.name || '')).length;
+    const reached = recipients.filter(s => !missed(s)).length;
 
     await supabase.from('cares_alert_sends')
       .update({ recipients: reached,

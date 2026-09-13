@@ -84,16 +84,27 @@ async function repliedToDinner(supabase: any, last10: string) {
    * moment somebody corrected their number, a reminder the moment somebody
    * answered one.
    */
-  const { data } = await supabase
+  /*
+   * Matched on the stored last-ten-digits column, not with ilike. Most of the
+   * contact list is stored formatted — "(706) 555-0100" — and the log keeps the
+   * number as it was handed over, so `ilike '%7065550100'` missed nearly every
+   * invitation sent from the composer and fell through to whatever older row
+   * happened to be stored in E.164.
+   *
+   * Staff replies and texts that never arrived are skipped along with our own
+   * acknowledgements: none of them is a question, and a staff "see you there!"
+   * must not stop the headcount that follows it being recognised.
+   */
+  const { data, error: lookupErr } = await supabase
     .from('sms_messages')
     .select('body, status, campaign')
-    .ilike('to_number', `%${last10}`)
+    .eq('to10', last10)
     .eq('direction', 'out')
     .eq('channel', 'sms')
-    /* Our own acknowledgements are answers, not questions. */
-    .neq('status', ACK_STATUS)
+    .not('status', 'in', `("${ACK_STATUS}","Reply","Failed","Blocked")`)
     .order('created_at', { ascending: false })
     .limit(1);
+  if (lookupErr) console.error('dinner reply lookup failed:', lookupErr.message);
   const row = data?.[0];
   if (!row) return false;
 

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { P, Icon } from '../../lib/icons';
 import { fetchThreads, sendText, markRead, normPhone, formatPhone, sepLabel } from '../../lib/conversations';
+import { useMaintenance, maintenanceLabel } from '../../lib/maintenance';
 import './conversations.css';
 
 const initials = n => (n || '#').trim().split(/\s+/).map(w => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase() || '#';
@@ -14,6 +15,9 @@ export default function ConversationsModal({ guests = [], onClose }) {
   const [search, setSearch] = useState('');
   const [compose, setCompose] = useState('');
   const [sending, setSending] = useState(false);
+  const [sendErr, setSendErr] = useState('');
+  /* Scheduled texting maintenance greys out the reply box. */
+  const paused = useMaintenance();
   const [picking, setPicking] = useState(false);
   const [guestSearch, setGuestSearch] = useState('');
   const scrollRef = useRef(null);
@@ -79,10 +83,15 @@ export default function ConversationsModal({ guests = [], onClose }) {
 
   async function send() {
     const text = compose.trim();
-    if (!text || !active || sending) return;
+    if (paused || !text || !active || sending) return;
     setSending(true);
-    await sendText({ number: active.number, name: active.name || displayName(active), body: text, status: 'Reply' });
-    setCompose('');
+    setSendErr('');
+    /* The result was ignored, so a reply that never went still cleared the box
+       and looked sent. Only a delivered one clears it; otherwise the text stays
+       and the reason is shown. */
+    const res = await sendText({ number: active.number, name: active.name || displayName(active), body: text, status: 'Reply' });
+    if (res?.sent) setCompose('');
+    else setSendErr(res?.failed?.[0]?.error || 'That message did not send.');
     await refresh();
     setSending(false);
   }
@@ -187,18 +196,23 @@ export default function ConversationsModal({ guests = [], onClose }) {
                 })}
               </div>
 
-              <div className="cv-compose">
-                <textarea
-                  rows={1}
-                  placeholder="Text message"
-                  value={compose}
-                  onChange={e => setCompose(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}
-                />
-                <button className="cv-send" onClick={send} disabled={sending || !compose.trim()} title="Send">
+              <div className={`cv-compose ${paused ? 'paused' : ''}`}>
+                {paused ? (
+                  <div className="cv-paused-field" role="status">{maintenanceLabel(paused)}</div>
+                ) : (
+                  <textarea
+                    rows={1}
+                    placeholder="Text message"
+                    value={compose}
+                    onChange={e => { setCompose(e.target.value); setSendErr(''); }}
+                    onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}
+                  />
+                )}
+                <button className="cv-send" onClick={send} disabled={!!paused || sending || !compose.trim()} title="Send">
                   <Icon d={P.arrowUp} size={18} />
                 </button>
               </div>
+              {sendErr && <p className="cv-send-err" role="alert">{sendErr}</p>}
             </>
           ) : (
             <div className="cv-placeholder">
