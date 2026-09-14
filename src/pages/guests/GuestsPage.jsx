@@ -431,9 +431,12 @@ export default function GuestsPage() {
             <div className="modal-body">
               <button className="xp-opt" onClick={openPreview} disabled={!!building}>
                 <span className="xp-opt-ic"><Icon d={P.pdf} size={20} /></span>
+                {/* On a prospects tab this button exports the prospect sheet, so say so. */}
                 <span className="xp-opt-text">
-                  <span className="xp-opt-name">Recap PDF</span>
-                  <span className="xp-opt-sub">This week's guests, prospects and greeter comments.</span>
+                  <span className="xp-opt-name">{isProspectTab ? 'Prospect List' : 'Recap PDF'}</span>
+                  <span className="xp-opt-sub">{isProspectTab
+                    ? `${tab === 'all' ? 'Every prospect' : "This week's prospects"}, one row each, on landscape pages.`
+                    : "This week's guests, prospects and greeter comments."}</span>
                 </span>
               </button>
               <button className="xp-opt" onClick={openMeetingFlow} disabled={!!building}>
@@ -452,6 +455,7 @@ export default function GuestsPage() {
           html={preview.html}
           docs={preview.docs}
           filename={preview.filename}
+          landscape={preview.landscape}
           title={`${preview.heading} — ${guestWeekLabel(activeWeek)}`}
           onClose={() => setPreview(null)}
         />

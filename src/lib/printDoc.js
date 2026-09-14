@@ -16,9 +16,82 @@ export function isDesktopApp() {
     && !!(window.__TAURI__ || window.__TAURI_INTERNALS__ || window.isTauri);
 }
 
+/*
+ * Safari ignores a document's `@page` orientation and always opens its print
+ * dialog in portrait. So does every browser on iPhone and iPad, which all run
+ * on Safari's engine. Chrome, Edge and Firefox turn the page as asked.
+ */
+export function printsPortraitOnly() {
+  if (typeof navigator === 'undefined') return false;
+  const ua = navigator.userAgent || '';
+  return /AppleWebKit/.test(ua) && !/Chrome\/|Chromium\//.test(ua);
+}
+
 /* Letter at 96dpi — the width the document is authored against. */
 export const PAGE_W = 816;
 export const PAGE_H = 1056;
+
+/* The margin a saved PDF keeps on every side, in points (27pt ≈ 0.375in). */
+export const PDF_MARGIN = 27;
+
+/*
+ * Every document names its orientation in its own `@page` rule, and that rule is
+ * what a browser's print dialog goes by. The PDF path reads the same rule, so a
+ * caller that forgets to pass `landscape` can't save a landscape sheet as portrait.
+ */
+export function declaresLandscape(html) {
+  return /@page[^{]*\{[^}]*\bsize\s*:[^;}]*\blandscape\b/i.test(String(html || ''));
+}
+
+/*
+ * The rows and cards a document asks to keep whole (`break-inside: avoid`), as
+ * [top, bottom] spans in document pixels. A browser follows that rule when it
+ * prints; the saved PDF and the preview's page markers read it from here.
+ */
+export function keepTogetherSpans(doc) {
+  const body = doc?.body;
+  const view = doc?.defaultView;
+  if (!body || !view) return [];
+  const origin = body.getBoundingClientRect().top;
+  const spans = [];
+  for (const el of body.querySelectorAll('*')) {
+    const cs = view.getComputedStyle(el);
+    if (cs.breakInside !== 'avoid' && cs.pageBreakInside !== 'avoid') continue;
+    const r = el.getBoundingClientRect();
+    if (r.height > 0) spans.push([r.top - origin, r.bottom - origin]);
+  }
+  return spans;
+}
+
+/*
+ * Where a page starting at `from`, with room for `span` pixels, should end when
+ * a full page would cut through something kept whole: at the top of that block,
+ * so the block starts the next page. Not when the block could never fit on one
+ * page, and not when moving it would leave this page under 55% full. Returns
+ * null when nothing kept whole is in the way.
+ */
+export function keptWholeEnd(from, span, keep = []) {
+  const ideal = from + span;
+  const limit = from + span * 0.55;
+  let end = null;
+  for (const [top, bottom] of keep) {
+    if (top > limit && top < ideal && bottom > ideal && bottom - top <= span) {
+      end = end === null ? top : Math.min(end, top);
+    }
+  }
+  return end;
+}
+
+/* Every page break in a document `total` pixels tall, placed as the saved PDF places them. */
+export function pageBreaks(total, span, keep = []) {
+  const breaks = [];
+  if (!(span > 0)) return breaks;
+  for (let from = 0; total - from > span; ) {
+    from = keptWholeEnd(from, span, keep) ?? from + span;
+    breaks.push(from);
+  }
+  return breaks;
+}
 
 function saveBlob(blob, filename) {
   const url = URL.createObjectURL(blob);
@@ -49,12 +122,19 @@ async function frameToCanvas(frame) {
   });
 }
 
+/* The frame as a picture, plus what it keeps whole, measured in the picture's pixels. */
+async function renderFrame(frame) {
+  const canvas = await frameToCanvas(frame);
+  const k = canvas.width / (frame.contentDocument.body.getBoundingClientRect().width || canvas.width);
+  return { canvas, keep: keepTogetherSpans(frame.contentDocument).map(([top, bottom]) => [top * k, bottom * k]) };
+}
+
 /*
  * Lay a rendered canvas into `pdf`, splitting it across pages. Kept separate
  * from frameToPdfDoc so a Meeting Flow can stack several documents — each in
  * its own orientation — into a single file.
  */
-function addCanvasToPdf(pdf, canvas, { newPage = false } = {}) {
+function addCanvasToPdf(pdf, canvas, { newPage = false, keep = [] } = {}) {
   const pw = pdf.internal.pageSize.getWidth();
   const ph = pdf.internal.pageSize.getHeight();
 
@@ -64,7 +144,7 @@ function addCanvasToPdf(pdf, canvas, { newPage = false } = {}) {
    * heading sat flush against the paper edge and printers clipped it inside
    * their non-printable border. 27pt ≈ 0.375in clears that on every page.
    */
-  const M = 27;
+  const M = PDF_MARGIN;
   const usableW = pw - M * 2;
   const usableH = ph - M * 2;
 
@@ -92,6 +172,11 @@ function addCanvasToPdf(pdf, canvas, { newPage = false } = {}) {
       return true;
     };
     const safeCut = (from, ideal) => {
+      /* A blank row between two lines of one person's note still splits their
+         row, leaving the rest of it on the next page without their name. A row
+         or card the document keeps whole starts the next page instead. */
+      const whole = keptWholeEnd(from, pageCanvasH, keep);
+      if (whole !== null) return Math.floor(whole) - from;
       const limit = Math.max(from + Math.floor(pageCanvasH * 0.55), 1);   // never orphan a tiny sliver
       for (let y = Math.min(ideal, canvas.height - 1); y > limit; y--) {
         if (isBlankRow(y)) return y - from;
@@ -122,7 +207,8 @@ function addCanvasToPdf(pdf, canvas, { newPage = false } = {}) {
 export async function frameToPdfDoc(frame, { landscape = false } = {}) {
   const { jsPDF } = await import('jspdf');
   const pdf = new jsPDF({ unit: 'pt', format: 'letter', orientation: landscape ? 'landscape' : 'portrait' });
-  addCanvasToPdf(pdf, await frameToCanvas(frame), {});
+  const { canvas, keep } = await renderFrame(frame);
+  addCanvasToPdf(pdf, canvas, { keep });
   return pdf;
 }
 
@@ -166,14 +252,15 @@ export async function docsToPdf(docs) {
 
   let pdf = null;
   for (const d of live) {
-    const canvas = await withRenderedFrame(d.html, frameToCanvas);
+    const { canvas, keep } = await withRenderedFrame(d.html, renderFrame);
+    const orientation = (d.landscape ?? declaresLandscape(d.html)) ? 'landscape' : 'portrait';
     if (!pdf) {
-      pdf = new jsPDF({ unit: 'pt', format: 'letter', orientation: d.landscape ? 'landscape' : 'portrait' });
-      addCanvasToPdf(pdf, canvas, {});
+      pdf = new jsPDF({ unit: 'pt', format: 'letter', orientation });
+      addCanvasToPdf(pdf, canvas, { keep });
     } else {
       // A fresh page in THIS document's orientation, then fill it.
-      pdf.addPage('letter', d.landscape ? 'landscape' : 'portrait');
-      addCanvasToPdf(pdf, canvas, {});
+      pdf.addPage('letter', orientation);
+      addCanvasToPdf(pdf, canvas, { keep });
     }
   }
   return pdf;
@@ -194,7 +281,7 @@ export async function framePdf(frame, filename, opts = {}) {
  * same rasterisation the Export button produces, so the emailed PDF and the
  * printed one are the same document rather than two lookalikes.
  */
-export function htmlToPdfAttachment(html, { filename = 'document', landscape = false } = {}) {
+export function htmlToPdfAttachment(html, { filename = 'document', landscape = declaresLandscape(html) } = {}) {
   return new Promise((resolve, reject) => {
     const frame = document.createElement('iframe');
     frame.setAttribute('aria-hidden', 'true');
@@ -229,7 +316,7 @@ export function htmlToPdfAttachment(html, { filename = 'document', landscape = f
  * no-op, so there we rasterise to a real .pdf instead of doing nothing.
  * Returns 'printed' | 'saved-pdf' | 'downloaded'.
  */
-export async function printFrame(frame, { filename = 'pillar-document', html = '', landscape = false } = {}) {
+export async function printFrame(frame, { filename = 'pillar-document', html = '', landscape = declaresLandscape(html) } = {}) {
   if (isDesktopApp()) {
     try { await framePdf(frame, filename, { landscape }); return 'saved-pdf'; }
     catch (e) {
@@ -249,7 +336,7 @@ export async function printFrame(frame, { filename = 'pillar-document', html = '
 }
 
 /* Save the rendered frame as a PDF regardless of environment. */
-export async function savePdf(frame, { filename = 'pillar-document', html = '', landscape = false } = {}) {
+export async function savePdf(frame, { filename = 'pillar-document', html = '', landscape = declaresLandscape(html) } = {}) {
   try { await framePdf(frame, filename, { landscape }); return 'saved-pdf'; }
   catch (e) {
     console.error('[printDoc] Could not build the PDF:', e);
@@ -297,7 +384,7 @@ export function printHtml(html, { filename = 'pillar-document' } = {}) {
         started = true;
         setTimeout(async () => {
           if (isDesktopApp()) {
-            try { await framePdf(frame, filename); finish('saved-pdf'); }
+            try { await framePdf(frame, filename, { landscape: declaresLandscape(html) }); finish('saved-pdf'); }
             catch (e) {
               console.error('[printDoc] Could not build the PDF:', e);
               downloadHtml(html, filename);   // never leave the click doing nothing

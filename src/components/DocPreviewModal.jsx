@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { P, Icon } from '../lib/icons';
-import { printFrame, savePdf, saveDocsPdf, isDesktopApp, PAGE_W, PAGE_H } from '../lib/printDoc';
+import {
+  printFrame, savePdf, saveDocsPdf, isDesktopApp, printsPortraitOnly, declaresLandscape,
+  keepTogetherSpans, pageBreaks, PAGE_W, PAGE_H, PDF_MARGIN,
+} from '../lib/printDoc';
 import './DocPreviewModal.css';
 
 /*
@@ -13,7 +16,7 @@ import './DocPreviewModal.css';
  * of appearing to do nothing.
  */
 export default function DocPreviewModal({ html, docs, filename = 'pillar-document', title = 'Preview',
-  landscape = false, onClose }) {
+  landscape, onClose }) {
   /*
    * Either one document, or several stacked into one file (a Meeting Flow).
    * With several, the preview shows one section at a time — each keeps its own
@@ -23,7 +26,8 @@ export default function DocPreviewModal({ html, docs, filename = 'pillar-documen
   const [section, setSection] = useState(0);
   const active = multi ? docs[Math.min(section, docs.length - 1)] : { html, landscape };
   const shownHtml = active.html;
-  const shownLandscape = !!active.landscape;
+  // Unless the caller says otherwise, the document's own @page rule decides.
+  const shownLandscape = active.landscape ?? declaresLandscape(shownHtml);
 
   // A landscape sheet is the letter page turned on its side.
   const pageW = shownLandscape ? PAGE_H : PAGE_W;
@@ -34,9 +38,12 @@ export default function DocPreviewModal({ html, docs, filename = 'pillar-documen
   const [scale, setScale] = useState(1);
   const [docH, setDocH] = useState(pageH);      // measured content height
   const [docW, setDocW] = useState(pageW);      // some documents are wider than the sheet
+  const [contentH, setContentH] = useState(0);  // the document itself, without the sheet's minimum
+  const [keep, setKeep] = useState([]);         // rows and cards it keeps whole across pages
   const [busy, setBusy] = useState('');
   const [note, setNote] = useState('');
   const desktop = isDesktopApp();
+  const portraitOnly = printsPortraitOnly();
 
   // Fit the document — whatever width it is — to the room the modal has.
   const fit = useCallback(width => {
@@ -73,6 +80,8 @@ export default function DocPreviewModal({ html, docs, filename = 'pillar-documen
     f.style.height = `${h}px`;
     setDocW(w);
     setDocH(h);
+    setContentH(Math.max(b.scrollHeight, b.offsetHeight));
+    setKeep(keepTogetherSpans(f.contentDocument));
     fit(w);
   }, [fit, pageW, pageH]);
 
@@ -109,10 +118,13 @@ export default function DocPreviewModal({ html, docs, filename = 'pillar-documen
     }
   }
 
-  // Printing scales the document to the sheet, so one page covers this many
-  // document pixels vertically.
-  const pageSpan = pageH * (docW / pageW);
-  const pages = Math.max(1, Math.ceil(docH / pageSpan));
+  // Printing scales the document to the sheet inside its margins, so one page
+  // covers this many document pixels vertically. Pages then break where the
+  // saved PDF breaks them: never through a row the document keeps whole.
+  const inset = PDF_MARGIN * 2 * (96 / 72);
+  const pageSpan = (pageH - inset) * (docW / (pageW - inset));
+  const breaks = pageBreaks(contentH, pageSpan, keep);
+  const pages = breaks.length + 1;
 
   return (
     <div className="dpv-overlay" onClick={() => !busy && onClose()}>
@@ -154,6 +166,11 @@ export default function DocPreviewModal({ html, docs, filename = 'pillar-documen
             The desktop app can't open a print dialog. Save the PDF, then print it from your PDF viewer.
           </p>
         )}
+        {!desktop && !multi && !note && shownLandscape && portraitOnly && (
+          <p className="dpv-note subtle">
+            This sheet prints landscape, but Safari opens its print dialog in portrait. Choose Landscape there, or use Save PDF, which is already landscape.
+          </p>
+        )}
 
         <div className="dpv-body" ref={wrapRef}>
           <div className="dpv-sheet" style={{ width: docW * scale, height: docH * scale }}>
@@ -166,8 +183,8 @@ export default function DocPreviewModal({ html, docs, filename = 'pillar-documen
               style={{ width: docW, height: docH, transform: `scale(${scale})`, transformOrigin: 'top left' }}
             />
             {/* Where each printed page ends, so nothing looks unexpectedly split. */}
-            {Array.from({ length: pages - 1 }, (_, i) => (
-              <div key={i} className="dpv-break" style={{ top: (i + 1) * pageSpan * scale }}>
+            {breaks.map((top, i) => (
+              <div key={i} className="dpv-break" style={{ top: top * scale }}>
                 <span>Page {i + 2}</span>
               </div>
             ))}
