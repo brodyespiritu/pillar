@@ -18,6 +18,7 @@ import { last10 } from './phone.ts';
 import { pollOptions } from './poll.ts';
 import { splitMessage } from './smsParts.ts';
 import { isDeaconTag } from './recipients.ts';
+import { shortDate, wherePlace, byWhom } from './careDigest.ts';
 
 export { last10 };
 const normName = (n: unknown) => String(n ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
@@ -169,17 +170,28 @@ const clean = (s: unknown) => String(s ?? '').replace(/\s+/g, ' ').trim();
 
 export type Alert = { header: string; lines: string[] };
 
+/* Everything the record holds that a deacon would act on — the same detail the
+   staff digest carries (careDigest.ts): category and priority, the hospital and
+   room with the admission date, any surgery, and the note as written. */
 export function addedAlert(m: any): Alert {
-  const where = [m.hospital_name, m.room_number ? `Rm ${m.room_number}` : '']
+  const kind = [clean(m.category), m.priority === 'High' ? 'High priority' : ''].filter(Boolean).join(', ');
+  const where = [wherePlace(m), m.admission_date ? `admitted ${shortDate(m.admission_date)}` : '']
     .filter(Boolean).join(', ');
+  const surgery = m.surgery_type || m.surgery_date
+    ? `Surgery: ${[clean(m.surgery_type) || 'scheduled',
+                   m.surgery_date ? `on ${shortDate(m.surgery_date)}` : '',
+                   m.surgeon_name ? `with ${clean(m.surgeon_name)}` : ''].filter(Boolean).join(' ')}`
+    : '';
   return {
-    header: `${clean(m.full_name)} has been added to the care list${m.category ? ` (${clean(m.category)})` : ''}.`,
-    lines: [clean(where), clean(m.care_notes)].filter(Boolean),
+    header: `${clean(m.full_name)} has been added to the care list${kind ? ` (${kind})` : ''}.`,
+    lines: [where, surgery, clean(m.care_notes)].filter(Boolean),
   };
 }
 
-export function updateAlert(name: string, note: string): Alert {
-  return { header: `Update on ${clean(name)}:`, lines: [clean(note)] };
+/* "Update on Mary Smith (Phone Call; by Pastor Tim):" — how, and who said so. */
+export function updateAlert(name: string, note: string, ctx: { type?: string; by?: string } = {}): Alert {
+  const extra = [ctx.type && ctx.type !== 'Update/Visit' ? clean(ctx.type) : '', byWhom(ctx.by)].filter(Boolean).join('; ');
+  return { header: `Update on ${clean(name)}${extra ? ` (${extra})` : ''}:`, lines: [clean(note)] };
 }
 
 export const alertText = (a: Alert) => [a.header, ...a.lines].join('\n');

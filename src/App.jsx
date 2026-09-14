@@ -3,6 +3,9 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
 import LoginPage from './pages/auth/LoginPage';
 import RsvpPage from './pages/rsvp/RsvpPage';
+import RsvpHome from './pages/rsvp/RsvpHome';
+import PublicForm from './pages/rsvp/PublicForm';
+import RsvpFormsPage from './pages/rsvp/RsvpFormsPage';
 import MobileNav from './components/MobileNav';
 import PINPage   from './pages/auth/PINPage';
 import HomePage  from './pages/home/HomePage';
@@ -80,10 +83,11 @@ export default function App() {
    */
   if (!user) return (
     <Routes>
-      <Route path="/rsvp" element={<RsvpPage />} />
+      <Route path="/rsvp" element={<RsvpHome />} />
       <Route path="/rsvp/:token" element={<RsvpPage />} />
       <Route path="/dinner" element={<RsvpPage />} />
-      <Route path="/"     element={isRsvpHost ? <RsvpPage /> : <LoginPage />} />
+      <Route path="/form/:slug" element={<PublicForm />} />
+      <Route path="/"     element={isRsvpHost ? <RsvpHome /> : <LoginPage />} />
       <Route path="*"     element={<LoginPage />} />
     </Routes>
   );
@@ -97,16 +101,18 @@ export default function App() {
       {/* Phones get a bottom tab bar; it hides itself above 767px. */}
       <MobileNav />
       <Routes>
-        <Route path="/"       element={isRsvpHost ? <RsvpPage /> : <HomePage />} />
+        <Route path="/"       element={isRsvpHost ? <RsvpHome /> : <HomePage />} />
         <Route path="/cares"  element={<CaresPage />} />
         <Route path="/guests"   element={<GuestsPage />} />
         <Route path="/calendar" element={<CalendarPage />} />
         <Route path="/playbooks"     element={<PlaybooksPage />} />
         <Route path="/playbooks/:id" element={<PlaybookDetail />} />
         <Route path="/widget/calendar" element={<CalendarWidget />} />
-        <Route path="/rsvp" element={<RsvpPage />} />
+        <Route path="/rsvp" element={<RsvpHome />} />
         <Route path="/rsvp/:token" element={<RsvpPage />} />
         <Route path="/dinner" element={<RsvpPage />} />
+        <Route path="/form/:slug" element={<PublicForm />} />
+        <Route path="/rsvps" element={<RsvpFormsPage />} />
         <Route path="/email"    element={<EmailPage />} />
         <Route path="/admin"    element={<AdminPage />} />
         <Route path="/sms"      element={<SmsPage />} />

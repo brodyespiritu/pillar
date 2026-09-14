@@ -4,15 +4,25 @@
  * with type sized to be read at arm's length.
  */
 
+/*
+ * Its own scroll container. The app locks the body (global.css: overflow
+ * hidden, each page scrolls a region of its own), so a form taller than the
+ * screen — a sign-up with five questions on a phone — was cut off with the
+ * Register button out of reach. The card centres itself with auto margins: in
+ * the middle when it fits, starting at the top and scrolling when it doesn't
+ * (flex centring would push the top of a tall card off-screen instead).
+ */
 .rsvp-wrap {
-  min-height: 100vh;
-  min-height: 100dvh;
+  height: 100vh;
+  height: 100dvh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   display: flex;
-  align-items: center;
-  justify-content: center;
+  flex-direction: column;
   padding: 24px 18px;
   background: var(--bg);
 }
+.rsvp-wrap > * { margin: auto; }
 
 .rsvp-card {
   width: 100%;
@@ -160,4 +170,84 @@
   font-size: 18px;
   line-height: 1.6;
   color: var(--text-2);
+}
+
+/* ══════════ More than one thing to sign up for ══════════
+   bethesda.rsvp shows a box per open form (the dinner counts as one). Each box
+   is a single large button — the whole card is the target, for thumbs and for
+   eyes that would rather not hunt for a link. */
+.rsvp-choose {
+  width: 100%;
+  max-width: 780px;
+  text-align: center;
+}
+.rsvp-choose > .rsvp-sub { margin-bottom: 28px; }
+.rsvp-choices {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 18px;
+}
+/* Rows the boxes fill: two or three side by side, four as two by two — never
+   one left alone on a row. */
+.rsvp-choices.count-2, .rsvp-choices.count-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.rsvp-choices.count-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.rsvp-choose.wide { max-width: 1040px; }
+.rsvp-choice {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  min-height: 200px;
+  padding: 30px 28px 26px;
+  text-align: left;
+  font: inherit;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s, transform 0.1s;
+}
+.rsvp-choice:hover { border-color: #C9D8EE; box-shadow: var(--shadow-md); }
+.rsvp-choice:active { transform: translateY(1px); }
+.rsvp-choice:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+.rsvp-choice-title { font-size: 25px; font-weight: 800; letter-spacing: -0.5px; line-height: 1.15; }
+.rsvp-choice-desc { font-size: 17px; line-height: 1.5; color: var(--text-2); }
+.rsvp-choice-go {
+  display: inline-flex; align-items: center; gap: 8px;
+  margin-top: auto; padding-top: 12px;
+  font-size: 18px; font-weight: 700; color: var(--accent);
+}
+
+/* Back to the boxes, top-left inside the card. */
+.rsvp-back {
+  display: inline-flex; align-items: center; gap: 4px;
+  margin: -18px 0 18px -8px; padding: 8px 10px;
+  border: none; border-radius: 10px; background: none;
+  font-size: 16px; font-weight: 600; color: var(--text-2);
+  align-self: flex-start;
+}
+.rsvp-card > .rsvp-back { display: flex; width: fit-content; }
+.rsvp-back:hover { color: var(--text); background: var(--surface-2); }
+
+/* ── A built form ── */
+.rsvp-desc { white-space: pre-line; }
+.rsvp-optional { font-weight: 500; color: var(--text-3); }
+.rsvp-textarea { min-height: 132px; line-height: 1.5; resize: vertical; }
+.rsvp-input.bad { border-color: var(--red); }
+.rsvp-field-error { margin: 8px 2px 0; font-size: 15px; font-weight: 600; color: var(--red); }
+.rsvp-link-btn { display: inline-flex; align-items: center; text-decoration: none; }
+/* Off-screen, not display:none — some scripts skip hidden fields. */
+.rsvp-hp { position: absolute; left: -10000px; width: 1px; height: 1px; overflow: hidden; }
+
+.rsvp-loading { min-height: 320px; background: var(--surface); }
+
+@media (max-width: 640px) {
+  .rsvp-choices.count-2, .rsvp-choices.count-3, .rsvp-choices.count-4 { grid-template-columns: minmax(0, 1fr); }
+  .rsvp-choice { min-height: 0; padding: 26px 22px 22px; }
+  .rsvp-choice-title { font-size: 23px; }
+}
+@media (max-width: 900px) {
+  .rsvp-choices.count-3 { grid-template-columns: minmax(0, 1fr); }
+  .rsvp-choose.wide { max-width: 780px; }
 }

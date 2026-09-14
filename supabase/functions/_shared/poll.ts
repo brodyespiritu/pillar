@@ -67,7 +67,7 @@ export function pollChoice(text = '', options: PollOption[] = []): number | null
 /* ── Recording an answer ── */
 
 /* Our own answers, and texts that never arrived, are not questions. */
-const NOT_ASKING = new Set(['AutoReply', 'Reply', 'Failed', 'Blocked']);
+const NOT_ASKING = new Set(['AutoReply', 'Reply', 'Notice', 'Failed', 'Blocked']);
 
 /*
  * The last poll or dinner this number was actually asked, newest first, walked

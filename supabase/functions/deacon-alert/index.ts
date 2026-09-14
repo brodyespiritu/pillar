@@ -68,19 +68,19 @@ Deno.serve(async (req) => {
     let alert: { header: string; lines: string[] };
     if (kind === 'added') {
       const { data } = await supabase.from('care_members')
-        .select('id, full_name, phone, category, care_notes, hospital_name, room_number')
+        .select('id, full_name, phone, category, priority, care_notes, hospital_name, room_number, floor, admission_date, surgery_date, surgery_type, surgeon_name')
         .eq('id', id).single();
       if (!data) return json({ ok: true, skipped: 'care record not found' });
       care = data;
       alert = addedAlert(data);
     } else {
       const { data } = await supabase.from('contact_logs')
-        .select('id, notes, care_members(full_name, phone)')
+        .select('id, notes, type, logged_by_name, care_members(full_name, phone)')
         .eq('id', id).single();
       const cm = (data as any)?.care_members;
       if (!cm || !String(data?.notes || '').trim()) return json({ ok: true, skipped: 'nothing to report' });
       care = cm;
-      alert = updateAlert(cm.full_name, data!.notes);
+      alert = updateAlert(cm.full_name, data!.notes, { type: (data as any).type, by: (data as any).logged_by_name });
     }
 
     /* Who can be reached: deacons in the directory who are also on the texting group. */

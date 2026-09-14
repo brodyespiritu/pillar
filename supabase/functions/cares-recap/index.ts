@@ -1,11 +1,13 @@
 // Supabase Edge Function — the Cares alert digests.
 //
-// Three sends a day to STAFF ONLY — the people an admin gave a mobile number
+// Two sends a day to STAFF ONLY — the people an admin gave a mobile number
 // and switched "Cares alerts" on for in Admin -> Users:
 //
-//   8:00 AM   everything since 5:00 PM yesterday + today's appointments/surgeries
-//   1:00 PM   everything since 8:00 AM
-//   5:00 PM   everything since 1:00 PM
+//   8:00 AM   everything since 4:00 PM yesterday + today's appointments/surgeries
+//   4:00 PM   everything since 8:00 AM
+//
+// The wording lives in _shared/careDigest.ts: every line carries who, what,
+// when, where and the note as written.
 //
 // "Everything" means care members added, contact logs posted, and records
 // edited inside that window. This replaced per-event texting: staff were
@@ -15,7 +17,7 @@
 //   supabase functions deploy cares-recap
 // Schedule (see supabase/cares-recap-schedule.sql): pg_cron calls this on the
 // hour AND the half hour, and the function decides whether the local time is
-// one of the three slots. Half-hourly rather than fixed UTC times so daylight
+// one of the two slots. Half-hourly rather than fixed UTC times so daylight
 // saving needs no changes. It still runs half-hourly even though no slot now
 // falls on the half hour, because the "starts in 30 minutes" reminders below
 // need that resolution.
@@ -27,13 +29,15 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { upcomingCareEvents } from '../_shared/careEvents.ts';
 import {
+  SLOTS, MORNING, slotLabel, buildDigest, reminderText, wherePlace,
+} from '../_shared/careDigest.ts';
+import {
   matchDeacon, cadenceByPhone, DEFAULT_CADENCE, addedAlert, updateAlert, alertText, alertParts,
   dailyParts, loadDirectory, last10,
 } from '../_shared/deacons.ts';
 import { activeMaintenance } from '../_shared/maintenance.ts';
 import { smsCost, toGsm } from '../_shared/smsEncoding.ts';
 import { systemCaller } from '../_shared/callers.ts';
-import { packLines, PART_SEGMENTS } from '../_shared/smsParts.ts';
 import { verifiedDeaconPhones } from '../_shared/recipients.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
@@ -45,10 +49,19 @@ const CRON_SECRET = Deno.env.get('CARES_CRON_SECRET') || '';
 
 const TZ = 'America/New_York';   // Ellerslie / Columbus, GA
 
-/* Local minutes past midnight. The first slot carries the morning briefing. */
-const SLOTS = [8 * 60, 16 * 60];          // 8:00 AM and 4:00 PM
-const SLOT_WINDOW = 30;          // a firing counts if it lands inside the half hour
-const MORNING = SLOTS[0];
+/*
+ * How long after 8:00 or 4:00 the digest may still go out.
+ *
+ * A firing used to count only inside the first half hour, and the cron fires on
+ * the hour and the half hour — so exactly one firing ever qualified. When that
+ * one could not send (a maintenance window, Telnyx refusing everything because
+ * the account ran dry) the slot was simply gone: Sep 11 4:00 PM and both Sep 12
+ * digests reached nobody and nothing ever tried again. The slot now stays open
+ * for two hours. The claim in cares_alert_sends still means only one digest per
+ * slot is ever delivered; a claim whose send reached nobody is released so the
+ * next firing tries again.
+ */
+const SLOT_RETRY_MIN = 120;
 
 const STOP_NOTICE = 'Reply STOP to opt out.';
 const NOTE_FRESH_DAYS = 2;       // how stale a note may be and still say "today"
@@ -106,21 +119,13 @@ function localTimeUtc(day: Date, minutes: number, tz = TZ) {
   return new Date(guess.getTime() - driftMs);
 }
 
-const slotLabel = (m: number) => {
-  const h = Math.floor(m / 60), mm = m % 60;
-  const h12 = ((h + 11) % 12) + 1;
-  return `${h12}${mm ? ':' + pad2(mm) : ':00'} ${h < 12 ? 'AM' : 'PM'}`;
-};
-
 /* Which slot this firing belongs to, or null. */
 function currentSlot(now: Date) {
   const mod = now.getHours() * 60 + now.getMinutes();
-  return SLOTS.find(s => mod >= s && mod < s + SLOT_WINDOW) ?? null;
+  return SLOTS.find(s => mod >= s && mod < s + SLOT_RETRY_MIN) ?? null;
 }
 
-const nextSlot = (slot: number) => SLOTS[(SLOTS.indexOf(slot) + 1) % SLOTS.length];
-
-/* Everything since the previous slot — for the morning slot, since 5 PM yesterday. */
+/* Everything since the previous slot — for the morning slot, since 4 PM yesterday. */
 function windowFor(today: Date, slot: number) {
   const i = SLOTS.indexOf(slot);
   const end = localTimeUtc(today, slot);
@@ -129,180 +134,9 @@ function windowFor(today: Date, slot: number) {
   return { start: localTimeUtc(yesterday, SLOTS[SLOTS.length - 1]), end };
 }
 
-/* ── Message ── */
-const clean = (s: string) => String(s || '').replace(/\s+/g, ' ').trim();
-
-/* Plain hyphens throughout. The digest's own copy used em dashes, and one is
-   enough to send the entire text as UCS-2 at less than half the capacity —
-   see _shared/smsEncoding.ts. buildDigest also normalises everything it sends,
-   staff notes included, so this is belt and braces rather than the fix. */
-const renderAdded   = (m: any) => `- ${m.full_name}${m.category ? ` - ${m.category}` : ''}`;
-const renderUpdate  = (u: any) => `- ${u.name}: ${clean(u.notes)}`;
-/*
- * An edit, with what it consisted of.
- *
- * "Also edited: Pansy Loudermilk" told a reader that something had happened and
- * then made them open the record to find out what — the exact work the digest
- * exists to save. `details` comes from change_log when the edit was made in the
- * app; when there is no recorded diff (an older edit, or one made directly in
- * the database) the record's current standing is reported instead, which is
- * still an answer to "what about her?".
- */
-const renderEdit = (e: any) => {
-  if (e.details) return `- ${e.name}: ${clean(e.details)}`;
-  const now = [
-    e.category,
-    e.hospital_name ? `at ${e.hospital_name}` : '',
-    e.room_number ? `Rm ${e.room_number}` : (e.floor ? `Floor ${e.floor}` : ''),
-  ].filter(Boolean).join(', ');
-  const note = clean(e.care_notes || '');
-  return `- ${e.name}: ${now || 'record updated'}${note ? ` - ${note}` : ''}`;
-};
-const renderEvent   = (e: any) => {
-  // Time and place only when actually recorded — no "time TBD" filler.
-  const when = e.time?.label ? `${e.time.label} ` : '';
-  const where = e.place ? ` at ${e.place}` : '';
-  /*
-   * The named kind, not the bare one: "Chemotherapy" or "MRI" rather than
-   * "Appointment", because a digest exists to be acted on and "Appointment"
-   * tells a visiting pastor nothing.
-   *
-   * When the note genuinely does not say, that is stated outright. Silence and
-   * "we could not tell" look identical on a phone otherwise, and the second one
-   * is a prompt to go and find out.
-   */
-  const what = e.label || e.kind;
-  const named = what === 'Appointment' ? 'Appointment - Details not given' : what;
-  return `- ${when}${e.member.full_name} - ${named}${where}`;
-};
-
-/*
- * Someone whose situation has not changed is still someone in a hospital bed.
- * They generate no log and no edit, so every other section is blind to them and
- * they quietly drop out of the digest the day after they are admitted — which
- * reads as "discharged" to anyone scanning it.
- */
-const renderOngoing = (m: any) => {
-  const where = [m.hospital_name, m.room_number ? `Rm ${m.room_number}` : '',
-                 !m.room_number && m.floor ? `Floor ${m.floor}` : '']
-    .filter(Boolean).join(' ');
-  return `- ${m.full_name} - Still in hospital${where ? `, ${clean(where)}` : ''}`;
-};
-
-function sectionLines(title: string, items: any[], render: (x: any) => string) {
-  if (!items.length) return [];
-  return [`${title} (${items.length}):`, ...items.map(render)];
-}
-
-/*
- * Nothing is ever cut. Notes go out in full, every item is listed, and a
- * digest too long for one text is split into numbered parts rather than
- * trimmed — staff act on these, and a note that stops mid-sentence ("…to see
- * what") is worse than a second message.
- */
-/*
- * A part's size is measured in SEGMENTS, not characters — PART_SEGMENTS and the
- * packing live in _shared/smsParts.ts, shared with the deacon alerts.
- *
- * This was PART_MAX = 1400 characters, on the reasoning that "Telnyx takes
- * 1600". That holds only while every character is in the GSM-7 alphabet. One
- * that is not — an em dash, a curly apostrophe typed on an iPhone — sends the
- * whole text as UCS-2 at 67 characters a segment, and 1,400 characters becomes
- * 21 segments. Telnyx refuses anything over 10, which is how the Sep 12 4:00 PM
- * digest reached nobody while reporting itself as a single part.
- */
-
-/*
- * Returns the digest as one or more message bodies — one entry per text to
- * send, in order. Callers must send every part.
- */
-export function buildDigest(
-  { slot, added, updates, edited, events, ongoing = [] }:
-  { slot: number; added: any[]; updates: any[]; edited: any[]; events: any[]; ongoing?: any[] },
-  { tail = '' }: { tail?: string } = {},
-): string[] {
-  const morning = slot === MORNING;
-  /* Someone still in a hospital bed counts as something to report, so a slot
-     carrying only them is not a quiet one. */
-  const nothing = !added.length && !updates.length && !edited.length && !ongoing.length;
-  /*
-   * Everything that goes out is normalised to plain punctuation first — the
-   * header, every staff note, the tail. Measured after, not before: "…" becomes
-   * "..." and grows by two characters, so sizing the un-normalised text would
-   * under-count exactly the parts this is here to keep under the limit.
-   */
-  const suffix = toGsm(tail ? `\n\n${tail}` : '');
-  const tidy = (s: string) => s.replace(/\n{3,}/g, '\n\n').trim();
-
-  /*
-   * A quiet check is a single line, not a header with an empty body under it —
-   * it reads at a glance on a lock screen. The morning one still carries the
-   * day's schedule when there is one.
-   */
-  if (nothing && !morning) {
-    return [toGsm(`CARES - No recent updates. Next check at ${slotLabel(nextSlot(slot))}`) + suffix];
-  }
-
-  /* A plain hyphen. The em dash that was here sat on the first line of every
-     digest with news in it, so every one of them went out as UCS-2. */
-  const header = toGsm(nothing ? 'CARES - No updates yesterday' : `Bethesda Cares - ${slotLabel(slot)}`);
-
-  const content: string[] = [];
-  if (!nothing) {
-    content.push(...sectionLines('Added', added, renderAdded));
-    if (added.length && (updates.length || edited.length)) content.push('');
-    content.push(...sectionLines('Updates', updates, renderUpdate));
-    if (edited.length) {
-      if (added.length || updates.length) content.push('');
-      content.push(...sectionLines('Edited', edited, renderEdit));
-    }
-    /* Last, under its own heading: it is standing context, not news, and should
-       not push the things that did change further down the message. */
-    if (ongoing.length) {
-      if (content.length) content.push('');
-      content.push(...sectionLines('Ongoing', ongoing, renderOngoing));
-    }
-  }
-  if (morning) {
-    if (content.length) content.push('');
-    content.push(...(events.length
-      ? sectionLines('Today', events, renderEvent)
-      : ['Today: no appointments or surgeries']));
-  }
-
-  const lines = content.map(toGsm);
-  const whole = tidy([header, '', ...lines].join('\n'));
-  if (smsCost(whole + suffix).segments <= PART_SEGMENTS) return [whole + suffix];
-
-  /*
-   * Every part repeats the header and carries an (n/m) tag, since texts can
-   * arrive out of order. Each candidate is measured with a tag as wide as the
-   * count could make it, and with the opt-out tail — even though only the last
-   * part keeps the tail — so no part comes in over the limit once its real tag
-   * is set.
-   *
-   * The count is not known until packing is done. If it turns out to need more
-   * digits than were allowed for, pack again with the wider tag. Widening only
-   * ever adds parts, so this settles, normally on the first pass.
-   */
-  let width = 2;
-  let chunks: string[][] = [];
-  for (;;) {
-    const widest = `(${'9'.repeat(width)}/${'9'.repeat(width)})`;
-    const fits = (part: string[]) =>
-      smsCost([`${header} ${widest}`, '', ...part].join('\n') + suffix).segments <= PART_SEGMENTS;
-    chunks = packLines(lines, fits);
-    const need = String(chunks.length).length;
-    if (need <= width) break;
-    width = need;
-  }
-  const n = chunks.length;
-  return chunks.map((c, i) => {
-    const part = tidy([`${header} (${i + 1}/${n})`, '', ...c].join('\n'));
-    return i === n - 1 ? part + suffix : part;
-  });
-}
-
+/* The digest and reminder wording: _shared/careDigest.ts. Re-exported for
+   anything that imported them from here. */
+export { buildDigest, reminderText };
 
 /* ── "Starts in 30 minutes" reminders ────────────────────
  *
@@ -314,33 +148,6 @@ export function buildDigest(
  */
 const LEAD_MIN = 15;    // nearest an event may be and still be reminded
 const LEAD_MAX = 45;    // furthest
-
-/* Where it is happening: the note's own place if it named one, otherwise the
-   hospital and room from the record. */
-function reminderPlace(e: any) {
-  const m = e.member || {};
-  const fromRecord = [m.hospital_name, m.room_number ? `Rm ${m.room_number}` : '',
-                      !m.room_number && m.floor ? `Floor ${m.floor}` : '']
-    .filter(Boolean).join(', ');
-  return e.place || fromRecord || '';
-}
-
-export function reminderText(e: any) {
-  const kind = e.kind === 'Surgery' ? 'surgery' : 'an appointment';
-  // The clock time is included because the lead is 15-45 minutes, not exactly
-  // 30 — without it "in 30 minutes" could be off by a quarter of an hour.
-  const head = `${e.member.full_name} has ${kind} in 30 minutes`
-    + (e.time?.label ? ` (${e.time.label}).` : '.');
-
-  const lines = [head];
-  const what = e.kind === 'Surgery' ? (e.member.surgery_type || '') : '';
-  if (what) lines.push(what);
-  const where = reminderPlace(e);
-  if (where) lines.push(where);
-  // Nothing else to go on — the note itself is better than a bare name.
-  if (!what && !where && e.snippet) lines.push(e.snippet);
-  return lines.join('\n');
-}
 
 /*
  * Deacon alerts.
@@ -378,9 +185,9 @@ type Planned = { phone: string; deacon: string; kind: string; ref: string; parts
  * and the dry run, so a dry run cannot drift from what actually happens.
  */
 async function planDeaconAlerts(
-  supabase: any, nowMs: number, isMorning: boolean, stamp: string, sinceMs?: number,
+  supabase: any, nowMs: number, isMorning: boolean, stamp: string, sinceMs?: number, includeHeld = false,
 ) {
-  const counts = { events: 0, unmatched: 0, ambiguous: 0, 'no deacon': 0, 'not a deacon': 0, unreachable: 0, daily_cadence: 0 };
+  const counts = { events: 0, unmatched: 0, ambiguous: 0, 'no deacon': 0, 'not a deacon': 0, unreachable: 0, daily_cadence: 0, held: 0 };
 
   /* Who is reachable: deacons in the directory who are also on the texting group. */
   const { phones: deaconPhones, error: rosterErr } = await verifiedDeaconPhones(supabase);
@@ -396,25 +203,45 @@ async function planDeaconAlerts(
 
   const since = new Date(sinceMs ?? nowMs - SWEEP_LOOKBACK_MS).toISOString();
   const { data: added, error: aErr } = await supabase.from('care_members')
-    .select('id, full_name, phone, category, care_notes, hospital_name, room_number, created_at')
+    .select('id, full_name, phone, category, priority, care_notes, hospital_name, room_number, floor, admission_date, surgery_date, surgery_type, surgeon_name, created_at')
     .gte('created_at', since);
   if (aErr) throw aErr;
   const { data: logs, error: lErr } = await supabase.from('contact_logs')
-    .select('id, notes, created_at, member_id, care_members(full_name, phone)')
+    .select('id, notes, created_at, member_id, type, logged_by_name, care_members(full_name, phone)')
     .gte('created_at', since);
   if (lErr) throw lErr;
 
-  const events: { kind: string; ref: string; care: any; alert: any }[] = [];
-  for (const m of added || []) events.push({ kind: 'added', ref: m.id, care: m, alert: addedAlert(m) });
+  /*
+   * Alerts held by a maintenance window wait for a deliberate catch-up.
+   *
+   * Without this, the first firing after a window closes would text every
+   * deacon about everything logged in the window's last two hours — at 9 PM,
+   * in a burst, whenever the pause happened to end. Events written during a
+   * window are left for a catch-up run (includeHeld), sent at a time someone
+   * chose. The morning summary is not affected: it reports everything since
+   * the previous one, window or not.
+   */
+  const { data: windows } = await supabase.from('sms_maintenance')
+    .select('starts_at, ends_at')
+    .lte('starts_at', new Date(nowMs).toISOString())
+    .gte('ends_at', since);
+  const heldBy = (iso: string) => {
+    const t = Date.parse(iso);
+    return (windows || []).some((w: any) => t >= Date.parse(w.starts_at) && t < Date.parse(w.ends_at));
+  };
+
+  const events: { kind: string; ref: string; care: any; alert: any; at: string }[] = [];
+  for (const m of added || []) events.push({ kind: 'added', ref: m.id, care: m, alert: addedAlert(m), at: m.created_at });
   for (const l of logs || []) {
     const cm = (l as any).care_members;
     if (!cm || !String(l.notes || '').trim()) continue;
-    events.push({ kind: 'update', ref: l.id, care: cm, alert: updateAlert(cm.full_name, l.notes) });
+    events.push({ kind: 'update', ref: l.id, care: cm, alert: updateAlert(cm.full_name, l.notes, { type: (l as any).type, by: (l as any).logged_by_name }), at: l.created_at });
   }
   counts.events = events.length;
 
   const immediate: Planned[] = [];
   for (const e of events) {
+    if (!includeHeld && heldBy(e.at)) { counts.held++; continue; }
     const m = matchDeacon(e.care, directory, deaconPhones);
     if (!m.ok) { counts[m.why]++; continue; }      // unmatched, ambiguous or unreachable — never guessed
     if ((cadence.get(m.phone) || DEFAULT_CADENCE) === 'daily') { counts.daily_cadence++; continue; }
@@ -437,10 +264,10 @@ async function planDeaconAlerts(
 
     const from = new Date(nowMs - DAILY_MAX_MS).toISOString();
     const { data: dAdded } = await supabase.from('care_members')
-      .select('id, full_name, phone, category, care_notes, hospital_name, room_number, created_at')
+      .select('id, full_name, phone, category, priority, care_notes, hospital_name, room_number, floor, admission_date, surgery_date, surgery_type, surgeon_name, created_at')
       .gte('created_at', from);
     const { data: dLogs } = await supabase.from('contact_logs')
-      .select('id, notes, created_at, member_id, care_members(full_name, phone)')
+      .select('id, notes, created_at, member_id, type, logged_by_name, care_members(full_name, phone)')
       .gte('created_at', from);
 
     const byDeacon = new Map<string, { deacon: string; lines: { line: string }[] }>();
@@ -455,7 +282,7 @@ async function planDeaconAlerts(
     for (const m of dAdded || []) push(m, m.created_at, alertText(addedAlert(m)));
     for (const l of dLogs || []) {
       const cm = (l as any).care_members;
-      if (cm && String(l.notes || '').trim()) push(cm, l.created_at, alertText(updateAlert(cm.full_name, l.notes)));
+      if (cm && String(l.notes || '').trim()) push(cm, l.created_at, alertText(updateAlert(cm.full_name, l.notes, { type: (l as any).type, by: (l as any).logged_by_name })));
     }
     for (const [phone, v] of byDeacon) {
       if (v.lines.length) daily.push({ phone, deacon: v.deacon, kind: 'daily', ref: stamp, parts: dailyParts(v.lines) });
@@ -485,8 +312,8 @@ async function deliverToDeacon(phone: string, parts: string[]) {
   return out.sent as number;
 }
 
-async function sendDeaconAlerts(supabase: any, nowMs: number, isMorning: boolean, stamp: string, sinceMs?: number) {
-  const plan = await planDeaconAlerts(supabase, nowMs, isMorning, stamp, sinceMs);
+async function sendDeaconAlerts(supabase: any, nowMs: number, isMorning: boolean, stamp: string, sinceMs?: number, includeHeld = false) {
+  const plan = await planDeaconAlerts(supabase, nowMs, isMorning, stamp, sinceMs, includeHeld);
   if ('skipped' in plan && plan.skipped) return { skipped: plan.skipped };
 
   let immediate = 0, daily = 0, released = 0;
@@ -560,13 +387,24 @@ Deno.serve(async (req) => {
     const forceSlot = Number.isInteger(opts?.slot) ? opts.slot : null;
     /*
      * Catching up deacon alerts after a gap — a maintenance window, an outage.
-     * The sweep normally looks back two hours; this widens it for one run. The
-     * claim table still stops anyone being told twice. Service role only, and
-     * with deaconsOnly the reminders and the digest are left alone entirely.
+     * The sweep normally looks back two hours and leaves alerts a window held;
+     * this widens it for one run and sends those (includeHeld). The claim table
+     * still stops anyone being told twice. With deaconsOnly the reminders and
+     * the digest are left alone entirely.
+     *
+     * The scheduler may run one too — that is how a catch-up is booked for a
+     * set time — but only on the day it names (onlyOn), so a job left behind
+     * can never replay a window a year later.
      */
-    const deaconsSince = isServiceRole(req) && typeof opts?.deaconsSince === 'string'
+    const wallToday = isoDay(wallClock());
+    const catchUpAllowed = isServiceRole(req) || opts?.onlyOn === wallToday;
+    const deaconsSince = catchUpAllowed && typeof opts?.deaconsSince === 'string'
       && !Number.isNaN(Date.parse(opts.deaconsSince)) ? Date.parse(opts.deaconsSince) : undefined;
-    const deaconsOnly = opts?.deaconsOnly === true && isServiceRole(req);
+    const includeHeld = catchUpAllowed && opts?.includeHeld === true;
+    const deaconsOnly = opts?.deaconsOnly === true;
+    if (deaconsOnly && !catchUpAllowed) {
+      return json({ ok: true, skipped: `catch-up is for ${opts?.onlyOn || 'another day'}, today is ${wallToday}` });
+    }
 
     const supabase = createClient(SUPABASE_URL, SERVICE_ROLE);
 
@@ -594,7 +432,7 @@ Deno.serve(async (req) => {
        5:00 PM digest. Loaded here because the slot gate below returns early. */
     const { data: allMembers } = await supabase
       .from('care_members')
-      .select('id, full_name, status, care_notes, surgery_date, surgery_type, hospital_name, room_number, floor, updated_at, created_at, contact_logs(notes, created_at)')
+      .select('id, full_name, status, category, priority, care_notes, surgery_date, surgery_type, surgeon_name, admission_date, hospital_name, room_number, floor, updated_at, created_at, contact_logs(notes, created_at)')
       .neq('status', 'Inactive');
     const reminders = deaconsOnly ? { skipped: 'deaconsOnly' } : dryRun
       ? { due: upcomingCareEvents(allMembers || [], now, { pastDays: 0, aheadDays: 0 })
@@ -608,7 +446,7 @@ Deno.serve(async (req) => {
     /* A dry run reports what the alerts would do in numbers only — who and how
        many, never what the texts say. */
     const deacons = dryRun
-      ? await planDeaconAlerts(supabase, Date.now(), isMorningFiring || opts?.morning === true, isoDay(today), deaconsSince)
+      ? await planDeaconAlerts(supabase, Date.now(), isMorningFiring || opts?.morning === true, isoDay(today), deaconsSince, includeHeld)
           .then((p: any) => p.skipped ? { dryRun: true, skipped: p.skipped } : {
             dryRun: true, deacons: p.deacons, ...p.counts,
             immediate: p.immediate.length, daily: p.daily.length,
@@ -616,7 +454,7 @@ Deno.serve(async (req) => {
             longestSegments: Math.max(0, ...[...p.immediate, ...p.daily].flatMap((x: any) => x.parts.map((b: string) => smsCost(b).segments))),
           })
           .catch((e: any) => ({ dryRun: true, error: String(e?.message || e) }))
-      : await sendDeaconAlerts(supabase, Date.now(), isMorningFiring, isoDay(today), deaconsSince).catch((e: any) => {
+      : await sendDeaconAlerts(supabase, Date.now(), isMorningFiring && !deaconsOnly, isoDay(today), deaconsSince, includeHeld).catch((e: any) => {
           console.error('deacon alerts failed:', e?.message || e);
           return { error: String(e?.message || e) };
         });
@@ -632,10 +470,18 @@ Deno.serve(async (req) => {
     const sentOn = isoDay(today);
     const { start, end } = windowFor(today, slot);
 
+    /* Delivered already — the later firings in the two-hour retry window stop
+       here instead of rebuilding a digest only to find the slot claimed. */
+    if (!dryRun && !force) {
+      const { data: done } = await supabase.from('cares_alert_sends')
+        .select('slot').eq('sent_on', sentOn).eq('slot', slot).maybeSingle();
+      if (done) return json({ ok: true, reminders, deacons, skipped: 'already sent this slot', sentOn, slot });
+    }
+
     // 1. Care members added in this window.
     const { data: addedRows, error: addErr } = await supabase
       .from('care_members')
-      .select('id, full_name, category, created_at')
+      .select('id, full_name, category, priority, care_notes, hospital_name, room_number, floor, admission_date, surgery_date, surgery_type, surgeon_name, created_at')
       .gte('created_at', start.toISOString())
       .lt('created_at', end.toISOString())
       .order('created_at', { ascending: true });
@@ -646,14 +492,22 @@ Deno.serve(async (req) => {
     // 2. Contact logs posted in this window.
     const { data: logs, error: logErr } = await supabase
       .from('contact_logs')
-      .select('notes, created_at, member_id, care_members(full_name)')
+      .select('notes, created_at, member_id, type, logged_by_name, care_members(full_name, category, hospital_name, room_number, floor)')
       .gte('created_at', start.toISOString())
       .lt('created_at', end.toISOString())
       .order('created_at', { ascending: true });
     if (logErr) throw logErr;
     const updates = (logs || [])
       .filter(l => String(l.notes || '').trim())
-      .map(l => ({ name: (l as any).care_members?.full_name || 'Unknown', notes: l.notes, id: l.member_id }));
+      .map(l => {
+        const cm = (l as any).care_members || {};
+        return {
+          name: cm.full_name || 'Unknown', notes: l.notes, id: l.member_id,
+          type: (l as any).type, by: (l as any).logged_by_name,
+          /* Where to find them, when that is a hospital bed. */
+          where: cm.category === 'Hospitalized' ? wherePlace(cm) : '',
+        };
+      });
     const loggedIds = new Set(updates.map(u => u.id));
 
     // 3. Everything else, for today's schedule and to spot edited records.
@@ -663,7 +517,7 @@ Deno.serve(async (req) => {
          care lands in a log, not in care_notes. Without the embed the schedule
          only ever saw the profile — which is how a surgery logged yesterday for
          today went unannounced. */
-      .select('id, full_name, status, category, care_notes, surgery_date, surgery_type, hospital_name, room_number, floor, updated_at, created_at, contact_logs(notes, created_at)')
+      .select('id, full_name, status, category, priority, care_notes, surgery_date, surgery_type, surgeon_name, admission_date, hospital_name, room_number, floor, updated_at, created_at, contact_logs(notes, created_at)')
       .neq('status', 'Inactive');
     if (memErr) throw memErr;
 
@@ -740,7 +594,7 @@ Deno.serve(async (req) => {
 
     // Every slot sends, quiet or not — a "nothing to report" check is itself
     // the signal that the system is alive and was looked at.
-    const payload = { slot, added, updates, edited, events, ongoing };
+    const payload = { slot, added, updates, edited, events, ongoing, today };
     // One or more parts — a long digest is split, never trimmed.
     const parts = buildDigest(payload);
     const partsWithNotice = buildDigest(payload, { tail: STOP_NOTICE });
@@ -783,6 +637,7 @@ Deno.serve(async (req) => {
      * Claiming earlier meant a transient read error burned the slot with
      * nothing sent and no retry possible.
      */
+    const claimedAt = new Date().toISOString();
     {
       const { error } = await supabase.from('cares_alert_sends').insert({ sent_on: sentOn, slot });
       if (error && !(error.code === '23505' && force)) {
@@ -805,10 +660,29 @@ Deno.serve(async (req) => {
      */
     if (!res.ok || typeof out?.sent !== 'number') {
       const reason = out?.error || `send-prospect-sms HTTP ${res.status}`;
-      await supabase.from('cares_alert_sends')
-        .update({ recipients: 0, note: `send failed: ${reason}` })
-        .eq('sent_on', sentOn).eq('slot', slot);
-      return json({ ok: false, sentOn, slot, error: reason, attempted: recipients.length }, 502);
+      /*
+       * Give the slot back so the next firing tries again — unless some of it
+       * went out after all. A timeout can come back while the sender carried on,
+       * and releasing then would text staff the same digest twice; the log shows
+       * whether any part of this digest was delivered in the last few minutes.
+       */
+      const heads = new Set([...parts, ...partsWithNotice].map(p => p.split('\n')[0].replace(/ \(\d+\/\d+\)$/, '')));
+      const staffPhones = new Set(recipients.map(r => last10(r.phone)));
+      const { data: recent } = await supabase.from('sms_messages')
+        .select('body, to_number')
+        .eq('channel', 'care').eq('status', 'MassText')
+        .gte('created_at', claimedAt)
+        .limit(200);
+      const delivered = (recent || []).some((r: any) => staffPhones.has(last10(r.to_number))
+        && heads.has(String(r.body || '').split('\n')[0].replace(/ \(\d+\/\d+\)$/, '')));
+      if (!delivered) {
+        await supabase.from('cares_alert_sends').delete().eq('sent_on', sentOn).eq('slot', slot);
+      } else {
+        await supabase.from('cares_alert_sends')
+          .update({ recipients: 0, note: `send failed: ${reason}` })
+          .eq('sent_on', sentOn).eq('slot', slot);
+      }
+      return json({ ok: false, sentOn, slot, error: reason, attempted: recipients.length, retry: !delivered }, 502);
     }
 
     /* Only mark the opt-out notice delivered for people we actually reached —
@@ -826,6 +700,17 @@ Deno.serve(async (req) => {
     /* out.sent counts MESSAGES; with a split digest that is people × parts.
        Report people, or a 2-part send to 5 staff reads as 10 recipients. */
     const reached = recipients.filter(s => !missed(s)).length;
+
+    /*
+     * Reached nobody — Telnyx refused every one (an empty account did exactly
+     * this on Sep 11 and 12). Hand the slot back so the next firing, up to two
+     * hours on, sends it; a digest nobody received is not a digest sent.
+     */
+    if (reached === 0 && out.sent === 0) {
+      await supabase.from('cares_alert_sends').delete().eq('sent_on', sentOn).eq('slot', slot);
+      return json({ ok: false, sentOn, slot: slotLabel(slot), sent: 0, retry: true,
+        error: out?.failed?.[0]?.error || 'nobody reached' }, 502);
+    }
 
     await supabase.from('cares_alert_sends')
       .update({ recipients: reached,

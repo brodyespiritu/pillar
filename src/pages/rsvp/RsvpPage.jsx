@@ -19,7 +19,9 @@ import './rsvp.css';
 
 const ENDPOINT = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/dinner-rsvp`;
 
-export default function RsvpPage() {
+/* `onBack` is given when bethesda.rsvp is showing more than one thing to sign up
+   for, and this form was chosen from the boxes. */
+export default function RsvpPage({ onBack }) {
   /* /rsvp/<token> names the dinner; bare /rsvp takes whichever is collecting. */
   const { token } = useParams();
   const [name, setName] = useState('');
@@ -63,10 +65,17 @@ export default function RsvpPage() {
     }
   }
 
+  const back = onBack && (
+    <button type="button" className="rsvp-back" onClick={onBack}>
+      <Icon d={P.chevL} size={18} />All sign-ups
+    </button>
+  );
+
   if (done) {
     return (
       <div className="rsvp-wrap">
         <main className="rsvp-card rsvp-done">
+          {back}
           <div className="rsvp-tick"><Icon d={P.check} size={34} /></div>
           <h1 className="rsvp-title">Reservation received</h1>
           <p className="rsvp-sub">
@@ -85,6 +94,7 @@ export default function RsvpPage() {
   return (
     <div className="rsvp-wrap">
       <form className="rsvp-card" onSubmit={submit}>
+        {back}
         <h1 className="rsvp-title">Reserve your plate</h1>
         <p className="rsvp-sub">Wednesday night dinner at Bethesda Baptist Church</p>
 

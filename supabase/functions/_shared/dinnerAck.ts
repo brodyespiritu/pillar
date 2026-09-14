@@ -101,7 +101,7 @@ async function repliedToDinner(supabase: any, last10: string) {
     .eq('to10', last10)
     .eq('direction', 'out')
     .eq('channel', 'sms')
-    .not('status', 'in', `("${ACK_STATUS}","Reply","Failed","Blocked")`)
+    .not('status', 'in', `("${ACK_STATUS}","Reply","Notice","Failed","Blocked")`)
     .order('created_at', { ascending: false })
     .limit(1);
   if (lookupErr) console.error('dinner reply lookup failed:', lookupErr.message);

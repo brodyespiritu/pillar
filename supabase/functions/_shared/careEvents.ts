@@ -170,43 +170,110 @@ export function parseTimeFrom(text) {
   return { label: `${h12}:${String(min).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`, minutes: h * 60 + min };
 }
 
-/* No-year dates resolve to the nearest sensible occurrence: this year, unless
-   that day passed more than a week ago — then next year. */
-function resolveMonthDay(mo, dayNum, now, year) {
+/*
+ * No-year dates resolve to the nearest sensible occurrence: this year, unless
+ * that day passed more than a week ago — then next year. Past tense turns it
+ * round: "had surgery on Dec 28", written Jan 2, is last year's December.
+ */
+function resolveMonthDay(mo: number, dayNum: number, now: Date, year: number | null, past = false) {
   if (year) return new Date(year < 100 ? 2000 + year : year, mo, dayNum);
   const cand = new Date(now.getFullYear(), mo, dayNum);
-  return (day0(now) - cand) / 864e5 > 7 ? new Date(now.getFullYear() + 1, mo, dayNum) : cand;
+  const daysAgo = (+day0(now) - +cand) / 864e5;
+  if (past) return daysAgo < -7 ? new Date(now.getFullYear() - 1, mo, dayNum) : cand;
+  return daysAgo > 7 ? new Date(now.getFullYear() + 1, mo, dayNum) : cand;
 }
 
-/* First date mentioned in the text with its position — or null. */
-function parseDateWithIndex(text, now = new Date()) {
-  const s = String(text);
-  // `relative` dates re-resolve against whatever "now" is. Fine on screen,
-  // dangerous for a daily job: a note saying "today" would fire every morning
-  // forever, so callers must decide whether the note is still fresh.
-  let m = s.match(/\b(today|tonight|this (?:morning|afternoon|evening))\b/i);
-  if (m) return { date: isoDay(day0(now)), idx: m.index, len: m[0].length, relative: true };
-  m = s.match(/\btomorrow\b/i);
-  if (m) return { date: isoDay(new Date(day0(now).getTime() + 864e5)), idx: m.index, len: m[0].length, relative: true };
+/*
+ * Month names spelled out or abbreviated — whole words only. The prefix alone
+ * used to count, so "Marcus 3" read as March 3 and "separate 2" as September 2.
+ */
+const MONTH_WORD = String.raw`(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sept?(?:ember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)`;
+const WEEKDAY_WORD = '(sunday|monday|tuesday|wednesday|thursday|friday|saturday)';
 
-  m = s.match(/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{1,2})(?:st|nd|rd|th)?(?:,?\s*(\d{4}))?/i);
-  if (m && +m[2] >= 1 && +m[2] <= 31) {
-    const d = resolveMonthDay(MONTHS[m[1].toLowerCase().slice(0, 3)], +m[2], now, m[3] ? +m[3] : null);
-    return { date: isoDay(d), idx: m.index, len: m[0].length };
+/* Wording that puts what it describes in the past. */
+export const PAST_RE = /\b(had|has had|underwent|went|came home|was seen|was released|got out|did|completed)\b/i;
+
+/*
+ * Every date mentioned in the text, left to right, each with where it sits and
+ * whether it is relative ("today", "Tuesday") — resolved against `now`, the
+ * moment the words were written.
+ *
+ * All of them, not the first rule that matches. Checking "today" before anything
+ * else meant "surgery on Sept 22 — doing well today" put the surgery on today.
+ */
+function dateCandidates(text: unknown, now: Date = new Date(), past = false) {
+  const s = String(text);
+  const base = day0(now);
+  const out: { idx: number; len: number; date: string; relative: boolean }[] = [];
+  const add = (idx: number, len: number, date: Date, relative: boolean) => out.push({ idx, len, date: isoDay(date), relative });
+  let m: RegExpExecArray | null;
+
+  const REL = /\b(today|tonight|this (?:morning|afternoon|evening))\b|\b(tomorrow)\b|\b(yesterday|last night)\b/gi;
+  while ((m = REL.exec(s))) {
+    const shift = m[1] ? 0 : m[2] ? 1 : -1;
+    add(m.index, m[0].length, new Date(base.getTime() + shift * 864e5), true);
   }
-  m = s.match(/\b(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?\b/);
-  if (m && +m[1] >= 1 && +m[1] <= 12 && +m[2] >= 1 && +m[2] <= 31) {
-    return { date: isoDay(resolveMonthDay(+m[1] - 1, +m[2], now, m[3] ? +m[3] : null)), idx: m.index, len: m[0].length };
+
+  /* "Wednesday, September 23" is one date; the weekday rides along with it. */
+  const MD = new RegExp(String.raw`\b(?:${WEEKDAY_WORD},?\s+)?${MONTH_WORD}\.?\s+(\d{1,2})(?:st|nd|rd|th)?\b(?:,?\s*(\d{4}))?`, 'gi');
+  while ((m = MD.exec(s))) {
+    const day = +m[3];
+    if (day < 1 || day > 31) continue;
+    add(m.index, m[0].length, resolveMonthDay((MONTHS as Record<string, number>)[m[2].toLowerCase().slice(0, 3)], day, now, m[4] ? +m[4] : null, past), false);
   }
-  m = s.match(/\b(?:next\s+)?(sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/i);
-  if (m) {
-    const want = WEEKDAYS.indexOf(m[1].toLowerCase());
-    const base = day0(now);
-    let ahead = (want - base.getDay() + 7) % 7;
-    if (/next\s/i.test(m[0])) ahead += 7;   // "next Tuesday" = the following week
-    return { date: isoDay(new Date(base.getTime() + ahead * 864e5)), idx: m.index, len: m[0].length, relative: true };
+
+  const SLASH = /\b(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?\b/g;
+  while ((m = SLASH.exec(s))) {
+    const mo = +m[1], day = +m[2];
+    if (mo < 1 || mo > 12 || day < 1 || day > 31) continue;
+    /* A score or a reading, not a date: "pain is 7/10", "rated her pain 8/10". */
+    if (/\b(pain|scale|level|rated?|rating|score|pressure|bp|sugar|glucose|oxygen|o2)\b[^\d]{0,12}$/i.test(s.slice(Math.max(0, m.index - 24), m.index))) continue;
+    /* A fraction: "3/4 of a mile", "1/2 a tablet". */
+    if (!m[3] && /^(1\/2|1\/3|2\/3|1\/4|3\/4)$/.test(m[0])
+        && /^\s+(of|a|an|cup|dose|mile|hour|tablet|pill|teaspoon|tsp)\b/i.test(s.slice(m.index + m[0].length))) continue;
+    add(m.index, m[0].length, resolveMonthDay(mo - 1, day, now, m[3] ? +m[3] : null, past), false);
   }
-  return null;
+
+  const WD = new RegExp(String.raw`\b(?:(next|last|this)\s+)?${WEEKDAY_WORD}\b`, 'gi');
+  while ((m = WD.exec(s))) {
+    const want = WEEKDAYS.indexOf(m[2].toLowerCase());
+    const q = (m[1] || '').toLowerCase();
+    let d: Date;
+    if (q === 'last' || (!q && past)) {
+      /* "had surgery Monday" is the Monday just gone, not the one coming. */
+      let back = (base.getDay() - want + 7) % 7;
+      if (q === 'last' && back === 0) back = 7;
+      d = new Date(base.getTime() - back * 864e5);
+    } else {
+      let ahead = (want - base.getDay() + 7) % 7;
+      /* "next Tuesday" is the Tuesday of next week: a week on when that day is
+         still to come this week, the coming one when it has already passed. */
+      if (q === 'next' && (ahead === 0 || want > base.getDay())) ahead += 7;
+      d = new Date(base.getTime() + ahead * 864e5);
+    }
+    add(m.index, m[0].length, d, true);
+  }
+
+  /* Left to right; a date inside a longer one ("Tuesday" in "Tuesday, Sept 22") is dropped. */
+  out.sort((a, b) => a.idx - b.idx || b.len - a.len);
+  const kept: typeof out = [];
+  for (const c of out) {
+    const last = kept[kept.length - 1];
+    if (last && c.idx < last.idx + last.len) continue;
+    kept.push(c);
+  }
+  return kept;
+}
+
+/*
+ * The date a stretch of text is about: its first written-out date if it has
+ * one, otherwise its first relative one. `relative` dates re-resolve against
+ * whatever "now" is — fine on screen, dangerous for a daily job, so callers
+ * decide whether the words are still fresh.
+ */
+function parseDateWithIndex(text: unknown, now: Date = new Date(), past = false) {
+  const found = dateCandidates(text, now, past);
+  return found.find(c => !c.relative) || found[0] || null;
 }
 
 /* First date mentioned in the text, as YYYY-MM-DD — or null. */
@@ -253,17 +320,8 @@ export function memberPlace(member) {
 }
 
 /* Every date in a stretch of text, left to right. */
-function allDates(text, now) {
-  const out = [];
-  const s = String(text);
-  let offset = 0;
-  while (offset < s.length) {
-    const found = parseDateWithIndex(s.slice(offset), now);
-    if (!found) break;
-    out.push({ ...found, idx: found.idx + offset });
-    offset += found.idx + Math.max(found.len || 1, 1);
-  }
-  return out;
+function allDates(text: unknown, now: Date) {
+  return dateCandidates(text, now);
 }
 
 /* Where one clause ends and the next begins. */
@@ -289,7 +347,19 @@ function splitByDates(sentence, now) {
     CONNECTOR.lastIndex = 0;
     const between = sentence.slice(from, to);
     const m = CONNECTOR.exec(between);          // first connector keeps the most context
-    cuts.push(m ? from + m.index + m[0].length : Math.floor((from + to) / 2));
+    if (m) { cuts.push(from + m.index + m[0].length); continue; }
+    /*
+     * No "and" or "then" between them: cut after the first comma or semicolon,
+     * else at the space nearest the middle. Cutting at the exact middle split
+     * words in half — "…September 23, the surgery will be on September 30" lost
+     * the word "surgery" from its own half, and the surgery became an appointment.
+     */
+    const punct = between.search(/[,;]\s*/);
+    if (punct >= 0) { cuts.push(from + punct + between.slice(punct).match(/^[,;]\s*/)[0].length); continue; }
+    const mid = Math.floor(between.length / 2);
+    const spaces = [...between.matchAll(/\s+/g)].map(x => x.index + x[0].length);
+    const best = spaces.length ? spaces.reduce((a, b) => (Math.abs(b - mid) < Math.abs(a - mid) ? b : a)) : mid;
+    cuts.push(from + best);
   }
 
   const parts = [];
@@ -299,10 +369,42 @@ function splitByDates(sentence, now) {
   return parts.map(s => s.trim()).filter(Boolean);
 }
 
-export function extractCareEvents(member, now = new Date()) {
-  const events = [];
+/*
+ * The church's wall clock at an instant, as a Date whose local getters read it.
+ * A note's timestamp is an instant; "tomorrow" in it means the day after it was
+ * written in Columbus. In an edge function (UTC) a note written at 9 PM Eastern
+ * is already the next day, so without this the digest read it a day late.
+ */
+export function churchClock(instant: unknown, tz = 'America/New_York') {
+  const d = instant instanceof Date ? instant : new Date(instant as string);
+  if (Number.isNaN(d.getTime())) return new Date();
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-US', {
+    timeZone: tz, hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
+  }).formatToParts(d).filter(x => x.type !== 'literal').map(x => [x.type, +x.value]));
+  return new Date(p.year, p.month - 1, p.day, p.hour === 24 ? 0 : p.hour, p.minute);
+}
+
+/* A plan called off is not on the calendar. */
+const CANCELLED_RE = /\bcancel(?:l?ed|s|ling)?\b|\bcalled off\b|\bno longer\b/i;
+/* Before-surgery wording: the appointment that prepares for one. */
+const PREOP_RE = /\bpre[- ]?op(?:erative)?\b|\bpre[- ]?surg|\bpre[- ]?admission|\bpre[- ]?testing/i;
+/*
+ * "will have testing for his surgery on the 23rd" — something done FOR a
+ * surgery, on that date, is not the surgery. "is scheduled for surgery on the
+ * 30th" and "will have surgery on the 30th" stay surgeries: neither has, gets or
+ * sees something else for it.
+ */
+const FOR_SURGERY_RE = /\b(?:have|having|has|get|getting|go(?:ing)?\s+(?:in\s+)?for|see|seeing|meet(?:ing)?(?:\s+with)?|attend(?:ing)?|do|doing)\s+(?:[\w'’-]+\s+){0,5}?(?:for|before|ahead of|prior to)\s+(?:his|her|their|the|a|an|this|that|upcoming)?\s*(?:[\w'’-]+\s+)?surger(?:y|ies)\b/i;
+
+export function extractCareEvents(member: any, now: Date = new Date()) {
+  const events: any[] = [];
   const seen = new Set();
-  const push = (kind, date, time, snippet, place = '', relative = false, anchor = null) => {
+  /* `detail` is the whole sentence the event was read from. `snippet` is cut to
+     fit a calendar card; a care text has room for all of it, and "Appointment -
+     Details not given" beside a note that gives them is the thing to avoid.
+     `source` says where it was read — the record's own field, the profile note,
+     or a logged update — and `anchor` when those words were written. */
+  const push = (kind: string, date: string, time: any, snippet: string, place = '', relative = false, anchor: Date | null = null, detail = '', source = 'log', labelOverride = '') => {
     if (!date) return;
     // Two different times on one day are two different events. Keying on date
     // alone dropped the second, and dropped a note's time when the structured
@@ -313,85 +415,114 @@ export function extractCareEvents(member, now = new Date()) {
     if (time && untimed) {                       // same event, now with a time
       untimed.time = time;
       if (!untimed.place) untimed.place = place;
+      if (detail && !String(untimed.detail || '').includes(detail)) {
+        untimed.detail = [untimed.detail, detail].filter(Boolean).join(' ');
+      }
       seen.add(key);
       return;
     }
     seen.add(key);
-    // `anchor` is when the words were written — what a freshness check must
-    // judge, rather than when the member record was last touched.
     /* What to call it on screen. Falls back to the bare kind so a card is never
        blank, and prefers the structured surgery_type when the note itself does
        not name the procedure. */
-    const label = kind === 'Surgery'
+    const label = labelOverride || (kind === 'Surgery'
       ? (extractSurgeryType(snippet) || String(member.surgery_type || '').trim() || 'Surgery')
-      : (extractApptType(snippet) || 'Appointment');
-    events.push({ kind, date, time, snippet, place, relative, anchor, label });
+      : (extractApptType(snippet) || 'Appointment'));
+    events.push({ kind, date, time, snippet, place, relative, anchor, label, detail: detail || snippet, source });
   };
 
   if (member.surgery_date) {
     const bits = [member.surgery_type, member.hospital_name ? `at ${member.hospital_name}` : '']
       .filter(Boolean).join(' ');
-    push('Surgery', member.surgery_date, null, bits || 'Scheduled surgery', memberPlace(member));
+    /* Everything the record holds about it: what, who is operating, where. */
+    const full = [
+      member.surgery_type ? String(member.surgery_type).trim() : 'Surgery',
+      member.surgeon_name ? `with ${String(member.surgeon_name).trim()}` : '',
+      member.hospital_name ? `at ${String(member.hospital_name).trim()}` : '',
+    ].filter(Boolean).join(' ');
+    push('Surgery', member.surgery_date, null, bits || 'Scheduled surgery', memberPlace(member), false,
+      member.updated_at ? new Date(member.updated_at) : null, full, 'record');
   }
 
   /*
-   * `when` anchors relative wording. "Surgery tomorrow" means the day after the
-   * note was WRITTEN, not the day after whenever the page happens to render —
-   * anchoring to render time made such an event walk forward a day at a time
-   * and never arrive.
+   * `written` is the instant the words were written; dates are read on the
+   * church's clock at that instant. "Surgery tomorrow" means the day after the
+   * note was WRITTEN, not the day after whenever the page happens to render.
+   *
+   * `relativeOk` false ignores "today", "tomorrow" and bare weekdays and keeps
+   * only written-out dates — for text whose writing time is not known.
    */
-  const scan = (text: any, when: any) => {
-  // Mask abbreviation periods (Dr., Mrs., …) so they don't end a sentence.
-  const notes = String(text || '')
-    .replace(/\b(dr|mr|mrs|ms|rev|jr|sr|st)\./gi, (mm) => mm.slice(0, -1) + '\u0001');
-  const now = when;
-  for (const raw of notes.split(/(?<=[.!?])\s+|\n+/)) {
-    const sentence = raw.replace(/\u0001/g, '.').trim();
-    if (!sentence) continue;
-    // A sentence naming two dates holds two events; one date is left whole.
-    let carried = null;                       // kind from an earlier clause
-    for (const clause of splitByDates(sentence, now)) {
-    const surgIdx = clause.search(SURGERY_RE);
-    const apptIdx = clause.search(APPT_RE);
-    const found = parseDateWithIndex(clause, now);
-    if (!found) continue;
-    // "chemo on Monday and Tuesday" — the second clause has the date but the
-    // procedure was named once, in the first. Carry it rather than lose the day.
-    if (surgIdx < 0 && apptIdx < 0) {
-      if (!carried) continue;
-      push(carried, found.date, parseTimeFrom(clause),
-        clause.replace(/\s+/g, ' ').slice(0, 110),
-        extractPlace(clause) || (carried === 'Surgery' ? memberPlace(member) : ''),
-        found.relative === true, when);
-      continue;
+  const scan = (text: unknown, written: Date, source: string, relativeOk = true) => {
+    const clock = churchClock(written);
+    // Mask abbreviation periods (Dr., Mrs., …) so they don't end a sentence.
+    const notes = String(text || '')
+      .replace(/\b(dr|mr|mrs|ms|rev|jr|sr|st)\./gi, (mm) => mm.slice(0, -1) + '\u0001');
+    for (const raw of notes.split(/(?<=[.!?])\s+|\n+/)) {
+      const sentence = raw.replace(/\u0001/g, '.').trim();
+      if (!sentence) continue;
+      // A sentence naming two dates holds two events; one date is left whole.
+      let carried = null;                       // kind from an earlier clause
+      for (const clause of splitByDates(sentence, clock)) {
+        if (CANCELLED_RE.test(clause)) { carried = null; continue; }
+        const past = PAST_RE.test(clause);
+        const found = parseDateWithIndex(clause, clock, past);
+        if (!found) continue;
+        if (found.relative && !relativeOk) continue;
+
+        const surgIdx = clause.search(SURGERY_RE);
+        const apptHits = [clause.search(APPT_RE), clause.search(PREOP_RE)].filter(i => i >= 0);
+        const apptIdx = apptHits.length ? Math.min(...apptHits) : -1;
+        const preop = PREOP_RE.test(clause) || (surgIdx >= 0 && FOR_SURGERY_RE.test(clause));
+        const place = (k: string) => extractPlace(clause) || (k === 'Surgery' ? memberPlace(member) : '');
+        const snippet = clause.replace(/\s+/g, ' ').slice(0, 110);
+        const detail = sentence.replace(/\s+/g, ' ');
+
+        // "chemo on Monday and Tuesday" — the second clause has the date but the
+        // procedure was named once, in the first. Carry it rather than lose the day.
+        if (surgIdx < 0 && apptIdx < 0) {
+          if (!carried) continue;
+          /* "…surgery on Tuesday, doing well today" — a today or last night on its
+             own is how someone is, not a second appointment. */
+          if (found.relative && /today|tonight|this (?:morning|afternoon|evening)|yesterday|last night/i
+            .test(clause.substr(found.idx, found.len))) continue;
+          push(carried, found.date, parseTimeFrom(clause), snippet, place(carried), found.relative === true, written, detail, source);
+          continue;
+        }
+
+        let kind;
+        if (preop) {
+          kind = 'Appointment';
+        } else if (surgIdx >= 0 && apptIdx >= 0) {
+          // Talking ABOUT a surgery (discuss/about/scheduling it) is an appointment;
+          // otherwise the keyword nearest the date names the event.
+          const discussion = /\b(discuss|about|regarding|schedul|plan|date of|options)/i.test(clause);
+          kind = discussion || Math.abs(apptIdx - found.idx) <= Math.abs(surgIdx - found.idx)
+            ? 'Appointment' : 'Surgery';
+        } else {
+          kind = surgIdx >= 0 ? 'Surgery' : 'Appointment';
+        }
+        // A surgery with no named venue happens where they're admitted; an
+        // appointment could be anywhere, so never guess one.
+        carried = kind;
+        push(kind, found.date, parseTimeFrom(clause), snippet, place(kind), found.relative === true, written, detail, source,
+          preop ? 'Pre-op appointment' : '');
+      }
     }
-    // Double wording ("appointment ... to discuss surgeries"): the keyword
-    // nearest the date names the event — that sentence is an appointment,
-    // while "pre-op MRI then knee surgery on Friday" stays a surgery.
-    let kind;
-    if (surgIdx >= 0 && apptIdx >= 0) {
-      // Talking ABOUT a surgery (discuss/about/scheduling it) is an appointment;
-      // otherwise the keyword nearest the date names the event.
-      const discussion = /\b(discuss|about|regarding|schedul|plan|date of|options)/i.test(clause);
-      kind = discussion || Math.abs(apptIdx - found.idx) <= Math.abs(surgIdx - found.idx)
-        ? 'Appointment' : 'Surgery';
-    } else {
-      kind = surgIdx >= 0 ? 'Surgery' : 'Appointment';
-    }
-    // A surgery with no named venue happens where they're admitted; an
-    // appointment could be anywhere, so never guess one.
-    carried = kind;
-    push(kind, found.date, parseTimeFrom(clause),
-      clause.replace(/\s+/g, ' ').slice(0, 110),
-      extractPlace(clause) || (kind === 'Surgery' ? memberPlace(member) : ''),
-      found.relative === true, when);
-    }
-  }
   };
 
-  /* The profile's own notes. Their best available timestamp is the record's
-     last edit — closer to when the words were typed than "now" is. */
-  scan(member.care_notes, member.updated_at ? new Date(member.updated_at) : now);
+  /*
+   * The profile's own note. Its words carry no timestamp of their own: the
+   * record's updated_at moves with every edit, so reading "tomorrow" against it
+   * put a months-old "surgery tomorrow" on the day after whoever last changed
+   * the phone number — and the digest announced it. Written-out dates are read
+   * against when the record was created, which is only used to settle the year.
+   * Day words count only while the record has never been edited, when the note
+   * and the record were written together.
+   */
+  const created = member.created_at ? new Date(member.created_at) : null;
+  const edited = member.updated_at ? new Date(member.updated_at) : null;
+  const neverEdited = !!created && (!edited || Math.abs(+edited - +created) < 120_000);
+  scan(member.care_notes, created || edited || now, 'profile', neverEdited);
 
   /*
    * Contact logs — this is how a texted update reaches the calendar. A staff
@@ -400,7 +531,26 @@ export function extractCareEvents(member, now = new Date()) {
    * Each log is read against its own created_at.
    */
   for (const log of member.contact_logs || []) {
-    scan(log?.notes, log?.created_at ? new Date(log.created_at) : now);
+    scan(log?.notes, log?.created_at ? new Date(log.created_at) : now, 'log');
+  }
+
+  /*
+   * A newer word on a surgery replaces an older date for it. When the latest
+   * update to give a surgery date says October 14, an earlier "September 30"
+   * that had not yet arrived when that update was written is no longer the
+   * plan. Dates already past at that point stay: they are history.
+   */
+  const surgeryLogs = events.filter(e => e.kind === 'Surgery' && e.source === 'log' && e.anchor);
+  if (surgeryLogs.length) {
+    const newest = Math.max(...surgeryLogs.map(e => +e.anchor));
+    const current = new Set(surgeryLogs.filter(e => +e.anchor === newest).map(e => e.date));
+    const writtenDay = isoDay(churchClock(new Date(newest)));
+    for (let i = events.length - 1; i >= 0; i--) {
+      const e = events[i];
+      if (e.kind !== 'Surgery' || current.has(e.date)) continue;
+      const older = !e.anchor || +e.anchor < newest;
+      if (older && e.date > writtenDay) events.splice(i, 1);
+    }
   }
 
   return events;

@@ -1,0 +1,245 @@
+/*
+ * RSVP — the staff page. It borrows the SMS page's band and container
+ * (Sms.css) so the two read as siblings; everything here is the part that
+ * differs: the Create form sheet across the band's edge, and a box per form.
+ * Card metrics follow .mc on the Cares page — large padding, radius-lg, one soft
+ * border, colour only in pills and text.
+ */
+
+/* ── Band and the sheet across its edge ── */
+.sms-band.rsvpf-band { padding-bottom: 96px; }
+.rsvpf-band-sub { margin-top: 8px; font-size: 14.5px; color: rgba(255,255,255,0.72); }
+.rsvpf-band-sub a { color: #FFFFFF; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; text-decoration-color: rgba(255,255,255,0.4); }
+.rsvpf-band-sub a:hover { text-decoration-color: #FFFFFF; }
+
+.sms-container.rsvpf-container { margin-top: -64px; }
+
+.rsvpf-create {
+  max-width: 760px; margin: 0 auto;
+  display: flex; align-items: center; gap: 24px;
+  padding: 26px 28px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 22px;
+  box-shadow: 0 14px 38px rgba(20,28,38,0.28);
+}
+.rsvpf-create-text { flex: 1; min-width: 0; }
+.rsvpf-create-text h2 { font-size: 19px; font-weight: 700; letter-spacing: -0.3px; color: var(--text); }
+.rsvpf-create-text p { margin-top: 5px; font-size: 14px; line-height: 1.5; color: var(--text-2); }
+.rsvpf-create-btn {
+  flex-shrink: 0;
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 14px 22px; border-radius: 14px;
+  background: var(--accent); color: #FFFFFF;
+  font-size: 15px; font-weight: 700;
+  transition: background 0.12s;
+}
+.rsvpf-create-btn:hover { background: var(--accent-hover); }
+.rsvpf-create-btn:focus-visible { outline: 3px solid rgba(0,107,255,0.35); outline-offset: 2px; }
+
+/* What the public site is showing, said once under the sheet. */
+.rsvpf-site {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  max-width: 760px; margin: 18px auto 0;
+  font-size: 13.5px; line-height: 1.45; color: var(--text-2); text-align: center;
+}
+.rsvpf-site svg { flex-shrink: 0; color: var(--text-3); }
+
+.rsvpf-empty {
+  max-width: 760px; margin: 28px auto 0; padding: 30px 32px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg);
+  text-align: center;
+}
+.rsvpf-empty h3 { font-size: 17px; font-weight: 700; color: var(--text); }
+.rsvpf-empty p { margin: 6px auto 0; max-width: 56ch; font-size: 14px; line-height: 1.55; color: var(--text-2); }
+
+/* ── A box per form ── */
+.rsvpf-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(440px, 1fr));
+  gap: 18px;
+  margin-top: 28px;
+}
+.rsvpf-card {
+  display: flex; flex-direction: column; gap: 14px;
+  padding: 28px 30px 20px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  transition: box-shadow 0.18s, border-color 0.18s;
+}
+.rsvpf-card:hover { box-shadow: var(--shadow-md); }
+.rsvpf-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
+.rsvpf-card-head h3 { font-size: 18px; font-weight: 700; letter-spacing: -0.3px; line-height: 1.3; color: var(--text); text-wrap: balance; }
+.rsvpf-card.closed .rsvpf-card-head h3 { color: var(--text-2); }
+
+.rsvpf-status {
+  flex-shrink: 0;
+  padding: 4px 11px; border-radius: 999px;
+  font-size: 12.5px; font-weight: 600;
+  color: var(--text-3); background: var(--surface-2);
+}
+.rsvpf-status.open { color: var(--green); background: var(--green-soft); }
+
+.rsvpf-desc {
+  margin-top: -6px; font-size: 14px; line-height: 1.5; color: var(--text-2);
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+}
+
+.rsvpf-fields { display: flex; flex-wrap: wrap; gap: 6px; list-style: none; margin: 0; padding: 0; }
+.rsvpf-fields li {
+  padding: 5px 11px; border-radius: 999px;
+  background: var(--surface-2); color: var(--text-2);
+  font-size: 13px; font-weight: 500;
+}
+.rsvpf-req { margin-left: 2px; color: var(--accent); font-weight: 700; }
+
+/* The link button — who each response is texted to. */
+.rsvpf-link {
+  display: flex; align-items: center; gap: 12px;
+  width: 100%; padding: 12px 14px;
+  border-radius: 14px; background: var(--accent-soft); color: var(--accent);
+  font-size: 14px; font-weight: 600; text-align: left;
+  transition: background 0.12s;
+}
+.rsvpf-link:hover { background: #E2EDFF; }
+.rsvpf-link.set { background: var(--surface-2); color: var(--text-2); font-weight: 500; }
+.rsvpf-link.set:hover { background: #E9EFF8; }
+.rsvpf-link.set b { color: var(--text); font-weight: 700; }
+.rsvpf-link-ic {
+  flex-shrink: 0; width: 32px; height: 32px; border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--surface); color: var(--accent);
+}
+.rsvpf-link-text { flex: 1; min-width: 0; line-height: 1.4; }
+.rsvpf-link-warn { color: var(--red); font-weight: 600; }
+.rsvpf-link > svg { flex-shrink: 0; color: var(--text-3); }
+
+.rsvpf-card-foot { display: flex; align-items: center; flex-wrap: wrap; gap: 2px; margin: 0 -8px; }
+.rsvpf-count {
+  display: inline-flex; align-items: baseline; gap: 5px;
+  padding: 8px; border-radius: 10px; background: none;
+  font-size: 14px; color: var(--text-2);
+}
+.rsvpf-count b { font-size: 16px; font-weight: 800; color: var(--text); font-variant-numeric: tabular-nums; }
+.rsvpf-count span { font-size: 13px; color: var(--text-3); }
+.rsvpf-count:not(:disabled):hover { background: var(--surface-2); color: var(--text); }
+.rsvpf-count:disabled { cursor: default; }
+.rsvpf-gap { flex: 1; }
+.rsvpf-act {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 10px; border-radius: 10px; background: none;
+  font-size: 13.5px; font-weight: 600; color: var(--text-2);
+}
+.rsvpf-act:hover:not(:disabled) { background: var(--surface-2); color: var(--text); }
+.rsvpf-act:disabled { opacity: 0.4; cursor: default; }
+.rsvpf-act.danger:hover:not(:disabled) { background: var(--red-soft); color: var(--red); }
+
+/* ── Dialogs ── */
+.rsvpf-sub { margin-top: 3px; font-size: 13.5px; color: var(--text-3); }
+.rsvpf-hint { font-size: 13.5px; line-height: 1.5; color: var(--text-2); }
+.rsvpf-foot { align-items: center; }
+.rsvpf-error { margin-right: auto; font-size: 13.5px; font-weight: 600; color: var(--red); }
+
+.modal.sheet.rsvpf-builder { width: 700px; }
+.rsvpf-builder-body { gap: 18px; padding: 22px 26px 24px; }
+.rsvpf-label { display: flex; flex-direction: column; gap: 8px; }
+.rsvpf-label > span { font-size: 13px; font-weight: 700; color: var(--text); }
+.rsvpf-label > span em { font-style: normal; font-weight: 500; color: var(--text-3); }
+.rsvpf-input {
+  width: 100%; padding: 11px 13px;
+  border: 1px solid var(--border); border-radius: 10px;
+  background: var(--surface); color: var(--text);
+  font-size: 15px; line-height: 1.45; resize: vertical;
+}
+.rsvpf-input.big { font-size: 17px; font-weight: 600; }
+.rsvpf-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(0,107,255,0.1); }
+
+.rsvpf-presets { display: flex; flex-wrap: wrap; gap: 8px; }
+.rsvpf-preset {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 13px; border-radius: 999px;
+  background: var(--accent-soft); color: var(--accent);
+  font-size: 13.5px; font-weight: 600;
+}
+.rsvpf-preset:hover:not(:disabled) { background: #E2EDFF; }
+.rsvpf-preset:disabled { background: var(--surface-2); color: var(--text-3); cursor: default; }
+
+.rsvpf-rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.rsvpf-row {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) 144px auto auto;
+  align-items: center; gap: 10px;
+  padding: 10px 10px 10px 8px; border-radius: 14px; background: var(--surface-2);
+}
+.rsvpf-row .rsvpf-input { background: var(--surface); }
+.rsvpf-move { display: flex; flex-direction: column; gap: 2px; }
+.rsvpf-move button {
+  width: 26px; height: 20px; border-radius: 6px; background: none; color: var(--text-2);
+  display: flex; align-items: center; justify-content: center;
+}
+.rsvpf-move button:hover:not(:disabled) { background: var(--surface); color: var(--text); }
+.rsvpf-move button:disabled { opacity: 0.3; cursor: default; }
+/* One width for the answer kind, fixed text or a menu, so every Required lines up. */
+.rsvpf-type { font-size: 12.5px; font-weight: 600; color: var(--text-3); white-space: nowrap; padding: 0 4px; }
+.rsvpf-row .rsvpf-select { width: 100%; }
+.rsvpf-select {
+  padding: 9px 30px 9px 10px; border: 1px solid var(--border); border-radius: 10px;
+  background-color: var(--surface); color: var(--text); font-size: 13.5px;
+}
+.rsvpf-required { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-2); white-space: nowrap; }
+.rsvpf-required input { width: 16px; height: 16px; accent-color: var(--accent); }
+.rsvpf-remove {
+  width: 32px; height: 32px; border-radius: 8px; background: none; color: var(--text-3);
+  display: flex; align-items: center; justify-content: center;
+}
+.rsvpf-remove:hover { background: var(--red-soft); color: var(--red); }
+
+.modal.sheet.rsvpf-linker { width: 540px; }
+.rsvpf-linker-body { gap: 12px; padding: 18px 24px 20px; }
+.rsvpf-chosen { display: flex; flex-wrap: wrap; gap: 6px; }
+.rsvpf-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 10px 6px 12px; border-radius: 999px;
+  background: var(--accent); color: #FFFFFF; font-size: 13px; font-weight: 600;
+}
+.rsvpf-chip:hover { background: var(--accent-hover); }
+.adm-search.rsvpf-search { min-width: 0; }
+.rsvpf-group { margin-top: 6px; font-size: 11.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-3); }
+.rsvpf-people { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.rsvpf-person {
+  display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; align-items: center; gap: 12px;
+  width: 100%; padding: 10px 12px; border-radius: 12px; background: none; text-align: left;
+}
+.rsvpf-person:hover { background: var(--surface-2); }
+.rsvpf-person.on { background: var(--accent-soft); }
+.rsvpf-check {
+  width: 20px; height: 20px; border-radius: 6px;
+  border: 1.5px solid var(--border); background: var(--surface); color: #FFFFFF;
+  display: flex; align-items: center; justify-content: center;
+}
+.rsvpf-person.on .rsvpf-check { border-color: var(--accent); background: var(--accent); }
+.rsvpf-person-name { font-size: 14.5px; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rsvpf-person-phone { font-size: 13px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+
+.modal.sheet.rsvpf-responses { width: 940px; }
+.rsvpf-responses-body { padding: 8px 24px 20px; }
+.rsvpf-table-wrap { overflow-x: auto; }
+.rsvpf-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.rsvpf-table th {
+  padding: 12px 16px 10px 0; text-align: left; white-space: nowrap;
+  font-size: 11.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-3);
+  border-bottom: 1px solid var(--border);
+}
+.rsvpf-table td { padding: 12px 16px 12px 0; vertical-align: top; color: var(--text); border-bottom: 1px solid var(--border); }
+.rsvpf-table tr:last-child td { border-bottom: 0; }
+.rsvpf-when { white-space: nowrap; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.rsvpf-blank { color: var(--text-3); }
+
+@media (max-width: 760px) {
+  .sms-band.rsvpf-band { padding-bottom: 88px; }
+  .rsvpf-create { flex-direction: column; align-items: stretch; gap: 16px; padding: 22px; }
+  .rsvpf-create-btn { justify-content: center; }
+  .rsvpf-grid { grid-template-columns: minmax(0, 1fr); }
+  .rsvpf-card { padding: 24px 22px 16px; }
+  .rsvpf-row { grid-template-columns: auto minmax(0, 1fr) auto; }
+  .rsvpf-row .rsvpf-type, .rsvpf-row .rsvpf-select { grid-column: 2; justify-self: start; }
+  .rsvpf-row .rsvpf-required { grid-column: 2; }
+}

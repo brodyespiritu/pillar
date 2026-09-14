@@ -88,7 +88,8 @@ export function groupCampaigns(threads = [], library = [], nameFor = () => '') {
          * every later message from that person was filed under, so answering
          * someone minted a phantom card titled with our own words.
          */
-        if (m.status !== 'AutoReply' && m.status !== 'Reply') {
+        /* 'Notice' too: a sign-up forwarded from an RSVP form is news, not a question. */
+        if (m.status !== 'AutoReply' && m.status !== 'Reply' && m.status !== 'Notice') {
           asked = m.body; askedStatus = m.status;
           if (dinners.has(norm(m.body)))    lastAsk = { body: m.body, kind: 'dinner' };
           else if (polls.has(norm(m.body))) lastAsk = { body: m.body, kind: 'poll' };

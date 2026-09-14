@@ -10,7 +10,7 @@ import './TopNav.css';
 
 const PAGE_LABELS = {
   '/': 'Home', '/cares': 'Care List', '/guests': 'Guest List',
-  '/calendar': 'Calendar', '/email': 'Email', '/admin': 'Admin',
+  '/calendar': 'Calendar', '/email': 'Email', '/admin': 'Admin', '/rsvps': 'RSVP',
 };
 
 const NAV_MENUS = {
@@ -38,6 +38,7 @@ const NAV_MENUS = {
     left: { heading: 'Messaging', items: [
       { icon: P.mail,     name: 'Email',        sub: 'Gmail / Yahoo inbox', to: '/email', actions: ['Compose Email', 'View Inbox', 'Connect Account', 'View All'] },
       { icon: P.chat,     name: 'SMS',          sub: 'Text the congregation', to: '/sms', actions: ['New Broadcast', 'Manage Contacts', 'Manage Groups', 'View All'] },
+      { icon: P.form,     name: 'RSVP',         sub: 'Sign-up forms on bethesda.rsvp', to: '/rsvps', actions: ['Create form', 'View responses', 'View All'] },
       { icon: P.announce, name: 'Playbooks / Arcs', sub: 'Promotion arcs for events & ministries', to: '/playbooks', actions: ['New event arc', 'New ministry arc', 'View All'] },
       { icon: P.radio,    name: 'Director Hub', sub: 'Communications hub',     actions: ['Open Hub', 'Team Broadcast', 'Meeting Notes', 'View All'] },
     ] },
