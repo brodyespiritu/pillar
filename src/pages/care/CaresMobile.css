@@ -34,6 +34,13 @@
 }
 .cm-icon-btn:active { background: #E5EDF7; }
 
+/* The Update button sits beside the plus: same height and material, with its word. */
+.cm-head-actions { display: flex; align-items: center; gap: 10px; }
+.cm-icon-btn.cm-update-btn {
+  width: auto; gap: 7px; padding: 0 16px;
+  font-size: 15.5px; font-weight: 700;
+}
+
 .cm-search {
   display: flex; align-items: center; gap: 13px;
   margin: 14px 22px 0; padding: 17px 20px;

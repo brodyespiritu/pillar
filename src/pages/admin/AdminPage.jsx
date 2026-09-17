@@ -12,6 +12,7 @@ import AddUserModal from './AddUserModal';
 import { useAuth } from '../../context/AuthContext';
 import { useControl } from '../../context/ControlContext';
 import MergeTool from './MergeTool';
+import { readableChanges } from '../../../supabase/functions/_shared/careChanges.ts';
 import TimeOffTab from './TimeOffTab';
 import RemindersTab from './RemindersTab';
 import { confirmDialog, promptDialog } from '../../lib/dialog';
@@ -316,7 +317,7 @@ function ChangeLogTab() {
   const [search, setSearch] = useState('');
   useEffect(() => { fetchChangeLog().then(setData); }, []);
   if (data.missing) return <Placeholder title="Change Log" icon={P.doc} desc="Run supabase/admin-schema.sql to enable the audit trail — every care-list Create / Update / Delete / Merge / Contact-Logged action with who, what, and when. Search, filter, and export to CSV." />;
-  const rows = data.rows.filter(r => !search.trim() || [r.member_name, r.action, r.changed_by, r.details].filter(Boolean).some(v => v.toLowerCase().includes(search.toLowerCase())));
+  const rows = data.rows.filter(r => !search.trim() || [r.member_name, r.action, r.changed_by, readableChanges(r.details)].filter(Boolean).some(v => v.toLowerCase().includes(search.toLowerCase())));
   return (
     <div className="adm-panel">
       <div className="adm-panel-head">
@@ -331,7 +332,7 @@ function ChangeLogTab() {
               <tr key={r.id}>
                 <td className="adm-user-name">{r.member_name}</td>
                 <td><span className="adm-role" style={{ '--c': ACTION_COLORS[r.action] || '#6B7280' }}>{r.action}</span></td>
-                <td className="adm-muted">{r.details}</td>
+                <td className="adm-muted">{readableChanges(r.details)}</td>
                 <td className="adm-muted">{r.changed_by}</td>
                 <td className="adm-muted">{timeAgo(r.created_at)}</td>
               </tr>

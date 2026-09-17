@@ -115,7 +115,7 @@ const fillStyle = m => {
 /* tel: and sms: want digits only; the shell hands them to the phone. */
 const dial = p => String(p || '').replace(/[^\d+]/g, '');
 
-export default function CaresMobile({ members, loading, onAdd, onLogContact }) {
+export default function CaresMobile({ members, loading, onAdd, onUpdates, onLogContact }) {
   const [q, setQ] = useState('');
   const [picked, setPicked] = useState(null);
 
@@ -183,9 +183,17 @@ export default function CaresMobile({ members, loading, onAdd, onLogContact }) {
 
         <header className="cm-head">
           <h1 className="cm-title">Cares</h1>
-          <button className="cm-icon-btn" onClick={onAdd} aria-label="Add someone">
-            <Icon d={P.plus} size={22} />
-          </button>
+          <div className="cm-head-actions">
+            {onUpdates && (
+              <button className="cm-icon-btn cm-update-btn" onClick={onUpdates} aria-label="Email care updates">
+                <Icon d={P.send} size={20} />
+                <span>Update</span>
+              </button>
+            )}
+            <button className="cm-icon-btn" onClick={onAdd} aria-label="Add someone">
+              <Icon d={P.plus} size={22} />
+            </button>
+          </div>
         </header>
 
         <div className="cm-search">

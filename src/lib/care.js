@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { describeChanges } from '../../supabase/functions/_shared/careChanges.ts';
 
 export const CATEGORIES = [
   'Hospitalized', 'Grieving', 'New Member', 'Homebound', 'Crisis',
@@ -121,53 +122,10 @@ export async function fetchMembers() {
 /* ── Member CRUD ───────────────────────────────────── */
 
 /*
- * What actually changed, in words.
- *
- * The digest used to be able to say only "Also edited: Pansy Loudermilk",
- * because nothing anywhere recorded what an edit consisted of — the row was
- * overwritten and the old values were gone. A name with no change attached is
- * worse than silence: it tells a reader something happened and then makes them
- * open the record to find out what, which is the work the digest exists to save.
- *
- * Only fields a person would talk about are compared. Nobody needs to be told
- * that updated_at moved.
+ * What actually changed, in words — shared with the care summary texts, which
+ * read these change notes back, so the two can never word an edit differently.
  */
-const WATCHED = [
-  ['category',      'Care type'],
-  ['status',        'Status'],
-  ['priority',      'Priority'],
-  ['care_notes',    'Note'],
-  ['hospital_name', 'Hospital'],
-  ['room_number',   'Room'],
-  ['floor',         'Floor'],
-  ['surgery_type',  'Surgery'],
-  ['surgery_date',  'Surgery date'],
-  ['admission_date','Admitted'],
-  ['assigned_name', 'Assigned to'],
-  ['phone',         'Phone'],
-  ['address',       'Address'],
-];
-
-const shown = v => {
-  const s = String(v ?? '').trim();
-  return s || '(blank)';
-};
-
-export function describeChanges(before = {}, after = {}) {
-  const out = [];
-  for (const [key, label] of WATCHED) {
-    if (!(key in after)) continue;                 // not part of this save
-    const a = String(before?.[key] ?? '').trim();
-    const b = String(after?.[key] ?? '').trim();
-    if (a === b) continue;
-    /* A note is quoted rather than shown as "x -> y": the new wording is the
-       information, and the old wording is just noise once it is replaced. */
-    out.push(key === 'care_notes'
-      ? `Note: ${shown(b)}`
-      : `${label}: ${shown(a)} \u2192 ${shown(b)}`);
-  }
-  return out;
-}
+export { describeChanges };
 
 export async function saveMember(member, before = null) {
   const payload = { ...member };

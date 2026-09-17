@@ -13,6 +13,8 @@ export default function EditUserModal({ user, testMode, onClose, onSave }) {
   const [active, setActive] = useState(user.active !== false);
   const [phone, setPhone] = useState(formatUsPhone(user.phone || ''));
   const [caresSms, setCaresSms] = useState(user.preferences?.caresSmsOptIn === true);
+  /* The Care List's Update button, which emails everyone's latest care update. */
+  const [careUpdates, setCareUpdates] = useState(user.permissions?.careUpdates === true);
   const [phoneErr, setPhoneErr] = useState('');
   /* Permissions were only settable when creating a user — an existing person's
      access could never be changed without deleting and re-adding them. */
@@ -53,7 +55,7 @@ export default function EditUserModal({ user, testMode, onClose, onSave }) {
       delete prefs.caresStopOptedOut;
     }
     await onSave({ name, email, role, department: dept, active, phone: e164,
-      permissions: perms, preferences: prefs });
+      permissions: { ...perms, careUpdates }, preferences: prefs });
     setSaving(false);
   }
 
@@ -120,6 +122,16 @@ export default function EditUserModal({ user, testMode, onClose, onSave }) {
                 Cares texts were paused because this number was changed. Check it, then turn them back on.
               </p>
             )}
+          </div>
+
+          <div className="adm-opt">
+            <label className="adm-check">
+              <input type="checkbox" checked={careUpdates} onChange={e => setCareUpdates(e.target.checked)} />
+              Email care updates
+            </label>
+            <p className="adm-opt-help">
+              Shows an Update button on the Care List for emailing everyone's latest care update to an email group.
+            </p>
           </div>
 
           <div className="eu-perms">

@@ -19,6 +19,7 @@
 
 import { smsCost, toGsm } from './smsEncoding.ts';
 import { packLines, PART_SEGMENTS } from './smsParts.ts';
+import { readableChanges } from './careChanges.ts';
 
 /* Local minutes past midnight. The first slot carries the morning briefing. */
 export const SLOTS = [8 * 60, 16 * 60];          // 8:00 AM and 4:00 PM
@@ -122,7 +123,9 @@ export function renderUpdate(u: any) {
  * "what about her?".
  */
 export function renderEdit(e: any) {
-  if (clean(e.details)) return `- ${clean(e.name)}: ${clean(e.details)}`;
+  // Older change notes say "(blank)" for an emptied field; never text that.
+  const details = clean(readableChanges(e.details));
+  if (details) return `- ${clean(e.name)}: ${details}`;
   const now = [
     clean(e.category),
     wherePlace(e) ? `at ${wherePlace(e)}` : '',

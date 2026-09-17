@@ -17,6 +17,9 @@ import DocPreviewModal from '../../components/DocPreviewModal';
 import { useIsMobile } from '../../lib/useIsMobile';
 import CaresMobile from './CaresMobile';
 import LogContactSheet from './LogContactSheet';
+import CareUpdatesSheet from './CareUpdatesSheet';
+import { useAuth } from '../../context/AuthContext';
+import { canSendCareUpdates } from '../../lib/careUpdates';
 import './CaresPage.css';
 
 const FILTERS = {
@@ -44,6 +47,10 @@ export default function CaresPage() {
   const [logFor, setLogFor] = useState(null);
   const [photos, setPhotos] = useState(null);   // name → photo_url from the directory
   const [preview, setPreview] = useState(null); // { html, filename, heading }
+  /* The Update button: only for staff an admin has allowed to email care updates. */
+  const { profile } = useAuth();
+  const canUpdate = canSendCareUpdates(profile);
+  const [updatesOpen, setUpdatesOpen] = useState(false);
 
   const [holdProgress, setHoldProgress] = useState(0);
   const holdTimer = useRef(null);
@@ -198,6 +205,9 @@ export default function CaresPage() {
         onClose={() => setPreview(null)}
       />
     )}
+    {updatesOpen && canUpdate && (
+      <CareUpdatesSheet members={members} onClose={() => setUpdatesOpen(false)} />
+    )}
     </>
   );
 
@@ -208,6 +218,7 @@ export default function CaresPage() {
           members={members}
           loading={loading}
           onAdd={openAdd}
+          onUpdates={canUpdate ? () => setUpdatesOpen(true) : null}
           onLogContact={setLogFor}
         />
         {logFor && (
@@ -256,7 +267,7 @@ export default function CaresPage() {
           </header>
 
           {/* ── Colored filters ── */}
-          <div className="cp-filters">
+          <div className={`cp-filters ${canUpdate ? 'has-update' : ''}`}>
             <button
               className="qb qb-add"
               onPointerDown={startHold} onPointerUp={endHold} onPointerLeave={endHold}
@@ -271,6 +282,17 @@ export default function CaresPage() {
                 </div>
               </div>
             </button>
+            {canUpdate && (
+              <button className="qb qb-update" onClick={() => setUpdatesOpen(true)}>
+                <div className="qb-content">
+                  <div className="qb-icon"><Icon d={P.send} size={20} /></div>
+                  <div className="qb-meta">
+                    <span className="qb-value">Update</span>
+                    <span className="qb-label">Email everyone's latest</span>
+                  </div>
+                </div>
+              </button>
+            )}
             <QB k="active"     value={stats.active}         filter={filter} toggle={toggleFilter} />
             <QB k="attention"  value={stats.needsAttention} filter={filter} toggle={toggleFilter} />
             <QB k="notVisited" value={stats.notVisited}     filter={filter} toggle={toggleFilter} />
