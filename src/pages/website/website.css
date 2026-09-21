@@ -1,0 +1,143 @@
+/* Website module — only what app.css does not already provide.
+   Everything else (panels, fields, buttons, banners) is reused from the App
+   module so the two admin areas stay visually identical. */
+
+.wb-lead { margin: -6px 0 20px; }
+
+/* tabs for pages whose editor does not exist yet — present, obviously inert */
+.ap-tab.wb-tab-soon {
+  opacity: .45;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* ── image slot ─────────────────────────────────────────────────────────── */
+.wb-slot { margin: 0 0 18px; }
+.wb-slot-body { display: flex; gap: 16px; align-items: flex-start; }
+
+.wb-thumb {
+  flex: none; width: 108px; height: 108px;
+  border-radius: 12px; overflow: hidden;
+  background: var(--surface-2, #F4F5F7);
+  border: 1px solid var(--border, #E3E6EA);
+  display: flex; align-items: center; justify-content: center;
+}
+.wb-thumb.wide { width: 208px; height: 118px; }
+.wb-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.wb-thumb-empty {
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  font-size: 11.5px; font-weight: 600; color: var(--text-3, #8A9099);
+  text-align: center; padding: 0 10px; line-height: 1.3;
+}
+
+.wb-slot-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.wb-slot-actions .ap-hint { flex-basis: 100%; margin: 2px 0 0; }
+.wb-err { flex-basis: 100%; margin: 2px 0 0; font-size: 12.5px; color: var(--red, #C0342E); }
+
+/* ── ministry tiles ─────────────────────────────────────────────────────── */
+.wb-tiles {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 20px; margin-top: 6px;
+}
+.wb-tile {
+  border: 1px solid var(--border, #E3E6EA);
+  border-radius: 14px; padding: 16px;
+  background: var(--surface, #fff);
+}
+.wb-tile .wb-slot { margin-bottom: 12px; }
+
+.ap-section-title.sub { font-size: 15px; margin-top: 26px; }
+
+/* ── sliding photo strip ────────────────────────────────────────────────── */
+.wb-strip {
+  display: flex; flex-wrap: wrap; gap: 12px; margin-top: 14px;
+}
+.wb-strip-item {
+  position: relative; margin: 0;
+  border-radius: 12px; overflow: hidden;
+  border: 1px solid var(--border, #E3E6EA);
+  background: var(--surface-2, #F4F5F7);
+}
+/* mirrors the website's own strip, which alternates a wide frame and a tall one */
+.wb-strip-item.land { width: 168px; height: 112px; }
+.wb-strip-item.port { width: 112px; height: 168px; }
+.wb-strip-item img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+.wb-strip-item figcaption {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  display: flex; gap: 4px; justify-content: center; padding: 6px;
+  background: linear-gradient(transparent, rgba(12, 16, 22, .78));
+  opacity: 0; transition: opacity .14s ease;
+}
+.wb-strip-item:hover figcaption,
+.wb-strip-item:focus-within figcaption { opacity: 1; }
+.wb-strip-item figcaption .ap-icon-btn {
+  background: rgba(255, 255, 255, .92); border: 0;
+  width: 26px; height: 26px; border-radius: 7px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; line-height: 1; cursor: pointer;
+}
+.wb-strip-item figcaption .ap-icon-btn:disabled { opacity: .4; cursor: default; }
+.wb-strip-item figcaption .ap-icon-btn.danger { color: var(--red, #C0342E); }
+
+.wb-strip-add {
+  width: 168px; height: 112px; border-radius: 12px;
+  border: 1.5px dashed var(--border-strong, #CBD1D8);
+  background: var(--surface-2, #F4F5F7);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 6px; cursor: pointer;
+  font-size: 13px; font-weight: 600; color: var(--text-2, #5A6472);
+  transition: border-color .14s ease, color .14s ease;
+}
+.wb-strip-add:hover { border-color: var(--accent, #2F6FEB); color: var(--accent, #2F6FEB); }
+
+/* ── save bar ───────────────────────────────────────────────────────────── */
+.wb-save-bar {
+  display: flex; gap: 10px; align-items: center;
+  margin: 26px 0 60px; padding-top: 20px;
+  border-top: 1px solid var(--border, #E3E6EA);
+}
+
+@media (max-width: 720px) {
+  .wb-slot-body { flex-direction: column; }
+  .wb-thumb, .wb-thumb.wide { width: 100%; height: 150px; }
+}
+
+/* ══ Layout fixes ═════════════════════════════════════════════════════════
+   .ap-panel ships with no padding — the App module adds `style={{padding:24}}`
+   inline on every single panel. Doing it as a rule here instead is why the
+   section titles are no longer sitting on the panel's border. Everything is
+   scoped under .wb-mod so none of it reaches the App module. */
+.wb-mod .ap-panel {
+  padding: 26px 26px 24px;
+  margin-bottom: 20px;
+}
+
+/* .ap-field only sets an internal 7px gap between label and input, so stacked
+   fields ran their hint straight into the next field's label. */
+.wb-mod .ap-field { margin-bottom: 18px; }
+.wb-mod .ap-field:last-child { margin-bottom: 0; }
+.wb-mod .ap-form-grid { margin-bottom: 4px; align-items: start; }
+.wb-mod .ap-form-grid .ap-field { margin-bottom: 14px; }
+
+/* a hint belongs to the control above it, not the label below */
+.wb-mod .ap-hint { margin: 2px 0 0; line-height: 1.45; }
+
+.wb-mod .ap-section-title {
+  margin: 0 0 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border, #E3E6EA);
+}
+.wb-mod .ap-section-title.sub {
+  margin-top: 28px;
+  text-transform: none;
+  font-size: 14px;
+  letter-spacing: 0;
+  color: var(--text-2, #5A6472);
+}
+
+/* the crop field is a short value — a full-width input oversold it */
+.wb-mod .wb-narrow { max-width: 240px; }
+
+.wb-mod .wb-slot { margin-bottom: 20px; }
+.wb-mod .wb-tile .ap-field { margin-bottom: 12px; }

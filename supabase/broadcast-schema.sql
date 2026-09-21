@@ -1,3 +1,13 @@
+-- Staff-only rules below use public.is_active_staff() (full definition: sms-recipient-guards.sql and
+-- member-app-auth.sql). Create a basic one if this project doesn't have it yet; never replace it.
+do $guard$ begin
+  if to_regprocedure('public.is_active_staff()') is null then
+    execute $f$create function public.is_active_staff() returns boolean language plpgsql stable security definer
+      set search_path = public as 'begin return exists (select 1 from public.staff where id = auth.uid() and active is not false); end'$f$;
+    execute 'grant execute on function public.is_active_staff() to anon, authenticated, service_role';
+  end if;
+end $guard$;
+
 -- ============================================================
 --  PILLAR · SMS BROADCAST SCHEMA  (congregation texting)
 --  Run this in Supabase → SQL Editor  (needs sms-schema.sql too)
@@ -45,10 +55,10 @@ drop policy if exists "own contacts"   on sms_contacts;
 drop policy if exists "staff groups"   on sms_groups;
 drop policy if exists "staff contacts" on sms_contacts;
 drop policy if exists "own members"    on sms_group_members;
-create policy "staff groups"   on sms_groups   for all using (auth.role() = 'authenticated');
-create policy "staff contacts" on sms_contacts for all using (auth.role() = 'authenticated');
+create policy "staff groups"   on sms_groups   for all using ((select public.is_active_staff()));
+create policy "staff contacts" on sms_contacts for all using ((select public.is_active_staff()));
 -- membership rows are reachable via their owned group/contact
-create policy "own members"  on sms_group_members for all using (auth.role() = 'authenticated');
+create policy "own members"  on sms_group_members for all using ((select public.is_active_staff()));
 
 /*
  * Opt-out, recorded on the contact rather than only at the provider.

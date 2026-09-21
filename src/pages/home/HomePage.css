@@ -3,7 +3,7 @@
 .hp2-scroll { flex: 1; overflow-y: auto; }
 
 /* ── Hero (light) ── */
-.hero { background: #F5F7FA; padding: 72px 28px 80px; text-align: center; }
+.hero { position: relative; background: #F5F7FA; padding: 72px 28px 80px; text-align: center; }
 .hero-inner { max-width: 1080px; margin: 0 auto; }
 
 .hero-pill,

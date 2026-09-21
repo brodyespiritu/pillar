@@ -134,11 +134,15 @@ export async function sendMessage(account, { to, cc, bcc, subject, body, htmlBod
     payload.from = account.display_name ? `${account.display_name} <${account.email}>` : account.email;
   }
 
+  // The mail service only sends for signed-in staff.
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session?.access_token) throw new Error('Please sign in to Pillar again, then resend.');
+
   let res, data;
   try {
     res = await fetch('/api/send-email', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
       body: JSON.stringify(payload),
     });
   } catch {

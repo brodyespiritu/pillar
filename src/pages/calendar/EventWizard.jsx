@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { P, Icon } from '../../lib/icons';
 import { supabase } from '../../lib/supabase';
-import { CATEGORIES, RECURRENCE, catColor, saveEvent, iso } from '../../lib/calendar';
+import { CATEGORIES, RECURRENCE, catColor, saveEvent, uploadEventPhoto, iso } from '../../lib/calendar';
 import { fetchLocations } from '../../lib/locations';
 import LocationPicker from './LocationPicker';
 import { useAuth } from '../../context/AuthContext';
@@ -60,6 +60,8 @@ export default function EventWizard({ calendar, initialDate, event, onClose, onS
     category: event?.category || 'Meetings',
     description: event?.description || '',
     is_private: event?.is_private || false,
+    featured: event?.featured || false,
+    image_url: event?.image_url || '',
     is_recurring: event?.is_recurring || false,
     recurrence: event?.recurrence || 'Weekly',
     recurrence_end: event?.recurrence_end || '',
@@ -67,6 +69,8 @@ export default function EventWizard({ calendar, initialDate, event, onClose, onS
   }));
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState('');
+  const [uploading, setUploading] = useState(false);
+  const photoRef = useRef(null);
   /* Locations are a short list, so load once and filter in memory rather than
      querying per keystroke. A failed load leaves the picker as a plain text
      field — the wizard must never block on it. */
@@ -76,11 +80,22 @@ export default function EventWizard({ calendar, initialDate, event, onClose, onS
   const set = (k, v) => setF(p => ({ ...p, [k]: v }));
   const multiDay = f.end_date && f.end_date !== f.start_date;
 
+  /* The picture for a featured event's card. Optional — the app falls back to the room's photo. */
+  async function pickPhoto(e) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setUploading(true); setError('');
+    const r = await uploadEventPhoto(file);
+    setUploading(false);
+    if (r.error) setError(r.error); else set('image_url', r.url);
+  }
+
   async function submit() {
     if (!f.title.trim()) { setStep(1); setError('Title is required.'); return; }
     setSaving(true); setError('');
     const { request_content, ...payload } = f;
-    const { error } = await saveEvent({
+    const { error, featuredUnsupported } = await saveEvent({
       ...payload,
       id: event?.id,
       calendar,
@@ -88,6 +103,10 @@ export default function EventWizard({ calendar, initialDate, event, onClose, onS
     });
     setSaving(false);
     if (error) { setError(error.message); return; }
+    if (featuredUnsupported && f.featured) {
+      setError('Saved — but featured events need supabase/calendar-featured.sql run in Supabase first.');
+      return;
+    }
     onSaved();
   }
 
@@ -186,7 +205,33 @@ export default function EventWizard({ calendar, initialDate, event, onClose, onS
           {show('options') && (<>
             <p className="gf-q">Anything special?</p>
             <label className="cw-check">
-              <input type="checkbox" checked={f.is_private} onChange={e => set('is_private', e.target.checked)} />
+              <input type="checkbox" checked={f.featured} onChange={e => set('featured', e.target.checked)} disabled={f.is_private} />
+              <Icon d={P.star} size={15} /> Featured — a big card on the app’s Home page
+            </label>
+            {f.featured && (
+              <div className="cw-featured">
+                <div className="cw-featured-pic" style={f.image_url ? { backgroundImage: `url("${f.image_url.replace(/["\\\n]/g, encodeURIComponent)}")` } : undefined}>
+                  {!f.image_url && <Icon d={P.folder} size={20} />}
+                </div>
+                <div className="cw-featured-text">
+                  <strong>A picture for the card</strong>
+                  You can add one later — without it the app uses the room’s photo.
+                  <div className="cw-featured-btns">
+                    <input ref={photoRef} type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={pickPhoto} />
+                    <button type="button" className="btn-ghost" onClick={() => photoRef.current?.click()} disabled={uploading}>
+                      {uploading ? 'Uploading…' : f.image_url ? 'Replace picture' : 'Add a picture'}
+                    </button>
+                    {f.image_url && !uploading && (
+                      <button type="button" className="btn-ghost" onClick={() => set('image_url', '')}>Remove</button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+            {f.featured && f.is_private && <p className="gf-hint">A private event is never shown in the app.</p>}
+            <label className="cw-check">
+              <input type="checkbox" checked={f.is_private}
+                onChange={e => { set('is_private', e.target.checked); if (e.target.checked) set('featured', false); }} />
               <Icon d={P.lock} size={15} /> Private event (staff only)
             </label>
             {!editing && (

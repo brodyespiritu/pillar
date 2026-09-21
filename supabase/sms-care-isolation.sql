@@ -1,3 +1,13 @@
+-- Staff-only rules below use public.is_active_staff() (full definition: sms-recipient-guards.sql and
+-- member-app-auth.sql). Create a basic one if this project doesn't have it yet; never replace it.
+do $guard$ begin
+  if to_regprocedure('public.is_active_staff()') is null then
+    execute $f$create function public.is_active_staff() returns boolean language plpgsql stable security definer
+      set search_path = public as 'begin return exists (select 1 from public.staff where id = auth.uid() and active is not false); end'$f$;
+    execute 'grant execute on function public.is_active_staff() to anon, authenticated, service_role';
+  end if;
+end $guard$;
+
 -- ============================================================
 --  PILLAR · KEEP CARE TRAFFIC OUT OF THE SMS LOG
 --  Run this in Supabase → SQL Editor
@@ -49,19 +59,19 @@ drop policy if exists "staff write sms" on sms_messages;
 -- Reads never include care traffic. The edge functions use the service role,
 -- which bypasses RLS, so digests still send and still get logged.
 create policy "staff read sms" on sms_messages
-  for select using (auth.role() = 'authenticated' and channel = 'sms');
+  for select using ((select public.is_active_staff()) and channel = 'sms');
 
 -- Staff may only ever write ordinary SMS rows; nothing in the app can forge
 -- a care row, and nothing can flip an existing one back to visible.
 create policy "staff write sms" on sms_messages
-  for insert with check (auth.role() = 'authenticated' and channel = 'sms');
+  for insert with check ((select public.is_active_staff()) and channel = 'sms');
 
 create policy "staff update sms" on sms_messages
-  for update using (auth.role() = 'authenticated' and channel = 'sms')
-        with check (auth.role() = 'authenticated' and channel = 'sms');
+  for update using ((select public.is_active_staff()) and channel = 'sms')
+        with check ((select public.is_active_staff()) and channel = 'sms');
 
 create policy "staff delete sms" on sms_messages
-  for delete using (auth.role() = 'authenticated' and channel = 'sms');
+  for delete using ((select public.is_active_staff()) and channel = 'sms');
 
 -- Check:
 --   select channel, count(*) from sms_messages group by channel;

@@ -62,15 +62,26 @@ const NAV_MENUS = {
   },
   'App': {
     left: { heading: 'Bethesda Mobile App', items: [
-      { icon: P.grid,     name: 'Overview',      sub: 'Live status & content counts', to: '/app' },
-      { icon: P.book,     name: 'Sermons',       sub: 'Sermon library',               to: '/app/sermons' },
-      { icon: P.folder,   name: 'Media Page',    sub: 'Curate the app’s Media tab',   to: '/app/media' },
-      { icon: P.announce, name: 'News & Events', sub: 'Announcements and events',     to: '/app/announcements' },
-      { icon: P.radio,    name: 'Live',          sub: 'Livestream & live cards',      to: '/app/live' },
-      { icon: P.chat,     name: 'Notifications', sub: 'Push to every device',         to: '/app/notifications' },
-      { icon: P.settings, name: 'App Settings',  sub: 'Church info & hero media',     to: '/app/settings' },
+      { icon: P.home,     name: 'Home',          sub: 'The cards under the four boxes', to: '/app/home' },
+      { icon: P.announce, name: 'Bulletin',      sub: 'Announcements',                  to: '/app/bulletin' },
+      { icon: P.users,    name: 'Groups',        sub: 'Groups, ministries and cards',   to: '/app/groups' },
+      { icon: P.play,     name: 'Watch',         sub: 'Sermons, videos, resources',     to: '/app/watch' },
+      { icon: P.radio,    name: 'Live',          sub: 'Go live, cards and chat',        to: '/app/live' },
+      { icon: P.chat,     name: 'Notifications', sub: 'A message to every phone',       to: '/app/notifications' },
+      { icon: P.settings, name: 'Settings',      sub: 'Connection and website',         to: '/app/settings' },
     ] },
     right: { heading: 'Quick Actions', items: [{ icon: P.radio, name: 'Go Live' }, { icon: P.chat, name: 'Send Notification' }] },
+  },
+  'Website': {
+    left: { heading: 'Bethesda Website', items: [
+      { icon: P.grid,     name: 'Home',       sub: 'Hero, welcome, ministries, photos', to: '/website' },
+      { icon: P.doc,      name: 'About',      sub: 'Story, beliefs and history' },
+      { icon: P.users,    name: 'New Here',   sub: 'What to expect on a first visit' },
+      { icon: P.users,    name: 'Our Team',   sub: 'Pastor and staff directory' },
+      { icon: P.announce, name: 'Give',       sub: 'Ways to give' },
+      { icon: P.folder,   name: 'Child Care', sub: 'Preschool pages' },
+    ] },
+    right: { heading: 'Quick Actions', items: [{ icon: P.link, name: 'View Site' }, { icon: P.calendar, name: 'Calendar' }] },
   },
 };
 
@@ -110,7 +121,7 @@ export default function TopNav({ onNewClick }) {
       {openMenu && <div className="tn-backdrop" />}
       <header className="tn-nav" onClick={e => e.stopPropagation()}>
         <div className="tn-logo" onClick={() => navigate('/')}>
-          <svg className="tn-logo-bars" viewBox="0 0 62 48" aria-hidden="true">
+          <svg className="tn-logo-bars" viewBox="0 0 62 48" width="31" height="24" aria-hidden="true">
             <rect x="8"  y="5" width="15" height="38" rx="7.5" transform="rotate(18 15.5 24)" fill="currentColor" />
             <rect x="29" y="5" width="15" height="38" rx="7.5" transform="rotate(18 36.5 24)" fill="currentColor" />
           </svg>
@@ -118,7 +129,7 @@ export default function TopNav({ onNewClick }) {
         </div>
 
         <nav className="tn-links">
-          {['My Church', 'Communications', 'Events', 'Content', ...(isAdmin ? ['App'] : []), 'Settings'].map(label => (
+          {['My Church', 'Communications', 'Events', 'Content', ...(isAdmin ? ['App', 'Website'] : []), 'Settings'].map(label => (
             <div key={label} className="tn-item"
               onMouseEnter={() => openNav(label)}
               onMouseLeave={closeNav}

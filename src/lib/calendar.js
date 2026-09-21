@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { downscaleImage } from './locations';
 
 /* ── Categories (9) ── */
 export const CATEGORIES = [
@@ -76,15 +77,46 @@ export async function fetchEvents(calendar) {
   return (await fetchEventsResult(calendar)).rows;
 }
 
+/* ── The picture on a featured event ──
+ * Goes to the same public bucket the app's own pictures use (supabase/app-home-cards.sql), so the
+ * phone can load it straight into the card. Downscaled first — a camera photo is far bigger than a
+ * card needs.
+ */
+export async function uploadEventPhoto(file) {
+  let shrunk;
+  try { shrunk = await downscaleImage(file, { maxEdge: 1600, quality: 0.82 }); }
+  catch (e) { return { error: e.message }; }
+  const path = `events/${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}.jpg`;
+  const { error } = await supabase.storage.from('app-media')
+    .upload(path, shrunk.blob, { contentType: 'image/jpeg', upsert: false, cacheControl: '3600' });
+  if (error) {
+    return { error: /bucket not found/i.test(error.message)
+      ? 'The app-media bucket isn’t set up yet — run supabase/app-home-cards.sql in Supabase.'
+      : error.message };
+  }
+  const { data } = supabase.storage.from('app-media').getPublicUrl(path);
+  return { url: data.publicUrl };
+}
+
+// Featured events need supabase/calendar-featured.sql. Until it is run the database refuses any save
+// carrying those columns, so the save goes again without them rather than losing the event.
+const MISSING_COLUMN = /column .*(featured|image_url).* does not exist|could not find the '(featured|image_url)' column/i;
+const withoutFeatured = (row) => { const { featured, image_url: image, ...rest } = row; return rest; };
+
 /* ── Save (expands recurring into a series) ── */
 export async function saveEvent(ev) {
   const base = { ...ev };
-  ['end_date', 'recurrence_end', 'start_time', 'end_time'].forEach(k => { if (base[k] === '') base[k] = null; });
+  // a featured event with no picture yet sends nothing at all — not an empty address the column refuses
+  ['end_date', 'recurrence_end', 'start_time', 'end_time', 'image_url'].forEach(k => { if (base[k] === '') base[k] = null; });
   if (base.created_by === '' || base.created_by === undefined) base.created_by = null;
 
   // Editing existing single row
   if (base.id) {
     const { data, error } = await supabase.from('events').update(base).eq('id', base.id).select().single();
+    if (error && MISSING_COLUMN.test(error.message || '')) {
+      const plain = await supabase.from('events').update(withoutFeatured(base)).eq('id', base.id).select().single();
+      return { ...plain, featuredUnsupported: true };
+    }
     return { data, error };
   }
   delete base.id;
@@ -92,6 +124,10 @@ export async function saveEvent(ev) {
   // Non-recurring → single insert
   if (!base.is_recurring || !base.recurrence || !base.recurrence_end) {
     const { data, error } = await supabase.from('events').insert(base).select().single();
+    if (error && MISSING_COLUMN.test(error.message || '')) {
+      const plain = await supabase.from('events').insert(withoutFeatured(base)).select().single();
+      return { ...plain, featuredUnsupported: true };
+    }
     return { data, error };
   }
 
@@ -116,6 +152,10 @@ export async function saveEvent(ev) {
     guard++;
   }
   const { data, error } = await supabase.from('events').insert(rows).select();
+  if (error && MISSING_COLUMN.test(error.message || '')) {
+    const plain = await supabase.from('events').insert(rows.map(withoutFeatured)).select();
+    return { ...plain, featuredUnsupported: true };
+  }
   return { data, error };
 }
 

@@ -1,3 +1,13 @@
+-- Staff-only rules below use public.is_active_staff() (full definition: sms-recipient-guards.sql and
+-- member-app-auth.sql). Create a basic one if this project doesn't have it yet; never replace it.
+do $guard$ begin
+  if to_regprocedure('public.is_active_staff()') is null then
+    execute $f$create function public.is_active_staff() returns boolean language plpgsql stable security definer
+      set search_path = public as 'begin return exists (select 1 from public.staff where id = auth.uid() and active is not false); end'$f$;
+    execute 'grant execute on function public.is_active_staff() to anon, authenticated, service_role';
+  end if;
+end $guard$;
+
 -- ============================================================
 --  PILLAR · SMS MODULE SCHEMA  (Telnyx)
 --  Run this in Supabase → SQL Editor
@@ -19,8 +29,8 @@ create index if not exists idx_sms_to     on sms_messages(to_number);
 create index if not exists idx_sms_status on sms_messages(status);
 
 alter table sms_messages enable row level security;
-create policy "staff read sms"  on sms_messages for select using (auth.role() = 'authenticated');
-create policy "staff write sms" on sms_messages for all    using (auth.role() = 'authenticated');
+create policy "staff read sms"  on sms_messages for select using ((select public.is_active_staff()));
+create policy "staff write sms" on sms_messages for all    using ((select public.is_active_staff()));
 
 -- ── Which message a send belongs to ───────────────────────────────────────
 -- The Responses tab reads the last thing sent to someone as the question their

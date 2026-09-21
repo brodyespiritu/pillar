@@ -1,3 +1,13 @@
+-- Staff-only rules below use public.is_active_staff() (full definition: sms-recipient-guards.sql and
+-- member-app-auth.sql). Create a basic one if this project doesn't have it yet; never replace it.
+do $guard$ begin
+  if to_regprocedure('public.is_active_staff()') is null then
+    execute $f$create function public.is_active_staff() returns boolean language plpgsql stable security definer
+      set search_path = public as 'begin return exists (select 1 from public.staff where id = auth.uid() and active is not false); end'$f$;
+    execute 'grant execute on function public.is_active_staff() to anon, authenticated, service_role';
+  end if;
+end $guard$;
+
 /*
  * Web Push subscriptions.
  *
@@ -21,4 +31,4 @@ create index if not exists idx_push_staff on push_subscriptions(staff_id);
 
 alter table push_subscriptions enable row level security;
 create policy "own push subs" on push_subscriptions
-  for all using (auth.role() = 'authenticated');
+  for all using ((select public.is_active_staff()));

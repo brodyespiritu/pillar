@@ -84,7 +84,8 @@ stable
 security definer
 set search_path = public
 as $$
-  select exists (select 1 from public.staff where id = auth.uid() and active is not false);
+  select exists (select 1 from public.staff where id = auth.uid() and active is not false)
+     and not exists (select 1 from auth.users u where u.id = auth.uid() and u.raw_app_meta_data ? 'bbc_member_id');   -- never a member app login
 $$;
 revoke all on function public.is_active_staff() from public;
 grant execute on function public.is_active_staff() to anon, authenticated, service_role;
@@ -97,7 +98,8 @@ stable
 security definer
 set search_path = public
 as $$
-  select coalesce((select role ilike '%admin%' and active is not false from staff where id = auth.uid()), false);
+  select coalesce((select role ilike '%admin%' and active is not false from staff where id = auth.uid()), false)
+     and not exists (select 1 from auth.users u where u.id = auth.uid() and u.raw_app_meta_data ? 'bbc_member_id');   -- never a member app login
 $$;
 
 -- Every policy that only asked "signed in?" now asks "active staff?", keeping

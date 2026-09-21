@@ -1,3 +1,13 @@
+-- Staff-only rules below use public.is_active_staff() (full definition: sms-recipient-guards.sql and
+-- member-app-auth.sql). Create a basic one if this project doesn't have it yet; never replace it.
+do $guard$ begin
+  if to_regprocedure('public.is_active_staff()') is null then
+    execute $f$create function public.is_active_staff() returns boolean language plpgsql stable security definer
+      set search_path = public as 'begin return exists (select 1 from public.staff where id = auth.uid() and active is not false); end'$f$;
+    execute 'grant execute on function public.is_active_staff() to anon, authenticated, service_role';
+  end if;
+end $guard$;
+
 -- ── Cares digests: 8:00, 10:30 AM, 1:00, 3:00, 5:00 PM ──
 -- Run once in the Supabase SQL editor.
 --
@@ -27,7 +37,7 @@ create table if not exists cares_alert_sends (
 alter table cares_alert_sends enable row level security;
 drop policy if exists "staff read alert sends" on cares_alert_sends;
 create policy "staff read alert sends" on cares_alert_sends
-  for select using (auth.role() = 'authenticated');
+  for select using ((select public.is_active_staff()));
 -- Writes happen from the edge function with the service role, which bypasses RLS.
 
 -- ── Schedule ──────────────────────────────────────────────

@@ -1,3 +1,13 @@
+-- Staff-only rules below use public.is_active_staff() (full definition: sms-recipient-guards.sql and
+-- member-app-auth.sql). Create a basic one if this project doesn't have it yet; never replace it.
+do $guard$ begin
+  if to_regprocedure('public.is_active_staff()') is null then
+    execute $f$create function public.is_active_staff() returns boolean language plpgsql stable security definer
+      set search_path = public as 'begin return exists (select 1 from public.staff where id = auth.uid() and active is not false); end'$f$;
+    execute 'grant execute on function public.is_active_staff() to anon, authenticated, service_role';
+  end if;
+end $guard$;
+
 -- ════════════════════════════════════════════════════════════
 -- Deacon alerts
 --
@@ -25,6 +35,6 @@ alter table deacon_alerts_sent enable row level security;
 drop policy if exists "staff read deacon alerts"  on deacon_alerts_sent;
 drop policy if exists "staff write deacon alerts" on deacon_alerts_sent;
 create policy "staff read deacon alerts"  on deacon_alerts_sent
-  for select using (auth.role() = 'authenticated');
+  for select using ((select public.is_active_staff()));
 create policy "staff write deacon alerts" on deacon_alerts_sent
-  for all    using (auth.role() = 'authenticated');
+  for all    using ((select public.is_active_staff()));

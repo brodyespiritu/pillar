@@ -1,3 +1,13 @@
+-- Staff-only rules below use public.is_active_staff() (full definition: sms-recipient-guards.sql and
+-- member-app-auth.sql). Create a basic one if this project doesn't have it yet; never replace it.
+do $guard$ begin
+  if to_regprocedure('public.is_active_staff()') is null then
+    execute $f$create function public.is_active_staff() returns boolean language plpgsql stable security definer
+      set search_path = public as 'begin return exists (select 1 from public.staff where id = auth.uid() and active is not false); end'$f$;
+    execute 'grant execute on function public.is_active_staff() to anon, authenticated, service_role';
+  end if;
+end $guard$;
+
 -- Attendance analysis — AI-estimated headcount per seating zone from a livestream frame.
 -- Run in the Supabase SQL editor. Pairs with src/lib/attendance.js and the
 -- analyze-attendance edge function.
@@ -33,7 +43,7 @@ create index if not exists attendance_reads_date_idx  on attendance_reads(servic
 alter table attendance_reads enable row level security;
 alter table attendance_zones enable row level security;
 
-create policy "staff read attendance"  on attendance_reads for select using (auth.role() = 'authenticated');
-create policy "staff write attendance" on attendance_reads for all    using (auth.role() = 'authenticated');
-create policy "staff read zones"       on attendance_zones for select using (auth.role() = 'authenticated');
-create policy "staff write zones"      on attendance_zones for all    using (auth.role() = 'authenticated');
+create policy "staff read attendance"  on attendance_reads for select using ((select public.is_active_staff()));
+create policy "staff write attendance" on attendance_reads for all    using ((select public.is_active_staff()));
+create policy "staff read zones"       on attendance_zones for select using ((select public.is_active_staff()));
+create policy "staff write zones"      on attendance_zones for all    using ((select public.is_active_staff()));

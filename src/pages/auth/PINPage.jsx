@@ -83,7 +83,7 @@ export default function PINPage({ overlay = false }) {
       <div className={`pin-sheet ${phase}`}>
 
         <div className="pin-lock" aria-hidden="true">
-          <svg viewBox="0 -960 960 960" className="pin-lock-svg">
+          <svg viewBox="0 -960 960 960" width="96" height="96" className="pin-lock-svg">
             {phase === 'open' ? (
               <>
                 <path d={OPEN_BODY} />

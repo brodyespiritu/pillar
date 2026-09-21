@@ -1,3 +1,13 @@
+-- Staff-only rules below use public.is_active_staff() (full definition: sms-recipient-guards.sql and
+-- member-app-auth.sql). Create a basic one if this project doesn't have it yet; never replace it.
+do $guard$ begin
+  if to_regprocedure('public.is_active_staff()') is null then
+    execute $f$create function public.is_active_staff() returns boolean language plpgsql stable security definer
+      set search_path = public as 'begin return exists (select 1 from public.staff where id = auth.uid() and active is not false); end'$f$;
+    execute 'grant execute on function public.is_active_staff() to anon, authenticated, service_role';
+  end if;
+end $guard$;
+
 -- ── Calendar drag-and-drop templates ──────────────────────
 -- Shared across staff: a template one person adds is on everyone's palette.
 -- Run once in the Supabase SQL editor.
@@ -22,8 +32,8 @@ alter table event_templates enable row level security;
 drop policy if exists "staff read templates"  on event_templates;
 drop policy if exists "staff write templates" on event_templates;
 
-create policy "staff read templates"  on event_templates for select using (auth.role() = 'authenticated');
-create policy "staff write templates" on event_templates for all    using (auth.role() = 'authenticated');
+create policy "staff read templates"  on event_templates for select using ((select public.is_active_staff()));
+create policy "staff write templates" on event_templates for all    using ((select public.is_active_staff()));
 
 -- ── Seed the standing options ─────────────────────────────
 -- Times are starting points — edit or delete any of these from the palette.

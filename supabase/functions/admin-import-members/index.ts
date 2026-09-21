@@ -30,6 +30,8 @@ Deno.serve(async (req) => {
     const asCaller = createClient(SUPABASE_URL, ANON_KEY, { global: { headers: { Authorization: authHeader } } });
     const { data: { user: caller } } = await asCaller.auth.getUser();
     if (!caller) throw new Error('Not signed in.');
+    // A member app login is never staff, even if a staff row were added for it by mistake.
+    if (caller.app_metadata?.bbc_member_id) throw new Error('Only admins can do this.');
     const { data: callerStaff } = await admin.from('staff').select('role').eq('id', caller.id).single();
     if (!String(callerStaff?.role || '').toLowerCase().includes('admin')) throw new Error('Only admins can import members.');
 
@@ -54,11 +56,21 @@ Deno.serve(async (req) => {
 
     const before = (await admin.from('church_members').select('id', { count: 'exact', head: true })).count ?? 0;
 
-    // Upsert rows that carry a source id (idempotent); plain-insert the rest.
+    // Rows that carry a source id go through app_import_members (supabase/member-app-auth.sql): new
+    // people are added; for people already in Pillar it never overwrites a contact the office has
+    // (contacts are app sign-in credentials), never reactivates someone marked inactive, and keeps
+    // households made in Pillar. Before that migration exists, fall back to the plain upsert.
     const CHUNK = 500;
+    let safeImport = true;
     for (let i = 0; i < withId.length; i += CHUNK) {
-      const { error } = await admin.from('church_members')
-        .upsert(withId.slice(i, i + CHUNK), { onConflict: 'external_id' });
+      const chunk = withId.slice(i, i + CHUNK);
+      if (safeImport) {
+        const { error } = await admin.rpc('app_import_members', { p_rows: chunk });
+        if (!error) continue;
+        if (error.code !== 'PGRST202') throw new Error(error.message);
+        safeImport = false;
+      }
+      const { error } = await admin.from('church_members').upsert(chunk, { onConflict: 'external_id' });
       if (error) throw new Error(error.message);
     }
     for (let i = 0; i < withoutId.length; i += CHUNK) {

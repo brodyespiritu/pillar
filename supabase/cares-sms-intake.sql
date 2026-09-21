@@ -1,3 +1,13 @@
+-- Staff-only rules below use public.is_active_staff() (full definition: sms-recipient-guards.sql and
+-- member-app-auth.sql). Create a basic one if this project doesn't have it yet; never replace it.
+do $guard$ begin
+  if to_regprocedure('public.is_active_staff()') is null then
+    execute $f$create function public.is_active_staff() returns boolean language plpgsql stable security definer
+      set search_path = public as 'begin return exists (select 1 from public.staff where id = auth.uid() and active is not false); end'$f$;
+    execute 'grant execute on function public.is_active_staff() to anon, authenticated, service_role';
+  end if;
+end $guard$;
+
 -- ============================================================
 --  PILLAR · CARES BY TEXT
 --  Staff text in what they hear; the system files it and asks
@@ -20,7 +30,7 @@ alter table care_sms_threads enable row level security;
 
 drop policy if exists "staff read sms threads" on care_sms_threads;
 create policy "staff read sms threads" on care_sms_threads
-  for select using (auth.role() = 'authenticated');
+  for select using ((select public.is_active_staff()));
 -- The edge function writes with the service role, which bypasses RLS.
 
 -- Check:

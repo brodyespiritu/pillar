@@ -12,6 +12,8 @@ import { fetchEvents, eventCoversDay } from '../../lib/calendar';
 import { useGlobalSearch } from '../../lib/globalSearch';
 import { useIsMobile } from '../../lib/useIsMobile';
 import HomeMobile from './HomeMobile';
+// TESTING — delete this line and AppReports.jsx/.css when the app's test kit goes
+import AppReports from './AppReports';
 import './HomePage.css';
 
 export default function HomePage() {
@@ -100,6 +102,8 @@ export default function HomePage() {
 
         {/* ── Hero ── */}
         <section className="hero">
+          {/* TESTING — delete this line and AppReports.jsx/.css when the app's test kit goes */}
+          <AppReports />
           <div className="hero-inner">
             <span className="hero-pill">Bethesda Baptist Church</span>
             <h1 className="hero-title">{greeting}, {firstName}</h1>

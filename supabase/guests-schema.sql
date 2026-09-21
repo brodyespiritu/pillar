@@ -1,3 +1,13 @@
+-- Staff-only rules below use public.is_active_staff() (full definition: sms-recipient-guards.sql and
+-- member-app-auth.sql). Create a basic one if this project doesn't have it yet; never replace it.
+do $guard$ begin
+  if to_regprocedure('public.is_active_staff()') is null then
+    execute $f$create function public.is_active_staff() returns boolean language plpgsql stable security definer
+      set search_path = public as 'begin return exists (select 1 from public.staff where id = auth.uid() and active is not false); end'$f$;
+    execute 'grant execute on function public.is_active_staff() to anon, authenticated, service_role';
+  end if;
+end $guard$;
+
 -- ============================================================
 --  PILLAR · GUEST LIST MODULE SCHEMA
 --  Run this in Supabase → SQL Editor
@@ -51,12 +61,12 @@ alter table guests           enable row level security;
 alter table greeter_comments enable row level security;
 alter table new_connections  enable row level security;
 
-create policy "staff read guests"    on guests           for select using (auth.role() = 'authenticated');
-create policy "staff write guests"   on guests           for all    using (auth.role() = 'authenticated');
-create policy "staff read comments"  on greeter_comments for select using (auth.role() = 'authenticated');
-create policy "staff write comments" on greeter_comments for all    using (auth.role() = 'authenticated');
-create policy "staff read connections"  on new_connections for select using (auth.role() = 'authenticated');
-create policy "staff write connections" on new_connections for all    using (auth.role() = 'authenticated');
+create policy "staff read guests"    on guests           for select using ((select public.is_active_staff()));
+create policy "staff write guests"   on guests           for all    using ((select public.is_active_staff()));
+create policy "staff read comments"  on greeter_comments for select using ((select public.is_active_staff()));
+create policy "staff write comments" on greeter_comments for all    using ((select public.is_active_staff()));
+create policy "staff read connections"  on new_connections for select using ((select public.is_active_staff()));
+create policy "staff write connections" on new_connections for all    using ((select public.is_active_staff()));
 
 drop trigger if exists trg_touch_guests on guests;
 create trigger trg_touch_guests before update on guests

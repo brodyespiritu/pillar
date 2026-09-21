@@ -124,7 +124,7 @@ export default function WorshipMap({ read, highlight = null, onHover }) {
 
   return (
     <div className="wm-plan" ref={wrapRef} onMouseMove={onMove} onMouseLeave={() => onHover?.(null)}>
-      <svg className="wm-svg" viewBox={`0 0 ${W} ${H}`} role="img"
+      <svg className="wm-svg" viewBox={`0 0 ${W} ${H}`} width={W} height={H} role="img"
            aria-label={`Worship center floor plan, ${read?.total ?? 0} people`}>
         {/* building shell */}
         <rect x="108" y="66" width="644" height="490" rx="6"

@@ -22,13 +22,15 @@ import MembersPage from './pages/members/MembersPage';
 import ReportsPage from './pages/reports/ReportsPage';
 import ServicePlanner from './pages/services/ServicePlanner';
 import OnboardingWizard from './pages/onboarding/OnboardingWizard';
-import OverviewPage from './pages/app/OverviewPage';
-import SermonsPage from './pages/app/SermonsPage';
-import NotificationsPage from './pages/app/NotificationsPage';
-import MediaPage from './pages/app/MediaPage';
-import NewsEventsPage from './pages/app/NewsEventsPage';
+import AppHomePage from './pages/app/HomePage';
+import BulletinPage from './pages/app/BulletinPage';
+import GroupsPage from './pages/app/GroupsPage';
+import WatchPage from './pages/app/WatchPage';
 import LivePage from './pages/app/LivePage';
-import AppSettingsPage from './pages/app/AppSettingsPage';
+import NotificationsPage from './pages/app/NotificationsPage';
+import AppSettingsPage from './pages/app/SettingsPage';
+import WebsiteHomePage from './pages/website/WebsiteHomePage';
+import WebsiteCalendarPage from './pages/website/WebsiteCalendarPage';
 import { SettingsProvider } from './context/SettingsContext';
 import { ControlProvider } from './context/ControlContext';
 import { normalizeRole } from './lib/admin';
@@ -121,13 +123,22 @@ export default function App() {
         <Route path="/services" element={<ServicePlanner />} />
 
         {/* Bethesda App admin — gated to admins only */}
-        <Route path="/app"               element={isAdmin ? <OverviewPage />      : <Navigate to="/" replace />} />
-        <Route path="/app/sermons"       element={isAdmin ? <SermonsPage />       : <Navigate to="/" replace />} />
+        <Route path="/app"               element={isAdmin ? <Navigate to="/app/home" replace /> : <Navigate to="/" replace />} />
+        <Route path="/app/home"          element={isAdmin ? <AppHomePage />       : <Navigate to="/" replace />} />
+        <Route path="/app/bulletin"      element={isAdmin ? <BulletinPage />      : <Navigate to="/" replace />} />
+        <Route path="/app/groups"        element={isAdmin ? <GroupsPage />        : <Navigate to="/" replace />} />
+        <Route path="/app/watch"         element={isAdmin ? <WatchPage />         : <Navigate to="/" replace />} />
+        <Route path="/app/live"          element={isAdmin ? <LivePage />          : <Navigate to="/" replace />} />
         <Route path="/app/notifications" element={isAdmin ? <NotificationsPage /> : <Navigate to="/" replace />} />
-        <Route path="/app/media"         element={isAdmin ? <MediaPage />       : <Navigate to="/" replace />} />
-        <Route path="/app/announcements" element={isAdmin ? <NewsEventsPage />   : <Navigate to="/" replace />} />
-        <Route path="/app/live"          element={isAdmin ? <LivePage />         : <Navigate to="/" replace />} />
-        <Route path="/app/settings"      element={isAdmin ? <AppSettingsPage />  : <Navigate to="/" replace />} />
+        <Route path="/app/settings"      element={isAdmin ? <AppSettingsPage />   : <Navigate to="/" replace />} />
+        {/* the App section's older addresses */}
+        <Route path="/app/announcements" element={<Navigate to="/app/bulletin" replace />} />
+        <Route path="/app/sermons"       element={<Navigate to="/app/watch" replace />} />
+        <Route path="/app/media"         element={<Navigate to="/app/watch?tab=featured" replace />} />
+
+        {/* Website — page-by-page editors for the public site. Admin-gated like /app. */}
+        <Route path="/website"           element={isAdmin ? <WebsiteHomePage />   : <Navigate to="/" replace />} />
+        <Route path="/website/calendar"  element={isAdmin ? <WebsiteCalendarPage /> : <Navigate to="/" replace />} />
 
         <Route path="*"      element={<Navigate to="/" replace />} />
       </Routes>

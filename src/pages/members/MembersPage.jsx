@@ -561,15 +561,22 @@ function EditableCard({ title, member, fields, onSaved, children }) {
   const [draft, setDraft] = useState({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const initialRef = useRef({});
 
   function start() {
-    setDraft(Object.fromEntries(fields.map(f => [f.key, member[f.key] ?? (f.type === 'bool' ? false : '')])));
+    // An unset yes/no (e.g. Active, Include on Directory) means yes, as in the database rules.
+    const initial = Object.fromEntries(fields.map(f => [f.key, member[f.key] ?? (f.type === 'bool' ? true : '')]));
+    initialRef.current = initial;
+    setDraft(initial);
     setError(''); setEditing(true);
   }
 
   async function save() {
+    // Send only what changed: rewriting untouched fields can sign a member out of the app.
+    const changed = Object.fromEntries(Object.entries(draft).filter(([k, v]) => v !== initialRef.current[k]));
+    if (!Object.keys(changed).length) { setEditing(false); return; }
     setSaving(true); setError('');
-    const { error: err } = await saveChurchMember({ ...draft, id: member.id });
+    const { error: err } = await saveChurchMember({ ...changed, id: member.id });
     setSaving(false);
     if (err) return setError(err.message);
     setEditing(false);

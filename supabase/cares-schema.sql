@@ -1,3 +1,13 @@
+-- Staff-only rules below use public.is_active_staff() (full definition: sms-recipient-guards.sql and
+-- member-app-auth.sql). Create a basic one if this project doesn't have it yet; never replace it.
+do $guard$ begin
+  if to_regprocedure('public.is_active_staff()') is null then
+    execute $f$create function public.is_active_staff() returns boolean language plpgsql stable security definer
+      set search_path = public as 'begin return exists (select 1 from public.staff where id = auth.uid() and active is not false); end'$f$;
+    execute 'grant execute on function public.is_active_staff() to anon, authenticated, service_role';
+  end if;
+end $guard$;
+
 -- ============================================================
 --  PILLAR · CARES MODULE SCHEMA
 --  Run this in Supabase → SQL Editor
@@ -61,10 +71,10 @@ alter table care_members enable row level security;
 alter table contact_logs enable row level security;
 
 -- Any authenticated staff member can read/write care data
-create policy "staff read care"   on care_members for select using (auth.role() = 'authenticated');
-create policy "staff write care"  on care_members for all    using (auth.role() = 'authenticated');
-create policy "staff read logs"   on contact_logs for select using (auth.role() = 'authenticated');
-create policy "staff write logs"  on contact_logs for all    using (auth.role() = 'authenticated');
+create policy "staff read care"   on care_members for select using ((select public.is_active_staff()));
+create policy "staff write care"  on care_members for all    using ((select public.is_active_staff()));
+create policy "staff read logs"   on contact_logs for select using ((select public.is_active_staff()));
+create policy "staff write logs"  on contact_logs for all    using ((select public.is_active_staff()));
 
 -- ── Keep updated_at fresh ─────────────────────────────────
 create or replace function touch_updated_at()

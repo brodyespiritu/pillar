@@ -29,6 +29,8 @@ Deno.serve(async (req) => {
     const asCaller = createClient(SUPABASE_URL, ANON_KEY, { global: { headers: { Authorization: authHeader } } });
     const { data: { user: caller } } = await asCaller.auth.getUser();
     if (!caller) throw new Error('Not signed in.');
+    // A member app login is never staff, even if a staff row were added for it by mistake.
+    if (caller.app_metadata?.bbc_member_id) throw new Error('Only admins can do this.');
     const { data: callerStaff } = await admin.from('staff').select('role').eq('id', caller.id).single();
     if (!String(callerStaff?.role || '').toLowerCase().includes('admin')) throw new Error('Only admins can reset passwords.');
 

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import AppShell from './AppShell';
 import { P, Icon } from '../../lib/icons';
 import {
@@ -7,143 +7,168 @@ import {
   getLiveCardTemplates, saveLiveCardTemplate, deleteLiveCardTemplate,
   getChat, genId,
 } from '../../lib/appApi';
+import { useAutosave, useUndo, ask, SaveState, Field, GrowText, Toggle, Seg, Alert, Loading } from './kit';
+
+// App → Live: the stream (one switch, and its details saved as you type), the cards pushed onto
+// viewers' screens during it, and the chat, all on one page.
 
 const CARD_TYPES = [
-  { key: 'scripture', label: 'Scripture', icon: P.book },
-  { key: 'informative', label: 'Info / CTA', icon: P.announce },
-  { key: 'poll', label: 'Poll', icon: P.grid },
+  { key: 'scripture', label: 'Scripture' },
+  { key: 'informative', label: 'Announcement' },
+  { key: 'poll', label: 'Poll' },
 ];
-const DESTINATIONS = ['', 'Sermons', 'Give', 'Bible', 'Connect', 'Link'];
+// where an announcement card's button may go — the app's own pages (BethesdaApp MediaPlayer)
+const DESTINATIONS = [
+  { key: '', label: 'No button' },
+  { key: 'Sermons', label: 'Watch' },
+  { key: 'Give', label: 'Give' },
+  { key: 'Bible', label: 'Bible' },
+];
+const BLANK = { type: 'scripture', reference: '', text: '', note: '', title: '', body: '', buttonLabel: '', destination: '', question: '', options: ['', ''] };
 
-const cardSummary = c => !c ? '' :
-  c.type === 'informative' ? (c.title || 'Info card') :
-  c.type === 'poll' ? (c.question || 'Poll') :
-  (c.reference || 'Scripture');
+const summary = (c) => (!c ? '' : c.type === 'informative' ? (c.title || 'Announcement') : c.type === 'poll' ? (c.question || 'Poll') : (c.reference || 'Scripture'));
+const streamForm = (s) => ({ liveTitle: s?.liveTitle || '', liveStreamUrl: s?.liveStreamUrl || '', liveNotes: s?.liveNotes || '' });
+const announce = (on) => window.dispatchEvent(new CustomEvent('pillar-app-live', { detail: on }));
 
 export default function LivePage() {
   return (
-    <AppShell title="Live" subtitle="Control the livestream, push cards to viewers, and watch the chat.">
-      <LiveStream />
-      <LiveCards />
-      <Chat />
+    <AppShell title="Live" subtitle="Go live, put cards on viewers’ screens, and follow the chat.">
+      <div className="ax-split wide-aside">
+        <div className="ax-stack">
+          <Stream />
+          <Cards />
+        </div>
+        <aside className="ax-aside">
+          <div className="ax-sticky"><Chat /></div>
+        </aside>
+      </div>
     </AppShell>
   );
 }
 
-/* ── Livestream control ── */
-function LiveStream() {
-  const [form, setForm] = useState(null);
+/* ── the stream ── */
+
+function Stream() {
+  const [stream, setStream] = useState(null);
+  const [saved, setSaved] = useState(null);
   const [error, setError] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const [confirmLive, setConfirmLive] = useState(false);
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     getLivestream()
-      .then(l => setForm({ isLive: false, liveStreamUrl: '', liveTitle: 'Live Service', liveNotes: '', ...l }))
-      .catch(e => setError(e.message));
+      .then((l) => {
+        const s = { isLive: false, liveStreamUrl: '', liveTitle: '', liveNotes: '', ...l };
+        setStream(s);
+        setSaved(JSON.stringify(streamForm(s)));
+        announce(!!s.isLive);
+      })
+      .catch((e) => setError(e.message));
   }, []);
 
-  const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
+  const form = streamForm(stream);
+  const save = useCallback(async (v) => {
+    const next = { ...stream, ...v };
+    await putLivestream(next);
+    setSaved(JSON.stringify(v));
+  }, [stream]);
+  const auto = useAutosave({ value: form, savedJson: saved, ready: stream !== null, save });
 
-  async function persist(next) {
-    setSaving(true); setError(''); setSaved(false);
-    try { await putLivestream(next); setForm(next); setSaved(true); setTimeout(() => setSaved(false), 2000); }
-    catch (e) { setError(e.message); }
-    setSaving(false);
+  async function goLive(on) {
+    if (on && !form.liveStreamUrl.trim()) { setError('Add the stream link first.'); return; }
+    if (on && !(await ask('Go live now? The whole app switches to live mode for everyone within seconds.'))) return;
+    setBusy(true); setError('');
+    const next = { ...stream, ...form, isLive: on };
+    try {
+      await putLivestream(next);
+      setStream(next);
+      setSaved(JSON.stringify(streamForm(next)));
+      announce(on);
+    } catch (e) { setError(e.message); }
+    setBusy(false);
   }
 
-  function onToggle(v) {
-    if (v) { setConfirmLive(true); return; }   // confirm before going live
-    persist({ ...form, isLive: false });
-  }
-
-  if (!form) return <div className="ap-panel" style={{ padding: 24, marginBottom: 20 }}><div className="ap-loading"><span className="ap-spinner" />Loading livestream…</div></div>;
+  if (!stream) return error ? <Alert>{error}</Alert> : <div className="ax-panel"><Loading>Reaching the app server…</Loading></div>;
+  const set = (k, v) => setStream((s) => ({ ...s, [k]: v }));
 
   return (
-    <div className="ap-panel" style={{ padding: 24, marginBottom: 20 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, marginBottom: 18 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <span className={`ap-dot ${form.isLive ? 'live' : 'off'}`} />
+    <div className="ax-panel">
+      <Alert onClose={error ? () => setError('') : null}>{error}</Alert>
+      <div className="ax-editor-head">
+        <div className="ax-inline" style={{ gap: 16 }}>
+          <span className={`ax-dot ${stream.isLive ? 'live' : ''}`} style={{ width: 14, height: 14 }} />
           <div>
-            <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--text)' }}>{form.isLive ? 'Stream is LIVE' : 'Stream is offline'}</div>
-            <div style={{ fontSize: 13, color: 'var(--text-3)' }}>{form.isLive ? 'The app is showing the live banner to everyone.' : 'Flip on to put the whole app into live mode.'}</div>
+            <div className="ax-panel-title">{stream.isLive ? 'You’re live' : 'Not live'}</div>
+            <p className="ax-panel-sub">{stream.isLive ? 'Every phone shows the live banner.' : 'Switch on when the stream has started.'}</p>
           </div>
         </div>
-        <label className="ap-switch"><input type="checkbox" checked={!!form.isLive} onChange={e => onToggle(e.target.checked)} /><span className="ap-switch-track" style={{ transform: 'scale(1.15)' }} /></label>
+        <Toggle live checked={!!stream.isLive} disabled={busy} onChange={goLive}
+          label={busy ? 'One moment…' : stream.isLive ? 'Live' : 'Go live'} />
       </div>
-
-      {error && <div className="ap-banner error"><Icon d={P.close} size={16} />{error}</div>}
-
-      <div className="ap-field"><label className="ap-label">Stream title</label><input className="ap-input" value={form.liveTitle || ''} onChange={e => set('liveTitle', e.target.value)} /></div>
-      <div className="ap-field" style={{ marginTop: 14 }}><label className="ap-label">Stream URL (HLS)</label><input className="ap-input" value={form.liveStreamUrl || ''} onChange={e => set('liveStreamUrl', e.target.value)} placeholder="https://…/index.m3u8" /></div>
-      <div className="ap-field" style={{ marginTop: 14 }}><label className="ap-label">Notes <span className="ap-hint">(shown when viewers tap Notes)</span></label><textarea className="ap-textarea" rows={3} value={form.liveNotes || ''} onChange={e => set('liveNotes', e.target.value)} /></div>
-
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 12, marginTop: 18 }}>
-        {saved && <span style={{ fontSize: 13, color: 'var(--green)', fontWeight: 600 }}>Saved</span>}
-        <button className="ap-btn primary" onClick={() => persist(form)} disabled={saving}>{saving ? <><span className="ap-spinner" />Saving…</> : <><Icon d={P.check} size={15} />Save stream details</>}</button>
+      <div className="ax-form">
+        <div className="ax-inline" style={{ justifyContent: 'flex-end', marginTop: -18 }}><SaveState auto={auto} /></div>
+        <Field label="Title">
+          <input className="ax-input title" value={form.liveTitle} placeholder="Sunday worship"
+            onChange={(e) => set('liveTitle', e.target.value)} />
+        </Field>
+        <Field label="Stream link" hint="The HLS address from the streaming service — it ends in .m3u8.">
+          <input className="ax-input" value={form.liveStreamUrl} inputMode="url" placeholder="https://…/index.m3u8"
+            onChange={(e) => set('liveStreamUrl', e.target.value)} />
+        </Field>
+        <Field label="Notes" hint="What viewers see when they tap Notes during the stream.">
+          <GrowText value={form.liveNotes} minRows={3} onChange={(e) => set('liveNotes', e.target.value)} />
+        </Field>
       </div>
-
-      {confirmLive && (
-        <div className="ap-overlay" onClick={() => setConfirmLive(false)}>
-          <div className="ap-modal" style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
-            <div className="ap-modal-head"><h2>Go live now?</h2></div>
-            <div className="ap-modal-body"><p style={{ fontSize: 14, color: 'var(--text-2)', lineHeight: 1.5 }}>This flips the entire app into live mode for everyone within seconds. Make sure your stream URL is ready.</p></div>
-            <div className="ap-modal-foot">
-              <button className="ap-btn" onClick={() => setConfirmLive(false)}>Cancel</button>
-              <button className="ap-btn primary" onClick={() => { setConfirmLive(false); persist({ ...form, isLive: true }); }}><Icon d={P.radio} size={15} />Go live</button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
 
-/* ── Live cards ── */
-function LiveCards() {
-  const [active, setActive] = useState(null);
+/* ── cards on viewers' screens ── */
+
+function Cards() {
+  const [active, setActive] = useState(undefined);
   const [votes, setVotes] = useState(null);
-  const [templates, setTemplates] = useState([]);
+  const [saved, setSaved] = useState([]);
+  const [draft, setDraft] = useState(BLANK);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  const [draft, setDraft] = useState({ type: 'scripture', reference: '', text: '', note: '', title: '', body: '', buttonLabel: '', destination: '', question: '', options: ['', ''] });
-  const pollRef = useRef(null);
+  const [toast, undo] = useUndo();
 
-  const set = (k, v) => setDraft(p => ({ ...p, [k]: v }));
+  const loadSaved = useCallback(() => {
+    getLiveCardTemplates().then((t) => setSaved(Array.isArray(t) ? t : [])).catch(() => {});
+  }, []);
 
-  const loadTemplates = useCallback(() => { getLiveCardTemplates().then(t => setTemplates(Array.isArray(t) ? t : [])).catch(() => {}); }, []);
-
-  // poll the active card (+ votes if it's a poll)
+  // what's on screen, and a poll's votes, kept current
   useEffect(() => {
     let alive = true;
     const tick = async () => {
       try {
         const c = await getLiveCard();
         if (!alive) return;
-        setActive(c);
+        setActive(c || null);
         if (c && c.type === 'poll') { const v = await getLiveCardVotes(); if (alive) setVotes(v?.votes || {}); }
         else setVotes(null);
-      } catch { /* ignore transient */ }
+      } catch { /* a missed tick is fine */ }
     };
-    tick(); loadTemplates();
-    pollRef.current = setInterval(tick, 5000);
-    return () => { alive = false; clearInterval(pollRef.current); };
-  }, [loadTemplates]);
+    tick();
+    loadSaved();
+    const t = setInterval(tick, 5000);
+    return () => { alive = false; clearInterval(t); };
+  }, [loadSaved]);
 
-  function buildCard() {
+  const set = (k, v) => setDraft((d) => ({ ...d, [k]: v }));
+  const build = () => {
     const base = { id: genId(), type: draft.type };
-    if (draft.type === 'informative') return { ...base, title: draft.title, body: draft.body, buttonLabel: draft.buttonLabel, destination: draft.destination };
-    if (draft.type === 'poll') return { ...base, question: draft.question, options: draft.options.map(o => o.trim()).filter(Boolean) };
-    return { ...base, reference: draft.reference, text: draft.text, note: draft.note };
-  }
-  const draftValid = draft.type === 'informative' ? draft.title.trim()
-    : draft.type === 'poll' ? (draft.question.trim() && draft.options.filter(o => o.trim()).length >= 2)
-    : (draft.reference.trim() && draft.text.trim());
+    if (draft.type === 'informative') return { ...base, title: draft.title.trim(), body: draft.body.trim(), buttonLabel: draft.buttonLabel.trim(), destination: draft.destination };
+    if (draft.type === 'poll') return { ...base, question: draft.question.trim(), options: draft.options.map((o) => o.trim()).filter(Boolean) };
+    return { ...base, reference: draft.reference.trim(), text: draft.text.trim(), note: draft.note.trim() };
+  };
+  const valid = draft.type === 'informative' ? draft.title.trim()
+    : draft.type === 'poll' ? draft.question.trim() && draft.options.filter((o) => o.trim()).length >= 2
+    : draft.reference.trim() && draft.text.trim();
 
-  async function push(card) {
+  async function show(card) {
     setBusy(true); setError('');
-    try { await pushLiveCard(card); setActive(card); } catch (e) { setError(e.message); }
+    try { await pushLiveCard(card); setActive(card); setVotes(null); } catch (e) { setError(e.message); }
     setBusy(false);
   }
   async function clear() {
@@ -151,127 +176,149 @@ function LiveCards() {
     try { await clearLiveCard(); setActive(null); setVotes(null); } catch (e) { setError(e.message); }
     setBusy(false);
   }
-  async function saveTemplate() {
+  async function keep() {
     setBusy(true); setError('');
-    try { await saveLiveCardTemplate(buildCard()); loadTemplates(); } catch (e) { setError(e.message); }
+    try { await saveLiveCardTemplate(build()); loadSaved(); setDraft({ ...BLANK, type: draft.type }); } catch (e) { setError(e.message); }
     setBusy(false);
   }
-  async function removeTemplate(id) {
-    try { await deleteLiveCardTemplate(id); setTemplates(t => t.filter(x => x.id !== id)); } catch (e) { setError(e.message); }
+  async function forget(t) {
+    setSaved((l) => l.filter((x) => x.id !== t.id));
+    try { await deleteLiveCardTemplate(t.id); } catch (e) { setError(e.message); loadSaved(); return; }
+    undo(`“${summary(t)}” removed.`, async () => {
+      try { await saveLiveCardTemplate(t); loadSaved(); } catch (e) { setError(e.message); }
+    });
   }
 
   return (
-    <div className="ap-panel" style={{ padding: 24, marginBottom: 20 }}>
-      <h3 className="ap-section-title">Live cards</h3>
+    <div className="ax-panel">
+      <div className="ax-panel-head">
+        <div>
+          <div className="ax-panel-title">Cards on viewers’ screens</div>
+          <p className="ax-panel-sub">A verse, an announcement or a poll, over the live stream.</p>
+        </div>
+      </div>
+      <Alert onClose={error ? () => setError('') : null}>{error}</Alert>
 
-      {/* Active */}
-      <div className="ap-activecard">
-        {active ? (
+      <div className="ax-note" style={{ marginBottom: 28, alignItems: 'center' }}>
+        {active === undefined ? <span>Checking what’s on screen…</span> : active ? (
           <>
-            <div>
-              <span className="ap-badge tag" style={{ marginBottom: 6 }}>{(active.type || 'scripture').toUpperCase()} · ON SCREEN</span>
-              <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>{cardSummary(active)}</div>
-              {active.type === 'poll' && votes && (
-                <div className="ap-votes">
-                  {(active.options || []).map((opt, i) => <span key={i}>{opt}: <strong>{votes[i] || 0}</strong></span>)}
-                </div>
-              )}
-            </div>
-            <button className="ap-btn danger" onClick={clear} disabled={busy}><Icon d={P.close} size={15} />Clear card</button>
+            <span style={{ flex: 1 }}>
+              <span className="ax-tag">On screen now</span>
+              <strong style={{ display: 'block', marginTop: 4, color: 'var(--ax-ink)', fontSize: 16 }}>{summary(active)}</strong>
+              {active.type === 'poll' && votes ? (
+                <span style={{ display: 'block', marginTop: 4 }}>
+                  {(active.options || []).map((o, i) => `${o}: ${votes[i] || 0}`).join(' · ')}
+                </span>
+              ) : null}
+            </span>
+            <button type="button" className="ax-btn sm" onClick={clear} disabled={busy}>Take it down</button>
           </>
-        ) : <span style={{ fontSize: 13.5, color: 'var(--text-3)' }}>No card on screen right now.</span>}
+        ) : <span>Nothing on screen right now.</span>}
       </div>
 
-      {error && <div className="ap-banner error" style={{ marginTop: 16 }}><Icon d={P.close} size={16} />{error}</div>}
-
-      {/* Composer */}
-      <div className="ap-typeseg" style={{ marginTop: 18 }}>
-        {CARD_TYPES.map(t => (
-          <button key={t.key} className={draft.type === t.key ? 'on' : ''} onClick={() => set('type', t.key)}><Icon d={t.icon} size={15} />{t.label}</button>
-        ))}
+      <div className="ax-form">
+        <Seg label="Kind of card" value={draft.type} onChange={(t) => set('type', t)} options={CARD_TYPES} />
+        {draft.type === 'scripture' && (
+          <>
+            <Field label="Reference"><input className="ax-input" value={draft.reference} placeholder="Book 1:1" onChange={(e) => set('reference', e.target.value)} /></Field>
+            <Field label="Verse"><GrowText value={draft.text} minRows={2} onChange={(e) => set('text', e.target.value)} /></Field>
+            <Field label="Note (optional)"><input className="ax-input" value={draft.note} onChange={(e) => set('note', e.target.value)} /></Field>
+          </>
+        )}
+        {draft.type === 'informative' && (
+          <>
+            <Field label="Title"><input className="ax-input" value={draft.title} onChange={(e) => set('title', e.target.value)} /></Field>
+            <Field label="Message"><GrowText value={draft.body} minRows={2} onChange={(e) => set('body', e.target.value)} /></Field>
+            <Field label="Button">
+              <Seg label="Button goes to" value={draft.destination} onChange={(d) => set('destination', d)} options={DESTINATIONS} />
+              {draft.destination ? (
+                <input className="ax-input" value={draft.buttonLabel} placeholder="Button label, like Give now"
+                  onChange={(e) => set('buttonLabel', e.target.value)} />
+              ) : null}
+            </Field>
+          </>
+        )}
+        {draft.type === 'poll' && (
+          <>
+            <Field label="Question"><input className="ax-input" value={draft.question} onChange={(e) => set('question', e.target.value)} /></Field>
+            <Field label="Answers" hint="Two to five.">
+              <div className="ax-rows">
+                {draft.options.map((o, i) => (
+                  <div key={i} className="ax-subrow">
+                    <input className="ax-input" value={o} placeholder={`Answer ${i + 1}`} aria-label={`Answer ${i + 1}`}
+                      onChange={(e) => set('options', draft.options.map((x, k) => (k === i ? e.target.value : x)))} />
+                    {draft.options.length > 2 && (
+                      <button type="button" className="ax-iconbtn danger" title="Remove this answer"
+                        onClick={() => set('options', draft.options.filter((_, k) => k !== i))}><Icon d={P.close} size={18} /></button>
+                    )}
+                  </div>
+                ))}
+                {draft.options.length < 5 && (
+                  <button type="button" className="ax-btn sm" style={{ alignSelf: 'flex-start' }}
+                    onClick={() => set('options', [...draft.options, ''])}><Icon d={P.plus} size={15} />Add an answer</button>
+                )}
+              </div>
+            </Field>
+          </>
+        )}
+        <div className="ax-inline" style={{ justifyContent: 'flex-end' }}>
+          <button type="button" className="ax-btn" onClick={keep} disabled={busy || !valid}>Save for later</button>
+          <button type="button" className="ax-btn primary" onClick={() => show(build())} disabled={busy || !valid}>
+            <Icon d={P.send} size={16} />Show on screen
+          </button>
+        </div>
       </div>
 
-      <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>
-        {draft.type === 'scripture' && <>
-          <div className="ap-field"><label className="ap-label">Reference</label><input className="ap-input" value={draft.reference} onChange={e => set('reference', e.target.value)} placeholder="Matthew 13:24" /></div>
-          <div className="ap-field"><label className="ap-label">Text</label><textarea className="ap-textarea" rows={2} value={draft.text} onChange={e => set('text', e.target.value)} /></div>
-          <div className="ap-field"><label className="ap-label">Note <span className="ap-hint">(optional)</span></label><input className="ap-input" value={draft.note} onChange={e => set('note', e.target.value)} /></div>
-        </>}
-        {draft.type === 'informative' && <>
-          <div className="ap-field"><label className="ap-label">Title</label><input className="ap-input" value={draft.title} onChange={e => set('title', e.target.value)} /></div>
-          <div className="ap-field"><label className="ap-label">Body</label><textarea className="ap-textarea" rows={2} value={draft.body} onChange={e => set('body', e.target.value)} /></div>
-          <div className="ap-field row">
-            <div className="ap-field"><label className="ap-label">Button label <span className="ap-hint">(optional)</span></label><input className="ap-input" value={draft.buttonLabel} onChange={e => set('buttonLabel', e.target.value)} placeholder="Learn more" /></div>
-            <div className="ap-field"><label className="ap-label">Button goes to</label>
-              <select className="ap-select" value={draft.destination} onChange={e => set('destination', e.target.value)}>{DESTINATIONS.map(d => <option key={d} value={d}>{d || 'None'}</option>)}</select>
-            </div>
-          </div>
-        </>}
-        {draft.type === 'poll' && <>
-          <div className="ap-field"><label className="ap-label">Question</label><input className="ap-input" value={draft.question} onChange={e => set('question', e.target.value)} /></div>
-          <div className="ap-field"><label className="ap-label">Options</label>
-            {draft.options.map((o, i) => (
-              <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-                <input className="ap-input" value={o} onChange={e => set('options', draft.options.map((x, k) => k === i ? e.target.value : x))} placeholder={`Option ${i + 1}`} />
-                {draft.options.length > 2 && <button className="ap-icon-btn danger" onClick={() => set('options', draft.options.filter((_, k) => k !== i))}><Icon d={P.close} size={15} /></button>}
+      {saved.length > 0 && (
+        <>
+          <div className="ax-divider" style={{ margin: '32px 0 24px' }} />
+          <div className="ax-panel-title" style={{ fontSize: 17, marginBottom: 14 }}>Ready to show</div>
+          <div className="ax-list">
+            {saved.map((t) => (
+              <div key={t.id} className="ax-row" style={{ cursor: 'default' }}>
+                <span className="ax-row-main">
+                  <span className="ax-row-title">{summary(t)}</span>
+                  <span className="ax-row-sub">{CARD_TYPES.find((c) => c.key === (t.type || 'scripture'))?.label}</span>
+                </span>
+                <button type="button" className="ax-btn sm" onClick={() => show(t)} disabled={busy}>Show</button>
+                <button type="button" className="ax-iconbtn danger" title="Remove" onClick={() => forget(t)}><Icon d={P.trash} size={17} /></button>
               </div>
             ))}
-            {draft.options.length < 5 && <button className="ap-btn" onClick={() => set('options', [...draft.options, ''])}><Icon d={P.plus} size={14} />Add option</button>}
           </div>
-        </>}
-      </div>
-
-      <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 18 }}>
-        <button className="ap-btn" onClick={saveTemplate} disabled={busy || !draftValid}><Icon d={P.plus} size={15} />Save as template</button>
-        <button className="ap-btn primary" onClick={() => push(buildCard())} disabled={busy || !draftValid}><Icon d={P.send} size={15} />Push to viewers</button>
-      </div>
-
-      {/* Templates */}
-      {templates.length > 0 && <>
-        <h3 className="ap-section-title" style={{ marginTop: 24 }}>Saved templates</h3>
-        <div className="ap-templates">
-          {templates.map(t => (
-            <div className="ap-template" key={t.id}>
-              <span className="ap-badge tag">{(t.type || 'scripture').toUpperCase()}</span>
-              <span className="ap-template-name">{cardSummary(t)}</span>
-              <div style={{ display: 'flex', gap: 6 }}>
-                <button className="ap-btn" onClick={() => push(t)} disabled={busy}><Icon d={P.send} size={14} />Push</button>
-                <button className="ap-icon-btn danger" onClick={() => removeTemplate(t.id)}><Icon d={P.trash} size={16} /></button>
-              </div>
-            </div>
-          ))}
-        </div>
-      </>}
+        </>
+      )}
+      {toast}
     </div>
   );
 }
 
-/* ── Chat (read-only moderation feed) ── */
-function Chat() {
-  const [msgs, setMsgs] = useState([]);
-  const [err, setErr] = useState(false);
+/* ── chat ── */
 
+function Chat() {
+  const [msgs, setMsgs] = useState(null);
+  const [failed, setFailed] = useState(false);
   useEffect(() => {
     let alive = true;
-    const tick = async () => { try { const c = await getChat(); if (alive) { setMsgs(Array.isArray(c) ? c : []); setErr(false); } } catch { if (alive) setErr(true); } };
+    const tick = async () => {
+      try { const c = await getChat(); if (alive) { setMsgs(Array.isArray(c) ? c : []); setFailed(false); } }
+      catch { if (alive) setFailed(true); }
+    };
     tick();
-    const id = setInterval(tick, 7000);
-    return () => { alive = false; clearInterval(id); };
+    const t = setInterval(tick, 7000);
+    return () => { alive = false; clearInterval(t); };
   }, []);
-
   return (
-    <div className="ap-panel" style={{ padding: 24 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <h3 className="ap-section-title" style={{ margin: 0 }}>Live chat</h3>
-        <span className="ap-hint">Read-only · clears when the stream ends</span>
-      </div>
-      <div className="ap-chat">
-        {err ? <p className="ap-hint">Couldn’t load chat.</p>
-          : msgs.length === 0 ? <p className="ap-hint">No messages yet.</p>
+    <div className="ax-panel">
+      <div className="ax-panel-title">Live chat</div>
+      <p className="ax-panel-sub" style={{ marginBottom: 20 }}>Read-only here. It clears when the stream ends.</p>
+      <div className="ax-chat">
+        {failed ? <p className="ax-hint">Couldn’t load the chat.</p>
+          : msgs === null ? <p className="ax-hint">Loading…</p>
+          : msgs.length === 0 ? <p className="ax-hint">No messages yet.</p>
           : msgs.map((m, i) => (
-            <div className="ap-chat-msg" key={m.id || i}>
-              <span className="ap-chat-who">{m.name || m.user || 'Guest'}</span>
-              <span className="ap-chat-text">{m.text || m.message}</span>
+            <div key={m.id || i} className="ax-chat-msg">
+              <span className="ax-chat-who">{m.name || m.user || 'Guest'}</span>
+              <span className="ax-chat-text">{m.text || m.message}</span>
             </div>
           ))}
       </div>

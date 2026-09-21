@@ -1,0 +1,103 @@
+/* ── TESTING · goes when the app's test kit does ─────────────────────────────
+   Reports from testers, in the corner of Home. Pillar's own blue, nothing shouting. */
+
+.ar {
+  position: absolute; top: 28px; right: 28px; width: 340px; z-index: 30;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 18px;
+  box-shadow: 0 12px 32px rgba(11, 53, 88, 0.12);
+  padding: 14px 14px 10px; text-align: left;
+}
+.ar-head { display: flex; align-items: center; gap: 8px; padding: 0 4px 10px; }
+.ar-dot { width: 8px; height: 8px; border-radius: 50%; background: #F2660C; flex-shrink: 0; }
+.ar-count { font-size: 13px; font-weight: 700; color: var(--text-2); }
+
+.ar-list { display: flex; flex-direction: column; gap: 2px; }
+.ar-row { display: flex; align-items: center; gap: 4px; border-radius: 12px; }
+.ar-row:hover { background: var(--surface-2); }
+.ar-open {
+  flex: 1; min-width: 0; display: flex; align-items: flex-start; gap: 10px;
+  padding: 9px 8px; border: none; background: transparent; text-align: left; cursor: pointer;
+}
+.ar-open:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(0, 107, 255, 0.18); border-radius: 12px; }
+.ar-tag {
+  flex-shrink: 0; margin-top: 1px; padding: 2px 8px; border-radius: 999px;
+  font-size: 10.5px; font-weight: 800; letter-spacing: 0.6px; text-transform: uppercase;
+  background: rgba(242, 102, 12, 0.12); color: #C24B05;
+}
+.ar-tag.praise { background: var(--green-soft, rgba(22, 163, 74, 0.12)); color: #15803D; }
+.ar-main { display: block; flex: 1; min-width: 0; }
+.ar-words {
+  display: block; font-size: 13.5px; line-height: 1.35; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ar-who { display: block; margin-top: 2px; font-size: 12px; color: var(--text-3); }
+.ar-x {
+  flex-shrink: 0; width: 28px; height: 28px; border-radius: 9px; border: none; background: transparent;
+  color: var(--text-3); cursor: pointer; display: flex; align-items: center; justify-content: center;
+}
+.ar-x:hover { background: var(--surface-2); color: var(--text); }
+.ar-x:disabled { opacity: 0.4; cursor: default; }
+.ar-more { padding: 8px 8px 2px; font-size: 12px; color: var(--text-3); }
+.ar-err { padding: 8px; font-size: 12px; color: var(--red); }
+
+/* the whole report */
+.ar-scrim {
+  position: fixed; inset: 0; z-index: 200; display: flex; align-items: center; justify-content: center;
+  padding: 24px; background: rgba(8, 20, 34, 0.45);
+}
+.ar-card {
+  width: 100%; max-width: 520px; max-height: 84vh; overflow-y: auto; text-align: left;
+  background: var(--surface); border-radius: 24px; padding: 22px 24px 20px;
+  box-shadow: 0 24px 60px rgba(8, 20, 34, 0.3);
+}
+.ar-card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+.ar-said { margin: 0 0 18px; font-size: 17px; line-height: 1.5; color: var(--text); white-space: pre-wrap; }
+
+/* Whatever came with it, whole. A recording strip is a tall grid of frames, so it is fitted rather
+   than cropped — a crop would hide everything after the first row. */
+.ar-shot {
+  margin-bottom: 18px; border: 1px solid var(--border); border-radius: 14px; overflow: hidden;
+  background: #0B0B0D;
+}
+.ar-shot > a { display: block; }
+.ar-shot img, .ar-shot video {
+  display: block; width: 100%; max-height: 420px; object-fit: contain; background: #0B0B0D;
+}
+.ar-shot-link {
+  display: block; padding: 10px 14px; background: var(--surface);
+  font-size: 13.5px; font-weight: 700; color: var(--accent); text-decoration: none;
+}
+.ar-shot-link:hover { background: var(--surface-2); }
+.ar-lost {
+  margin: 0 0 18px; padding: 12px 14px; border-radius: 12px; background: var(--surface-2);
+  font-size: 13.5px; line-height: 1.5; color: var(--text-2);
+}
+.ar-lost a { color: var(--accent); font-weight: 700; }
+
+/* a peek at the picture from the list */
+.ar-thumb {
+  flex-shrink: 0; width: 34px; height: 34px; border-radius: 9px; margin-top: 1px;
+  background: var(--surface-2) center / cover no-repeat;
+  display: flex; align-items: center; justify-content: center;
+}
+.ar-thumb.film { background: #12263A; color: #fff; }
+
+.ar-facts { margin: 0 0 20px; display: flex; flex-direction: column; gap: 8px; }
+.ar-fact { display: flex; gap: 12px; font-size: 13.5px; }
+.ar-fact dt { flex-shrink: 0; width: 104px; color: var(--text-3); }
+.ar-fact dd { margin: 0; color: var(--text-2); word-break: break-word; }
+
+.ar-card-foot { display: flex; justify-content: flex-end; gap: 10px; }
+.ar-keep, .ar-done {
+  height: 44px; padding: 0 20px; border-radius: 999px; font-size: 14.5px; font-weight: 700; cursor: pointer;
+}
+.ar-keep { border: 1.5px solid var(--border); background: var(--surface); color: var(--text); }
+.ar-keep:hover { border-color: var(--text-3); }
+.ar-done { border: none; background: var(--accent); color: #fff; }
+.ar-done:hover { background: var(--accent-hover); }
+.ar-done:disabled { opacity: 0.5; cursor: default; }
+
+/* on a narrow screen it sits under the greeting rather than over it */
+@media (max-width: 1180px) {
+  .ar { position: static; width: auto; max-width: 520px; margin: 0 auto 28px; }
+}

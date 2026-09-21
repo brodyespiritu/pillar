@@ -1,3 +1,13 @@
+-- Staff-only rules below use public.is_active_staff() (full definition: sms-recipient-guards.sql and
+-- member-app-auth.sql). Create a basic one if this project doesn't have it yet; never replace it.
+do $guard$ begin
+  if to_regprocedure('public.is_active_staff()') is null then
+    execute $f$create function public.is_active_staff() returns boolean language plpgsql stable security definer
+      set search_path = public as 'begin return exists (select 1 from public.staff where id = auth.uid() and active is not false); end'$f$;
+    execute 'grant execute on function public.is_active_staff() to anon, authenticated, service_role';
+  end if;
+end $guard$;
+
 -- ============================================================
 --  PILLAR · EVENT LOCATIONS (rooms & spaces, with photos)
 --  Run this in Supabase → SQL Editor
@@ -26,8 +36,8 @@ drop policy if exists "staff read locations"  on locations;
 drop policy if exists "staff write locations" on locations;
 drop policy if exists "public read locations" on locations;
 
-create policy "staff read locations"  on locations for select using (auth.role() = 'authenticated');
-create policy "staff write locations" on locations for all    using (auth.role() = 'authenticated');
+create policy "staff read locations"  on locations for select using ((select public.is_active_staff()));
+create policy "staff write locations" on locations for all    using ((select public.is_active_staff()));
 
 -- The public church website is a static page with no auth. Without this it
 -- gets back a 200 with an empty array rather than an error, so a missing
@@ -67,13 +77,13 @@ create policy "public read location photos" on storage.objects
   for select using (bucket_id = 'location-photos');
 
 create policy "staff upload location photos" on storage.objects
-  for insert with check (bucket_id = 'location-photos' and auth.role() = 'authenticated');
+  for insert with check (bucket_id = 'location-photos' and (select public.is_active_staff()));
 
 create policy "staff update location photos" on storage.objects
-  for update using (bucket_id = 'location-photos' and auth.role() = 'authenticated');
+  for update using (bucket_id = 'location-photos' and (select public.is_active_staff()));
 
 create policy "staff delete location photos" on storage.objects
-  for delete using (bucket_id = 'location-photos' and auth.role() = 'authenticated');
+  for delete using (bucket_id = 'location-photos' and (select public.is_active_staff()));
 
 -- Check:
 --   select name, photo_url from locations order by name;

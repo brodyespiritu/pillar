@@ -1,3 +1,13 @@
+-- Staff-only rules below use public.is_active_staff() (full definition: sms-recipient-guards.sql and
+-- member-app-auth.sql). Create a basic one if this project doesn't have it yet; never replace it.
+do $guard$ begin
+  if to_regprocedure('public.is_active_staff()') is null then
+    execute $f$create function public.is_active_staff() returns boolean language plpgsql stable security definer
+      set search_path = public as 'begin return exists (select 1 from public.staff where id = auth.uid() and active is not false); end'$f$;
+    execute 'grant execute on function public.is_active_staff() to anon, authenticated, service_role';
+  end if;
+end $guard$;
+
 -- ============================================================
 --  PILLAR · SECURITY HARDENING
 --  Model: shared team data + private personal data.
@@ -102,13 +112,15 @@ grant execute on function admin_set_pin(uuid, text) to authenticated;
 grant execute on function service_set_pin(uuid, text) to service_role;
 
 -- ── Admin helper ─────────────────────────────────────────────
-create or replace function is_admin()
-returns boolean
-language sql security definer stable
-set search_path = public
-as $$
-  select coalesce((select role ilike '%admin%' from staff where id = auth.uid()), false);
-$$;
+-- Full definition: sms-recipient-guards.sql and member-app-auth.sql (active admins only, never an
+-- app member login). Create a basic one if this project doesn't have it yet; never replace it.
+do $guard$ begin
+  if to_regprocedure('public.is_admin()') is null then
+    execute $f$create function public.is_admin() returns boolean language plpgsql stable security definer
+      set search_path = public as 'begin return coalesce((select role ilike ''%admin%'' and active is not false from public.staff where id = auth.uid()), false)
+        and not exists (select 1 from auth.users u where u.id = auth.uid() and u.raw_app_meta_data ? ''bbc_member_id''); end'$f$;
+  end if;
+end $guard$;
 grant execute on function is_admin() to authenticated;
 
 -- ── Staff table: read = team; write = own row (or admin) ─────
@@ -121,7 +133,7 @@ drop policy if exists "staff insert"     on staff;
 drop policy if exists "staff delete"     on staff;
 
 -- Directory is shared (needed for assignee pickers, the admin page, etc.)
-create policy "staff read"       on staff for select using (auth.role() = 'authenticated');
+create policy "staff read"       on staff for select using ((select public.is_active_staff()));
 -- You may edit your OWN row; admins may edit anyone.
 create policy "staff update own" on staff for update using (auth.uid() = id or is_admin());
 -- Only admins create/remove staff.
@@ -155,7 +167,7 @@ create trigger trg_staff_guard before update on staff
 -- ── Shared ministry data stays team-accessible ───────────────
 -- care_members, contact_logs, guests, greeter_comments, new_connections,
 -- church_members, events, email_config, email_groups, sms_* already use
--- `auth.role() = 'authenticated'` — correct for a collaborative team tool:
+-- `(select public.is_active_staff())` — correct for a collaborative team tool:
 -- signed-in staff share them, the public (anon) cannot touch them.
 -- No changes needed there, but the check below confirms nothing is left open.
 

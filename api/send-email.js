@@ -3,21 +3,56 @@
 // both the web app and the desktop app without a native bridge.
 import nodemailer from 'nodemailer';
 
+// Pillar's Supabase project. Public values (the browser app ships them too); they only let this
+// function ask Supabase who the caller is.
+const SUPABASE_URL  = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || 'https://dxiqhequrfdodeyqzowz.supabase.co';
+const SUPABASE_ANON = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR4aXFoZXF1cmZkb2RleXF6b3d6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQyMDUyMTgsImV4cCI6MjA5OTc4MTIxOH0.z429W6SKsjtTwaPjkb9cMGtSrWoBJQdABukPO92aII4';
+
+// Only signed-in, active Pillar staff may send. Returns the staff id, or null.
+async function staffCaller(req) {
+  const m = /^Bearer\s+(.+)$/i.exec(req.headers.authorization || '');
+  if (!m) return null;
+  const headers = { apikey: SUPABASE_ANON, Authorization: `Bearer ${m[1]}` };
+  try {
+    const u = await fetch(`${SUPABASE_URL}/auth/v1/user`, { headers });
+    if (!u.ok) return null;
+    const { id } = await u.json();
+    if (!id) return null;
+    const s = await fetch(`${SUPABASE_URL}/rest/v1/staff?select=id,active&id=eq.${encodeURIComponent(id)}`, { headers });
+    if (!s.ok) return null;
+    const rows = await s.json();
+    return Array.isArray(rows) && rows[0] && rows[0].active !== false ? id : null;
+  } catch {
+    return null;
+  }
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  const b = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {});
+  // Without this check anyone on the internet could send mail as the church — or point `host`
+  // at their own server and receive the church mailbox's username and password.
+  if (!(await staffCaller(req))) {
+    return res.status(401).json({ error: 'Please sign in to Pillar again, then resend. (If this keeps happening, reload Pillar.)' });
+  }
+
+  let b;
+  try { b = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {}); }
+  catch { return res.status(400).json({ error: 'Malformed request.' }); }
   const { to, cc, bcc, subject, text, html, attachments } = b;
 
-  // Use the sender's own connected account when there is one; otherwise fall
-  // back to the church-wide account configured in the environment, so staff
-  // don't each have to connect a personal mailbox.
-  // Declared out here so the catch below can report which server we tried.
-  const host = b.host || process.env.CHURCH_SMTP_HOST;
-  const user = b.user || process.env.CHURCH_SMTP_USER;
-  const pass = b.pass || process.env.CHURCH_SMTP_PASS;
-  const port = b.port || process.env.CHURCH_SMTP_PORT;
-  const from = b.from || process.env.CHURCH_FROM || user;
+  // Either the sender's OWN connected account (all of host, user and password come from the
+  // request), or the church-wide account from the environment (all of it). Never a mix: a
+  // request-supplied server must never be handed the church account's credentials.
+  const own = Boolean(b.host || b.user || b.pass);
+  if (own && !(b.host && b.user && b.pass)) {
+    return res.status(400).json({ error: 'That mail account is missing its server, address or app password. Reconnect it in Pillar.' });
+  }
+  const host = own ? b.host : process.env.CHURCH_SMTP_HOST;
+  const user = own ? b.user : process.env.CHURCH_SMTP_USER;
+  const pass = own ? b.pass : process.env.CHURCH_SMTP_PASS;
+  const port = own ? b.port : process.env.CHURCH_SMTP_PORT;
+  const from = own ? (b.from || user) : (process.env.CHURCH_FROM || user);
   const p = Number(port) || 587;
 
   if (!host || !user || !pass) {
@@ -59,14 +94,12 @@ export default async function handler(req, res) {
     const accepted = info?.accepted || [];
     const rejected = info?.rejected || [];
     if (rejected.length && !accepted.length) {
-      return res.status(400).json({ error: `All recipients rejected: ${rejected.join(', ')}`,
-        via: `${host}:${p}`, accepted, rejected });
+      return res.status(400).json({ error: `All recipients rejected: ${rejected.join(', ')}`, accepted, rejected });
     }
-    return res.status(200).json({ ok: true, via: `${host}:${p}`,
-      accepted, rejected, response: info?.response });
+    return res.status(200).json({ ok: true, accepted, rejected });
   } catch (e) {
-    // Echo the server + username we tried (never the password) — otherwise an
-    // auth failure gives no way to tell which account is actually in use.
-    return res.status(400).json({ error: String(e?.message || e), via: `${host}:${p}`, user });
+    // Say which kind of account failed, never the server or username.
+    const which = own ? 'your connected mail account' : "the church's mail account";
+    return res.status(400).json({ error: `Couldn't send with ${which}: ${String(e?.message || e)}` });
   }
 }

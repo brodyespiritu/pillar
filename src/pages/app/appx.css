@@ -1,0 +1,453 @@
+/* ═══ Pillar → App ═══
+ *
+ * Pillar's own blue theme (styles/global.css), with room to breathe: a pale page, white panels,
+ * blue for the one filled button, the switches and what's picked, green for "on", red for the live
+ * stream and for trouble. The phone previews keep the member app's own colours — they show what a
+ * member sees.
+ *
+ * `ax-` rather than `ap-`: the Website section still uses app.css.
+ */
+.ax {
+  --ax-canvas: var(--bg);
+  --ax-card: var(--surface);
+  --ax-card-hover: var(--surface-2);
+  --ax-raised: var(--surface);
+  --ax-field: var(--bg);
+  --ax-ink: var(--text);
+  --ax-ink-2: var(--text-2);
+  --ax-ink-3: var(--text-3);
+  --ax-faint: #A9BACB;
+  --ax-line: var(--border);
+  --ax-line-2: #D3DEEC;
+  --ax-pill: var(--accent);
+  --ax-pill-press: var(--accent-hover);
+  --ax-pill-text: #FFFFFF;
+  --ax-pick: var(--accent-soft);
+  --ax-on: var(--green);
+  --ax-accent: var(--accent);
+  --ax-live: var(--red);
+  --ax-danger: var(--red);
+  --ax-danger-soft: var(--red-soft);
+  --ax-focus: rgba(0, 107, 255, 0.16);
+  color: var(--ax-ink);
+  font-size: 15px;
+}
+
+/* ── frame: the app's pages down the left, from the very top; Pillar's bar beside them ── */
+.ax-wrap {
+  display: grid; height: 100vh; overflow: hidden; background: var(--ax-canvas);
+  grid-template-columns: 264px minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+}
+.ax-top { grid-column: 2; grid-row: 1; min-width: 0; }
+.ax-side {
+  grid-column: 1; grid-row: 1 / 3; display: flex; flex-direction: column; gap: 26px;
+  padding: 28px 20px 28px 28px; background: var(--surface); border-right: 1px solid var(--ax-line); overflow-y: auto;
+}
+.ax-side-title { padding: 0 16px; font-size: 12px; font-weight: 700; letter-spacing: 1.6px; text-transform: uppercase; color: var(--ax-ink-3); }
+.ax-nav { display: flex; flex-direction: column; gap: 4px; }
+.ax-nav a {
+  display: flex; align-items: center; gap: 14px; height: 50px; padding: 0 16px; border-radius: 999px;
+  font-size: 15.5px; font-weight: 600; color: var(--ax-ink-2); text-decoration: none; white-space: nowrap;
+  transition: background 0.12s, color 0.12s;
+}
+.ax-nav a svg { flex-shrink: 0; color: var(--ax-ink-3); }
+.ax-nav a:hover { background: var(--ax-card-hover); color: var(--ax-ink); }
+.ax-nav a.active { background: var(--ax-pill); color: var(--ax-pill-text); }
+.ax-nav a.active svg { color: var(--ax-pill-text); }
+.ax-nav a:focus-visible { outline: none; box-shadow: 0 0 0 4px var(--ax-focus); }
+.ax-nav-live {
+  margin-left: auto; padding: 3px 9px; border-radius: 999px; background: var(--ax-live); color: #fff;
+  font-size: 10.5px; font-weight: 800; letter-spacing: 1.2px;
+}
+.ax-side-foot { margin-top: auto; padding: 0 16px; display: flex; gap: 10px; align-items: flex-start; font-size: 13px; line-height: 1.5; color: var(--ax-ink-3); }
+.ax-side-foot .ax-dot { margin-top: 6px; }
+
+.ax-main { grid-column: 2; grid-row: 2; min-width: 0; overflow-y: auto; }
+.ax-page { max-width: 1520px; padding: 48px 56px 120px; }
+.ax-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; flex-wrap: wrap; margin-bottom: 40px; }
+.ax-title { font-size: 38px; font-weight: 800; line-height: 1.1; letter-spacing: -1.1px; color: var(--ax-ink); }
+.ax-sub { margin-top: 12px; max-width: 660px; font-size: 16.5px; line-height: 1.55; color: var(--ax-ink-2); }
+.ax-head-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+
+/* ── the three columns: what's there · the one you're changing · how it looks ── */
+.ax-split { display: grid; grid-template-columns: 300px minmax(0, 1fr) 340px; gap: 32px; align-items: start; }
+.ax-split.two { grid-template-columns: 300px minmax(0, 1fr); }
+.ax-split.wide-aside { grid-template-columns: minmax(0, 1fr) 380px; }
+/* a list whose rows carry more than a title and a switch — a star, a number, a picture — needs
+   more room before the title starts truncating */
+.ax-split.wide-list { grid-template-columns: 348px minmax(0, 1fr) 292px; }
+.ax-split.two.wide-list { grid-template-columns: 348px minmax(0, 1fr); }
+.ax-sticky { position: sticky; top: 24px; }
+.ax-stack { display: flex; flex-direction: column; gap: 28px; }
+
+.ax-panel { background: var(--ax-card); border: 1px solid var(--ax-line); border-radius: 26px; padding: 32px; box-shadow: var(--shadow); }
+.ax-panel.tight { padding: 18px; }
+.ax-panel.white { background: var(--ax-raised); }
+.ax-panel-title { font-size: 20px; font-weight: 800; letter-spacing: -0.4px; }
+.ax-panel-sub { margin-top: 6px; font-size: 14.5px; line-height: 1.5; color: var(--ax-ink-2); }
+.ax-panel-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 24px; }
+
+/* ── buttons: one filled look, one outline, one quiet ── */
+.ax-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+  height: 48px; padding: 0 24px; border-radius: 999px; border: 1.5px solid var(--ax-line-2);
+  background: var(--surface); color: var(--ax-ink); font-size: 15px; font-weight: 700; white-space: nowrap;
+  transition: background 0.12s, border-color 0.12s, color 0.12s, opacity 0.12s;
+}
+.ax-btn:hover { border-color: var(--ax-ink-3); }
+.ax-btn.primary { background: var(--ax-pill); border-color: var(--ax-pill); color: var(--ax-pill-text); }
+.ax-btn.primary:hover { background: var(--ax-pill-press); border-color: var(--ax-pill-press); }
+.ax-btn.quiet { border-color: transparent; background: transparent; padding: 0 16px; color: var(--ax-ink-2); }
+.ax-btn.quiet:hover { background: var(--ax-card-hover); border-color: transparent; color: var(--ax-ink); }
+.ax-btn.danger { border-color: transparent; background: transparent; padding: 0 16px; color: var(--ax-danger); }
+.ax-btn.danger:hover { background: var(--ax-danger-soft); border-color: transparent; }
+.ax-btn.sm { height: 40px; padding: 0 18px; font-size: 14px; }
+.ax-btn.block { width: 100%; }
+.ax-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.ax-btn:focus-visible { outline: none; box-shadow: 0 0 0 4px var(--ax-focus); }
+.ax-iconbtn {
+  width: 40px; height: 40px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+  background: transparent; color: var(--ax-ink-3); flex-shrink: 0;
+}
+.ax-iconbtn:hover { background: var(--ax-card-hover); color: var(--ax-ink); }
+.ax-iconbtn.danger:hover { background: var(--ax-danger-soft); color: var(--ax-danger); }
+.ax-iconbtn:disabled { opacity: 0.3; cursor: default; }
+.ax-iconbtn:focus-visible { outline: none; box-shadow: 0 0 0 4px var(--ax-focus); }
+
+/* ── the list ── */
+.ax-list-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+.ax-list-count { font-size: 13.5px; font-weight: 600; color: var(--ax-ink-3); }
+.ax-list { display: flex; flex-direction: column; gap: 6px; }
+.ax-row {
+  position: relative; display: flex; align-items: center; gap: 14px; width: 100%; min-height: 68px;
+  padding: 12px 14px; border-radius: 20px; border: 1.5px solid transparent; background: transparent;
+  text-align: left; color: var(--ax-ink); cursor: pointer; transition: background 0.12s, border-color 0.12s, opacity 0.12s;
+}
+.ax-row:hover { background: var(--ax-card-hover); }
+.ax-row.on { background: var(--ax-pick); border-color: var(--ax-accent); }
+.ax-row:focus-visible { outline: none; box-shadow: 0 0 0 4px var(--ax-focus); }
+.ax-row.dragging { opacity: 0.35; }
+.ax-row.drop-above::before, .ax-row.drop-below::after {
+  content: ''; position: absolute; left: 14px; right: 14px; height: 3px; border-radius: 3px; background: var(--ax-pill);
+}
+.ax-row.drop-above::before { top: -5px; }
+.ax-row.drop-below::after { bottom: -5px; }
+.ax-grip { display: flex; margin: 0 -6px 0 -4px; color: var(--ax-faint); cursor: grab; }
+.ax-row:hover .ax-grip { color: var(--ax-ink-3); }
+.ax-thumb {
+  width: 46px; height: 46px; flex-shrink: 0; border-radius: 14px; display: flex; align-items: center; justify-content: center;
+  background: var(--surface-2) center / cover no-repeat; color: var(--ax-accent);
+}
+.ax-thumb.tall { width: 36px; height: 48px; border-radius: 10px; }
+.ax-row-main { display: block; flex: 1; min-width: 0; }
+.ax-row-title { display: block; font-size: 15.5px; font-weight: 700; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ax-row-title.muted { color: var(--ax-ink-3); font-weight: 600; }
+.ax-row-sub { display: block; margin-top: 3px; font-size: 13px; color: var(--ax-ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ax-row-flag { color: var(--ax-danger); font-weight: 700; }
+
+/* ── on / off ── */
+.ax-toggle { position: relative; display: inline-flex; align-items: center; gap: 12px; font-size: 15px; font-weight: 600; color: var(--ax-ink); cursor: pointer; user-select: none; }
+.ax-toggle input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.ax-toggle-track {
+  position: relative; flex-shrink: 0; width: 50px; height: 30px; border-radius: 999px; background: var(--ax-line-2); transition: background 0.15s;
+}
+.ax-toggle-track::after {
+  content: ''; position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; border-radius: 50%;
+  background: #fff; box-shadow: 0 1px 3px rgba(23, 19, 16, 0.25); transition: transform 0.15s;
+}
+.ax-toggle input:checked + .ax-toggle-track { background: var(--ax-pill); }
+.ax-toggle input:checked + .ax-toggle-track::after { transform: translateX(20px); }
+.ax-toggle input:focus-visible + .ax-toggle-track { box-shadow: 0 0 0 4px var(--ax-focus); }
+.ax-toggle input:disabled + .ax-toggle-track { opacity: 0.4; }
+.ax-toggle.small .ax-toggle-track { width: 42px; height: 26px; }
+.ax-toggle.small .ax-toggle-track::after { width: 20px; height: 20px; }
+.ax-toggle.small input:checked + .ax-toggle-track::after { transform: translateX(16px); }
+.ax-toggle.live input:checked + .ax-toggle-track { background: var(--ax-live); }
+.ax-toggle-label small { display: block; margin-top: 2px; font-size: 13px; font-weight: 500; color: var(--ax-ink-3); }
+
+.ax-dot { width: 9px; height: 9px; flex-shrink: 0; border-radius: 50%; background: var(--ax-line-2); }
+.ax-dot.on { background: var(--ax-on); }
+.ax-dot.live { background: var(--ax-live); box-shadow: 0 0 0 5px rgba(211, 47, 47, 0.16); animation: ax-pulse 1.6s ease-in-out infinite; }
+@keyframes ax-pulse { 50% { box-shadow: 0 0 0 9px rgba(211, 47, 47, 0.06); } }
+
+/* ── fields ── */
+.ax-form { display: flex; flex-direction: column; gap: 28px; }
+.ax-field { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.ax-label { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; font-size: 14px; font-weight: 700; color: var(--ax-ink); }
+.ax-count { font-size: 12.5px; font-weight: 600; color: var(--ax-faint); font-variant-numeric: tabular-nums; }
+.ax-count.near { color: #B45309; }
+.ax-input, .ax-textarea, .ax-select {
+  width: 100%; min-height: 52px; padding: 14px 18px; border-radius: 16px; border: 1.5px solid var(--ax-line);
+  background: var(--ax-field); color: var(--ax-ink); font-size: 16px; line-height: 1.45;
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+.ax-input:hover, .ax-textarea:hover, .ax-select:hover { border-color: var(--ax-line-2); }
+.ax-input:focus, .ax-textarea:focus, .ax-select:focus { border-color: var(--ax-accent); background: var(--surface); box-shadow: 0 0 0 4px var(--ax-focus); }
+.ax-input::placeholder, .ax-textarea::placeholder { color: var(--ax-faint); }
+.ax-input:disabled { opacity: 0.55; }
+.ax-input.title { font-size: 22px; font-weight: 700; letter-spacing: -0.3px; min-height: 60px; }
+.ax-textarea { min-height: 128px; resize: vertical; }
+.ax-select { padding-right: 48px; cursor: pointer; background-position: right 16px center !important; }
+.ax-hint { font-size: 13.5px; line-height: 1.55; color: var(--ax-ink-3); }
+.ax-hint a, .ax-link { color: var(--ax-accent); font-weight: 700; text-decoration: none; }
+.ax-hint a:hover, .ax-link:hover { text-decoration: underline; }
+.ax-row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.ax-row3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+.ax-inline { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.ax-divider { height: 1px; background: var(--ax-line); margin: 4px 0; }
+
+/* choices: a row of pills */
+.ax-seg { display: inline-flex; flex-wrap: wrap; gap: 6px; padding: 6px; border-radius: 999px; background: var(--surface-2); }
+.ax-seg button {
+  height: 40px; padding: 0 18px; border-radius: 999px; background: transparent; color: var(--ax-ink-2);
+  font-size: 14.5px; font-weight: 600; white-space: nowrap; transition: background 0.12s, color 0.12s;
+}
+.ax-seg button:hover { color: var(--ax-ink); background: rgba(255, 255, 255, 0.7); }
+.ax-seg button.on { background: var(--ax-pill); color: var(--ax-pill-text); }
+.ax-seg button:focus-visible { outline: none; box-shadow: 0 0 0 4px var(--ax-focus); }
+.ax-seg.big button { height: 46px; padding: 0 22px; font-size: 15px; }
+
+/* choices with a line of explanation each */
+.ax-choices { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.ax-choice {
+  display: flex; flex-direction: column; gap: 6px; padding: 16px; border-radius: 18px; text-align: left;
+  border: 1.5px solid var(--ax-line); background: var(--ax-raised); color: var(--ax-ink); transition: border-color 0.12s, box-shadow 0.12s;
+}
+.ax-choice:hover { border-color: var(--ax-line-2); }
+.ax-choice.on { border-color: var(--ax-accent); background: var(--ax-pick); box-shadow: inset 0 0 0 1px var(--ax-accent); }
+.ax-choice strong { font-size: 15px; }
+.ax-choice span { font-size: 12.5px; line-height: 1.4; color: var(--ax-ink-3); }
+.ax-choice:focus-visible { outline: none; box-shadow: 0 0 0 4px var(--ax-focus); }
+
+/* small pills: tags, suggestions */
+.ax-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.ax-chip {
+  display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 14px; border-radius: 999px;
+  border: 1.5px solid var(--ax-line); background: var(--ax-raised); color: var(--ax-ink-2); font-size: 13.5px; font-weight: 600;
+}
+.ax-chip:hover { border-color: var(--ax-line-2); color: var(--ax-ink); }
+.ax-chip.on { background: var(--ax-pill); border-color: var(--ax-pill); color: var(--ax-pill-text); }
+.ax-tag { font-size: 11px; font-weight: 800; letter-spacing: 1.4px; text-transform: uppercase; color: var(--ax-accent); }
+
+/* ── the editor ── */
+.ax-editor-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 30px; flex-wrap: wrap; }
+.ax-editor-foot { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-top: 34px; padding-top: 26px; border-top: 1px solid var(--ax-line); }
+.ax-save { display: inline-flex; align-items: center; gap: 8px; min-height: 24px; font-size: 13.5px; font-weight: 600; color: var(--ax-ink-3); }
+.ax-save .ax-dot { width: 8px; height: 8px; }
+.ax-save.saved .ax-dot { background: var(--ax-on); }
+.ax-save.error { color: var(--ax-danger); }
+.ax-save.error .ax-dot { background: var(--ax-danger); }
+.ax-save button { font-size: 13.5px; font-weight: 700; color: inherit; background: none; text-decoration: underline; text-underline-offset: 3px; padding: 0; }
+
+.ax-rows { display: flex; flex-direction: column; gap: 10px; }
+.ax-subrow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.ax-subrow > .ax-input, .ax-subrow > .ax-select { flex: 1 1 160px; width: auto; }
+
+/* ── messages ── */
+.ax-alert {
+  display: flex; align-items: flex-start; gap: 12px; margin-bottom: 28px; padding: 16px 20px; border-radius: 18px;
+  background: var(--ax-danger-soft); color: var(--ax-danger); font-size: 14.5px; font-weight: 600; line-height: 1.5;
+}
+.ax-alert button { margin-left: auto; background: none; color: inherit; font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
+.ax-note { display: flex; align-items: flex-start; gap: 12px; padding: 16px 20px; border-radius: 18px; background: var(--surface-2); color: var(--ax-ink-2); font-size: 14.5px; line-height: 1.55; }
+.ax-note svg { flex-shrink: 0; margin-top: 2px; color: var(--ax-ink-3); }
+.ax-empty { padding: 44px 20px; text-align: center; font-size: 15px; line-height: 1.6; color: var(--ax-ink-3); }
+.ax-empty strong { display: block; margin-bottom: 6px; font-size: 18px; color: var(--ax-ink); }
+.ax-loading { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 56px 20px; font-size: 15px; color: var(--ax-ink-2); }
+.ax-spinner { width: 18px; height: 18px; flex-shrink: 0; border-radius: 50%; border: 2.5px solid var(--ax-line-2); border-top-color: var(--ax-accent); animation: ax-spin 0.7s linear infinite; }
+.ax-btn.primary .ax-spinner { border-color: rgba(255, 255, 255, 0.3); border-top-color: #fff; }
+@keyframes ax-spin { to { transform: rotate(360deg); } }
+.ax-toast {
+  position: fixed; left: 50%; bottom: 32px; z-index: 50; transform: translateX(-50%); max-width: min(560px, calc(100vw - 40px));
+  display: flex; align-items: center; gap: 14px; padding: 14px 16px 14px 22px; border-radius: 999px;
+  background: var(--text); color: #fff; font-size: 14.5px; font-weight: 600; box-shadow: 0 16px 40px rgba(11, 53, 88, 0.3);
+}
+.ax-toast button { color: #fff; background: rgba(255, 255, 255, 0.16); border-radius: 999px; height: 34px; padding: 0 14px; font-weight: 700; }
+
+/* ── pictures and videos ── */
+.ax-drop {
+  display: flex; align-items: center; gap: 18px; flex-wrap: wrap; padding: 18px; border-radius: 20px;
+  border: 1.5px dashed var(--ax-line-2); background: var(--ax-field); transition: border-color 0.12s, background 0.12s;
+}
+.ax-drop.over { border-color: var(--ax-accent); background: var(--ax-pick); }
+.ax-drop-preview { width: 132px; height: 88px; flex-shrink: 0; border-radius: 14px; background: var(--surface-2) center / cover no-repeat; display: flex; align-items: center; justify-content: center; color: var(--ax-ink-3); }
+.ax-drop-preview.tall { width: 72px; height: 96px; }
+.ax-drop-text { flex: 1 1 160px; min-width: 0; font-size: 14px; line-height: 1.5; color: var(--ax-ink-3); }
+.ax-drop-text strong { display: block; color: var(--ax-ink); font-size: 15px; }
+.ax-video { display: block; width: 100%; max-height: 260px; border-radius: 18px; background: #000; }
+.ax-upload { display: flex; flex-direction: column; gap: 12px; padding: 20px; border-radius: 20px; background: var(--ax-field); border: 1.5px solid var(--ax-line); }
+.ax-upload-top { display: flex; justify-content: space-between; gap: 14px; font-size: 14.5px; font-weight: 700; }
+.ax-upload-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ax-upload-pct { flex-shrink: 0; color: var(--ax-ink-3); font-variant-numeric: tabular-nums; }
+.ax-upload-foot { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
+.ax-progress { position: relative; height: 8px; border-radius: 999px; background: var(--ax-line); overflow: hidden; }
+.ax-progress > span { position: absolute; top: 0; bottom: 0; left: 0; width: 0; border-radius: inherit; background: var(--ax-pill); transition: width 0.25s ease; }
+.ax-progress.busy > span { width: 35%; animation: ax-indeterminate 1.4s ease-in-out infinite; }
+@keyframes ax-indeterminate { from { transform: translateX(-100%); } to { transform: translateX(290%); } }
+
+/* ── the phone ── */
+.ax-phone-wrap { display: flex; flex-direction: column; align-items: center; gap: 16px; }
+.ax-phone {
+  width: 100%; max-width: 344px; border-radius: 46px; border: 10px solid #0B3558; background: #fff;
+  padding: 26px 16px 22px; box-shadow: 0 28px 60px rgba(11, 53, 88, 0.16); overflow: hidden;
+}
+.ax-phone-cap { font-size: 13px; line-height: 1.5; color: var(--ax-ink-3); text-align: center; max-width: 300px; }
+.ax-phone-boxes { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin-bottom: 12px; }
+.ax-phone-box { aspect-ratio: 1; display: flex; flex-direction: column; justify-content: flex-end; padding: 11px; border-radius: 16px; background: #F6F4F0 center / cover no-repeat; color: #1A1511; font-size: 12px; font-weight: 700; outline: 3px solid transparent; outline-offset: 2px; transition: outline-color 0.12s; }
+.ax-phone-box small { display: block; margin-top: 2px; font-size: 9.5px; font-weight: 400; line-height: 1.25; color: #6B6055; }
+.ax-phone-box.dark small { color: rgba(255, 255, 255, 0.72); }
+.ax-phone-box.dark { background-color: #171310; background-image: linear-gradient(to top, rgba(8, 11, 16, 0.85), rgba(8, 11, 16, 0.15)); color: #fff; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.4); }
+.ax-phone-box[role="button"] { cursor: pointer; }
+.ax-phone-box.picked { outline-color: var(--accent); }
+.ax-phone-none { padding: 30px 12px; border-radius: 18px; border: 1.5px dashed #E9E5DF; text-align: center; color: #7A6E62; font-size: 13px; }
+.ax-phone-row { display: flex; gap: 9px; margin: 0 -16px; padding: 0 16px; overflow-x: auto; scroll-snap-type: x mandatory; scroll-padding-left: 16px; scrollbar-width: none; }
+.ax-phone-row::-webkit-scrollbar { display: none; }
+.ax-phone-row > * { flex: 0 0 100%; scroll-snap-align: start; }
+.ax-phone-hint { margin-top: 8px; text-align: center; font-size: 12px; color: #7A6E62; }
+.ax-phone-title { margin: 2px 0 14px; font-size: 22px; font-weight: 800; letter-spacing: -0.6px; color: #1A1511; }
+
+/* a card in the phone, drawn the way the app draws it (BethesdaApp components/HomeCards.js) */
+.ax-cp { position: relative; width: 100%; border-radius: 18px; overflow: hidden; text-align: left; cursor: pointer; outline: 3px solid transparent; outline-offset: 2px; transition: outline-color 0.12s; }
+.ax-cp.picked { outline-color: var(--accent); }
+.ax-cp-photo { aspect-ratio: 4 / 3; display: flex; flex-direction: column; justify-content: flex-end; background: #171310 center / cover no-repeat; }
+.ax-cp-builtin { background: linear-gradient(160deg, #6b5a4c, #171310); }
+.ax-cp-shade { position: absolute; inset: 0; background: linear-gradient(to bottom, rgba(8, 11, 16, 0) 0%, rgba(8, 11, 16, 0.25) 40%, rgba(8, 11, 16, 0.88) 100%); }
+.ax-cp-play { position: absolute; left: 50%; top: 42%; transform: translate(-50%, -50%); width: 50px; height: 50px; border-radius: 50%; display: flex; align-items: center; justify-content: center; padding-left: 3px; background: rgba(255, 255, 255, 0.92); color: #171310; font-size: 17px; }
+/* on a Home card the play button sits in the corner, and the words stop short of it */
+.ax-cp-play.corner { left: auto; top: auto; right: 14px; bottom: 13px; transform: none; width: 44px; height: 44px; font-size: 15px; }
+.ax-cp-video .ax-cp-foot { padding-right: 70px; }
+.ax-cp-foot { position: relative; padding: 0 16px 15px; }
+.ax-cp-kicker { margin-bottom: 5px; font-size: 9.5px; font-weight: 700; letter-spacing: 1.4px; color: rgba(255, 255, 255, 0.78); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ax-cp-kicker.dark { color: #6B6055; }
+.ax-cp-title { font-size: 18px; font-weight: 700; line-height: 1.2; letter-spacing: -0.4px; color: #fff; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.ax-cp-title.dark { display: block; color: #1A1511; }
+.ax-cp-sub { margin-top: 4px; font-size: 12px; line-height: 1.4; color: rgba(255, 255, 255, 0.85); overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.ax-cp-sub.dark { display: block; color: #6B6055; font-weight: 600; }
+.ax-cp-note { margin-top: 6px; font-size: 11px; color: rgba(255, 255, 255, 0.7); }
+.ax-cp-text { padding: 18px; background: #F6F4F0; }
+.ax-cp-body { margin-top: 8px; font-size: 12.5px; line-height: 1.5; color: #1A1511; white-space: pre-wrap; overflow-wrap: anywhere; }
+.ax-cp-btns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.ax-cp-btn { display: inline-flex; align-items: center; height: 34px; padding: 0 14px; border-radius: 999px; background: #171310; color: #fff; font-size: 12px; font-weight: 700; }
+.ax-cp-btn.light { background: #fff; color: #171310; }
+.ax-cp-draft { position: absolute; top: 10px; left: 10px; z-index: 1; padding: 4px 10px; border-radius: 999px; background: rgba(255, 255, 255, 0.92); color: #1A1511; font-size: 10.5px; font-weight: 800; letter-spacing: 1px; }
+
+/* an announcement, as the Bulletin draws it */
+.ax-notice { padding: 16px 0 18px; border-top: 1px solid #E9E5DF; cursor: pointer; }
+.ax-notice:first-child { border-top: 0; padding-top: 4px; }
+.ax-notice.picked { margin: 0 -10px; padding-left: 10px; padding-right: 10px; border-radius: 14px; background: #F6F4F0; box-shadow: inset 0 0 0 2px var(--accent); }
+.ax-notice-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.ax-notice-tag { font-size: 10.5px; font-weight: 700; letter-spacing: 1.4px; color: #C6520F; }
+.ax-notice-when { font-size: 12.5px; font-weight: 600; color: #7A6E62; }
+.ax-notice-title { font-size: 17px; font-weight: 600; line-height: 1.3; letter-spacing: -0.3px; color: #1A1511; overflow-wrap: anywhere; }
+.ax-notice-body { margin-top: 8px; font-size: 14px; line-height: 1.55; color: #6B6055; white-space: pre-wrap; overflow-wrap: anywhere; }
+.ax-fold { border-radius: 18px; background: #F6F4F0; padding: 16px 18px; }
+.ax-fold-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 12px; font-size: 16px; font-weight: 700; color: #1A1511; }
+.ax-fold-head span { font-size: 12.5px; font-weight: 600; color: #7A6E62; }
+.ax-fold .ax-notice.picked { background: #fff; }
+
+/* a group card, as Groups and Ministries draws it */
+.ax-gcard { width: 100%; padding: 18px; border-radius: 20px; background: #D6EAF9; text-align: left; }
+.ax-gcard-tag { display: inline-block; margin-bottom: 10px; padding: 5px 11px; border-radius: 999px; background: #fff; color: #6B6055; font-size: 11.5px; font-weight: 600; }
+.ax-gcard-title { font-size: 17px; font-weight: 700; line-height: 1.3; color: #1A1511; overflow-wrap: anywhere; }
+.ax-gcard-body { margin-top: 7px; font-size: 14px; line-height: 1.45; color: #6B6055; overflow-wrap: anywhere; }
+.ax-gcard-btn { display: inline-flex; align-items: center; gap: 7px; height: 44px; margin-top: 14px; padding: 0 16px; border-radius: 999px; background: #171310; color: #fff; font-size: 12.5px; font-weight: 700; letter-spacing: 1.4px; text-transform: uppercase; }
+
+/* a push notification, as a phone shows it */
+.ax-push { display: flex; gap: 12px; padding: 14px 16px; border-radius: 22px; background: rgba(246, 244, 240, 0.96); box-shadow: 0 10px 30px rgba(23, 19, 16, 0.12); }
+.ax-push-icon { width: 38px; height: 38px; flex-shrink: 0; border-radius: 10px; background: #171310; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800; }
+.ax-push-top { display: flex; justify-content: space-between; gap: 10px; font-size: 12px; color: #7A6E62; }
+.ax-push-title { margin-top: 2px; font-size: 14.5px; font-weight: 700; color: #1A1511; overflow-wrap: anywhere; }
+.ax-push-body { margin-top: 2px; font-size: 14px; line-height: 1.4; color: #1A1511; overflow-wrap: anywhere; }
+
+/* live chat */
+.ax-chat { display: flex; flex-direction: column; gap: 12px; max-height: 420px; overflow-y: auto; }
+.ax-chat-msg { font-size: 14.5px; line-height: 1.5; }
+.ax-chat-who { margin-right: 8px; font-weight: 700; }
+.ax-chat-text { color: var(--ax-ink-2); }
+
+/* ── smaller screens ── */
+@media (max-width: 1440px) {
+  .ax-split { grid-template-columns: 300px minmax(0, 1fr); }
+  .ax-split > .ax-aside { grid-column: 1 / -1; }
+  .ax-split > .ax-aside .ax-sticky { position: static; }
+  .ax-split.wide-aside { grid-template-columns: minmax(0, 1fr); }
+  .ax-page { padding: 44px 44px 110px; }
+}
+@media (max-width: 980px) {
+  .ax-wrap { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto minmax(0, 1fr); }
+  .ax-top { grid-column: 1; grid-row: 1; }
+  .ax-side { grid-column: 1; grid-row: 2; flex-direction: row; align-items: center; gap: 10px; padding: 12px 16px; border-right: 0; border-bottom: 1px solid var(--ax-line); overflow-x: auto; overflow-y: hidden; }
+  .ax-main { grid-column: 1; grid-row: 3; }
+  .ax-side-title, .ax-side-foot { display: none; }
+  .ax-nav { flex-direction: row; }
+  .ax-nav a { height: 42px; }
+  .ax-page { padding: 32px 20px 96px; }
+  .ax-title { font-size: 30px; }
+  .ax-split, .ax-split.two { grid-template-columns: minmax(0, 1fr); }
+  .ax-sticky { position: static; }
+  .ax-panel { padding: 22px; border-radius: 24px; }
+  .ax-row2, .ax-row3 { grid-template-columns: 1fr; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ax-progress.busy > span { animation: none; width: 100%; opacity: 0.45; }
+  .ax-dot.live { animation: none; }
+}
+
+/* ── Watch: Featured star, series items, the picker ─────────────────────────── */
+/* the star beside a row: on = it sits right below the big card on Media */
+.ax-star {
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  width: 30px; height: 30px; margin-right: -4px; border-radius: 10px; border: none; background: transparent;
+  color: var(--ax-faint); cursor: pointer; transition: background 0.12s, color 0.12s;
+}
+.ax-star:hover:not(:disabled) { background: var(--ax-card-hover); color: var(--ax-ink-3); }
+.ax-star.on { color: #E8A317; }
+.ax-star:disabled { opacity: 0.35; cursor: default; }
+.ax-star:focus-visible { outline: none; box-shadow: 0 0 0 4px var(--ax-focus); }
+
+/* the switches under an editor's form: where this one shows on Media */
+.ax-editor-extra {
+  padding: 18px 26px; border-top: 1px solid var(--ax-line);
+  display: flex; flex-direction: column; gap: 16px;
+}
+.ax-switch-row { display: flex; flex-wrap: wrap; gap: 14px 40px; }
+
+/* a row that is only read, not picked (what is in a series) */
+.ax-row.static { cursor: default; }
+.ax-row.static:hover { background: transparent; }
+.ax-num {
+  flex-shrink: 0; width: 24px; text-align: center; font-size: 13px; font-weight: 700; color: var(--ax-ink-3);
+  font-variant-numeric: tabular-nums;
+}
+.ax-row-btns { display: flex; gap: 4px; flex-shrink: 0; }
+.ax-icon-btn {
+  display: flex; align-items: center; justify-content: center; width: 32px; height: 32px;
+  border-radius: 10px; border: 1px solid var(--ax-line); background: var(--surface);
+  color: var(--ax-ink-2); cursor: pointer; transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.ax-icon-btn:hover:not(:disabled) { background: var(--ax-card-hover); }
+.ax-icon-btn.danger:hover:not(:disabled) { color: var(--ax-danger); border-color: var(--ax-danger); }
+.ax-icon-btn:disabled { opacity: 0.3; cursor: default; }
+.ax-icon-btn:focus-visible { outline: none; box-shadow: 0 0 0 4px var(--ax-focus); }
+
+/* everything on Watch that isn't in this series yet */
+.ax-picker { margin-top: 10px; max-height: 320px; overflow-y: auto; }
+.ax-row.pickable { border: 1.5px solid transparent; }
+.ax-row.pickable:hover { background: var(--ax-card-hover); border-color: var(--ax-line); }
+.ax-add {
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  width: 30px; height: 30px; border-radius: 10px; background: var(--ax-pick); color: var(--ax-accent);
+}
+
+/* ── the notes sheet, as a phone draws it ───────────────────────────────────── */
+.ax-sheet { text-align: left; }
+.ax-sheet-title { font-size: 19px; font-weight: 800; letter-spacing: -0.4px; color: #1A1511; }
+.ax-sheet-meta { margin-top: 4px; font-size: 12.5px; color: #6B6055; }
+.ax-sheet-body { margin-top: 16px; }
+.ax-sheet-line { margin: 0 0 10px; font-size: 13px; line-height: 2; color: #1A1511; }
+/* a blank is a line waiting to be written on */
+.ax-sheet-blank {
+  display: inline-block; width: 86px; margin: 0 4px; border-bottom: 2px solid #C6520F;
+  vertical-align: baseline;
+}
