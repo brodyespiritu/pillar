@@ -400,6 +400,8 @@ export async function saveChurchMember(member) {
   const payload = { ...member };
   if (payload.birthday === '') payload.birthday = null;
   if (payload.date_joined === '') payload.date_joined = null;
+  // a staff position is text or nothing: blank clears it (the database refuses an empty one)
+  if (payload.staff_title !== undefined) payload.staff_title = String(payload.staff_title ?? '').trim() || null;
   if (member.id) {
     const { data, error } = await supabase.from('church_members').update(payload).eq('id', member.id).select().single();
     return { data, error };

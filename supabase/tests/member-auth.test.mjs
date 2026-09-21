@@ -539,7 +539,7 @@ ok(!dir.error && !page2.error && dir.rows.length === 2 && page2.rows.length === 
   await db.query(`update church_members set deacon_id = null where id = $1`, [M.john]);
   await db.query(`delete from church_members where id = any($1)`, [[deacon, hiddenSis, outSis, kidSmith, goneSmith]]);
 }
-ok(!JSON.stringify(dir.rows).match(/notes|tags|members\.invalid/) && dir.rows.every((x) => Object.keys(x).join() === 'id,name,email,phone,has_photo,address,birthday'),
+ok(!JSON.stringify(dir.rows).match(/notes|tags|members\.invalid/) && dir.rows.every((x) => Object.keys(x).join() === 'id,name,email,phone,has_photo,address,birthday,staff_title'),
   'directory never includes notes, tags or login addresses', JSON.stringify(dir.rows[0]));
 dir = await as('authenticated', A, `select * from public.member_directory('bo%')`);
 ok(!dir.error && dir.rows.length === 0, 'search wildcards are escaped');
@@ -789,6 +789,85 @@ section('member-directory-open.sql (the live-database update)');
   try { await db.exec(everyone); } catch (e) { refused = e.message; }
   ok(/replaces this file/.test(refused || '') && JSON.stringify(await defs()) === JSON.stringify(before),
     'member-directory-everyone.sql refuses to run over it, and changes nothing', refused || 'it ran');
+}
+
+section('church staff (a position on the record, filled in once from Pillar\'s staff accounts)');
+{
+  const fs = await import('node:fs');
+  const open = fs.readFileSync(path.join(SUPA, 'member-directory-open.sql'), 'utf8');
+  const title = async (id) => (await row(id)).staff_title;
+  // John is still signed in at this point (Alice's account was deleted above)
+  const J = jwt((await row(M.john)).auth_user_id, (await one(`select session_id from member_sessions where member_id = $1`, [M.john])).session_id);
+
+  // the office sets a position in Pillar; the directory and the member's own profile carry it
+  await db.query(`update church_members set staff_title = 'Communications Director' where id = $1`, [M.bob]);
+  let d = await as('authenticated', J, `select name, staff_title from public.member_directory('')`);
+  ok(!d.error && d.rows.find((x) => x.name === 'Bob Brown')?.staff_title === 'Communications Director'
+    && d.rows.filter((x) => x.staff_title).length === 1, "the directory carries a staff member's position, and nobody else has one", d.error || JSON.stringify(d.rows));
+  let me = await as('authenticated', J, `select public.member_me() v`);
+  ok(!me.error && me.rows[0]?.v && me.rows[0].v.staff_title === null, 'member_me: no position for someone not on staff', me.error || JSON.stringify(me.rows[0]?.v));
+  await db.query(`update church_members set staff_title = 'Choir Director' where id = $1`, [M.john]);
+  me = await as('authenticated', J, `select public.member_me() v`);
+  ok(!me.error && me.rows[0]?.v?.staff_title === 'Choir Director', 'member_me: a staff member sees their own position', me.error || JSON.stringify(me.rows[0]?.v));
+  const u = await as('authenticated', J, `select public.member_update_me(p_address => '9 Elm') v`);
+  ok(!u.error && (await title(M.john)) === 'Choir Director', "a member can't change it — it's the church's record", u.error || '');
+  await db.query(`update church_members set staff_title = null where id in ($1, $2)`, [M.john, M.bob]);
+
+  // blank or too long never gets in
+  for (const bad of ['', '   ', 'x'.repeat(81)]) {
+    let e = null;
+    try { await db.query(`update church_members set staff_title = $2 where id = $1`, [M.bob, bad]); } catch (x) { e = x.message; }
+    ok(/staff_title/.test(e || ''), `refused: ${bad.length > 10 ? `${bad.length} characters` : JSON.stringify(bad)}`, e || 'accepted');
+  }
+  await db.query(`update church_members set staff_title = $2 where id = $1`, [M.bob, 'x'.repeat(80)]);
+  ok((await title(M.bob)).length === 80, '80 characters is fine');
+  await db.query(`update church_members set staff_title = null where id = $1`, [M.bob]);
+
+  // the one-time fill: as if this project had never had the column
+  await db.exec(`alter table church_members drop column staff_title`);
+  await db.exec(`alter table staff add column if not exists title text`);
+  const acct = async (email, t, role = 'Staff', active = true) => {
+    const id = uid();
+    await db.query(`insert into auth.users (id, email) values ($1, $2)`, [id, email]);
+    await db.query(`insert into staff (id, name, email, role, active, title) values ($1, $2, $2, $3, $4, $5)`, [id, email, role, active, t]);
+  };
+  const S = {
+    comms:    await member({ name: 'Cam Comms', email: ' Cam@Church.test ' }),
+    viewer:   await member({ name: 'Vi Viewer', email: 'vi@church.test' }),
+    former:   await member({ name: 'Fay Former', email: 'fay@church.test' }),
+    twin1:    await member({ name: 'Tess Twin', email: 'twins@church.test' }),
+    twin2:    await member({ name: 'Tom Twin', email: 'twins@church.test' }),
+    untitled: await member({ name: 'Una Untitled', email: 'una@church.test' }),
+    doubled:  await member({ name: 'Dee Double', email: 'dee@church.test' }),
+  };
+  await acct('cam@church.test', '  Communications Director ', 'Admin');
+  await acct('vi@church.test', 'Helper', 'Viewer');
+  await acct('fay@church.test', 'Former Pastor', 'Staff', false);
+  await acct('twins@church.test', 'Nursery Director');
+  await acct('una@church.test', '   ');
+  await acct('dee@church.test', 'Music Director');
+  await acct('DEE@church.test', 'Music Minister');
+  let err = null;
+  try { await db.exec(open); } catch (e) { err = e.message; }
+  ok(!err, 'member-directory-open.sql adds the column and fills it', err || '');
+  ok(await title(S.comms) === 'Communications Director',
+    'filled from an active, titled account whose email is on exactly one member (case and spaces aside)', String(await title(S.comms)));
+  ok(await title(S.viewer) === null && await title(S.former) === null, 'viewer and inactive accounts are left out');
+  ok(await title(S.twin1) === null && await title(S.twin2) === null, "an email on two members' records is left alone");
+  ok(await title(S.untitled) === null && await title(S.doubled) === null, 'no title, or two accounts on one email: left alone');
+  const filled = await all(`select name from church_members where staff_title is not null`);
+  ok(filled.length === 1, 'nobody else is marked as staff', JSON.stringify(filled));
+
+  // after that it belongs to the office: running the file again re-fills nothing and overwrites nothing
+  await db.query(`update church_members set staff_title = 'Director of Communications' where id = $1`, [S.comms]);
+  await db.query(`update staff set title = 'Something Else' where email = 'cam@church.test'`);
+  await db.exec(open);
+  ok(await title(S.comms) === 'Director of Communications', 'running it again never overwrites what the office set');
+  let e2 = null;
+  try { await db.query(`update church_members set staff_title = '' where id = $1`, [S.comms]); } catch (x) { e2 = x.message; }
+  ok(/staff_title/.test(e2 || ''), 'the rule comes back with the column', e2 || 'accepted');
+  d = await as('authenticated', J, `select name, staff_title from public.member_directory('Cam')`);
+  ok(!d.error && d.rows.length === 1 && d.rows[0].staff_title === 'Director of Communications', 'and the directory shows it', d.error || JSON.stringify(d.rows));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

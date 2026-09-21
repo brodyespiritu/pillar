@@ -454,6 +454,25 @@ function MemberProfile({ member, onNewHousehold, allRows = [], onOpenMember, onC
               <Row label="Status Code" value={member.status_code} />
               <Row label="Active" value={trueFalse(member.active)} last />
             </EditableCard>
+
+            {/* Church staff (2026-09-21): a position here puts a "Church Staff" banner with that title on
+                their profile in the member app. The card is always here, so it can be found: until
+                member-directory-open.sql has added the column it says so instead of offering an edit. */}
+            {'staff_title' in member ? (
+              <EditableCard title="Church Staff" member={member} onSaved={onChanged}
+                fields={[{ key: 'staff_title', label: 'Position', placeholder: 'e.g. Communications Director', maxLength: 80 }]}>
+                <Row label="Position" value={member.staff_title} last
+                  extra={member.staff_title
+                    ? 'The app shows a Church Staff banner with this title on their profile.'
+                    : 'Add their position if they are on staff. The app then shows a Church Staff banner on their profile.'} />
+              </EditableCard>
+            ) : (
+              <div className="mp2-card">
+                <div className="mp2-card-head"><h2 className="mp2-card-title">Church Staff</h2></div>
+                <Row label="Position" value={null} last
+                  extra="Staff positions turn on once member-directory-open.sql has been run in Supabase (SQL Editor)." />
+              </div>
+            )}
           </div>
 
           <aside className="mp2-side">
@@ -611,7 +630,7 @@ function EditableCard({ title, member, fields, onSaved, children }) {
                   </select>
                 : f.type === 'textarea'
                 ? <textarea rows={4} value={draft[f.key] || ''} onChange={e => set(f.key, e.target.value)} placeholder={f.placeholder} />
-                : <input type={f.type || 'text'} value={draft[f.key] || ''}
+                : <input type={f.type || 'text'} value={draft[f.key] || ''} maxLength={f.maxLength}
                     onChange={e => set(f.key, e.target.value)} placeholder={f.placeholder} />}
             </span>
           </div>
@@ -682,6 +701,8 @@ export function MemberModal({ member, onClose, onSaved, onDeleted }) {
     joined_how: member.joined_how || '', date_joined: member.date_joined || '',
     include_directory: member.include_directory ?? true, status_code: member.status_code || 'Active',
     active: member.active ?? true,
+    // church staff position — only on a record that has the column (member-directory-open.sql)
+    ...('staff_title' in member ? { staff_title: member.staff_title || '' } : {}),
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -852,6 +873,12 @@ export function MemberModal({ member, onClose, onSaved, onDeleted }) {
           </>)}
 
           <label className="field-group"><span>Groups / Tags</span><input value={f.tags} onChange={e => set('tags', e.target.value)} placeholder="e.g. Choir, Small Group A" /></label>
+          {'staff_title' in f && (
+            <label className="field-group"><span>Church Staff Position</span>
+              <input value={f.staff_title} maxLength={80} onChange={e => set('staff_title', e.target.value)}
+                placeholder="e.g. Communications Director — blank if not on staff" />
+            </label>
+          )}
           <label className="field-group"><span>Notes</span><textarea rows={3} value={f.notes} onChange={e => set('notes', e.target.value)} placeholder="Anything worth remembering…" /></label>
           {error && <p className="modal-error">{error}</p>}
         </div>

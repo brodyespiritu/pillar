@@ -168,6 +168,48 @@ begin
   end if;
 end $open$;
 
+-- Church staff (user, 2026-09-21): a position on a member's record puts a "Church Staff" banner with
+-- that title on their profile in the app ("Communications Director"). Blank for everyone else. The
+-- office keeps it in Pillar (Members → the member → Church Staff). It is filled in once, when the
+-- column is added, from Pillar's own staff accounts: an active account with a title whose email is on
+-- exactly one member's record (and on exactly one account). Viewer accounts — read-only helpers — are
+-- left out. Running this file again never touches it.
+do $staff$
+declare
+  v_where text := '';
+begin
+  if exists (select 1 from information_schema.columns
+              where table_schema = 'public' and table_name = 'church_members' and column_name = 'staff_title') then
+    return;
+  end if;
+  alter table public.church_members add column staff_title text;
+  alter table public.church_members add constraint church_members_staff_title_check
+    check (staff_title is null or char_length(btrim(staff_title)) between 1 and 80);
+  if not exists (select 1 from information_schema.columns
+                  where table_schema = 'public' and table_name = 'staff' and column_name = 'title')
+     or not exists (select 1 from information_schema.columns
+                     where table_schema = 'public' and table_name = 'staff' and column_name = 'email') then
+    return;   -- no titled staff accounts to start from
+  end if;
+  if exists (select 1 from information_schema.columns
+              where table_schema = 'public' and table_name = 'staff' and column_name = 'active') then
+    v_where := v_where || ' and s.active is not false';
+  end if;
+  if exists (select 1 from information_schema.columns
+              where table_schema = 'public' and table_name = 'staff' and column_name = 'role') then
+    v_where := v_where || $w$ and coalesce(s.role, '') !~* 'viewer'$w$;
+  end if;
+  execute $q$
+    update public.church_members m
+       set staff_title = left(btrim(s.title), 80)
+      from public.staff s
+     where nullif(btrim(s.title), '') is not null
+       and nullif(lower(btrim(s.email)), '') is not null
+       and lower(btrim(m.email)) = lower(btrim(s.email))
+       and (select count(*) from public.church_members x where lower(btrim(x.email)) = lower(btrim(s.email))) = 1
+       and (select count(*) from public.staff y where lower(btrim(y.email)) = lower(btrim(s.email))) = 1$q$ || v_where;
+end $staff$;
+
 do $$
 begin
   if not exists (select 1 from pg_constraint where conname = 'church_members_auth_user_fk') then
@@ -899,7 +941,8 @@ as $$
            'share_phone', m.share_phone, 'share_photo', m.share_photo,
            'share_address', m.share_address, 'share_birthday', m.share_birthday,
            'has_birthday', m.birthday is not null, 'directory_review_due', m.directory_review_due,
-           'directory_allowed', m.include_directory is not false)
+           'directory_allowed', m.include_directory is not false,
+           'staff_title', nullif(btrim(m.staff_title), ''))
     from public.church_members m
    where m.id = public.app_caller_member_id()
 $$;
@@ -994,10 +1037,12 @@ end $$;
 -- unless the member took themselves out (directory_hidden, from My Profile or by deleting their app
 -- account). And everything shows — email, phone, photo, home address and birthday (month and day,
 -- never the year) — whether or not they use the app, until they turn a detail off (opt-out, user
--- 2026-09-21). Photos are fetched one at a time (often stored inline).
+-- 2026-09-21). Photos are fetched one at a time (often stored inline). Church staff carry their
+-- position (staff_title), which the app shows as a "Church Staff" banner.
 drop function if exists public.member_directory(text, int, int);
 create function public.member_directory(p_query text default null, p_limit int default 50, p_offset int default 0)
-returns table (id uuid, name text, email text, phone text, has_photo boolean, address text, birthday text)
+returns table (id uuid, name text, email text, phone text, has_photo boolean, address text, birthday text,
+               staff_title text)
 language sql stable security definer set search_path = ''
 as $$
   select m.id, btrim(m.name),
@@ -1005,7 +1050,9 @@ as $$
          case when m.share_phone then nullif(btrim(m.phone), '') end,
          (m.share_photo and nullif(m.photo_url, '') is not null),
          case when m.share_address then nullif(btrim(m.address), '') end,
-         case when m.share_birthday then to_char(m.birthday, 'MM-DD') end
+         case when m.share_birthday then to_char(m.birthday, 'MM-DD') end,
+         -- the church's own record of who is on staff, not a detail a member shares
+         nullif(btrim(m.staff_title), '')
     from public.church_members m
    where (select public.app_caller_member_id()) is not null
      and not m.directory_hidden
