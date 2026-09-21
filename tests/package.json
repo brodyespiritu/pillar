@@ -1,0 +1,15 @@
+{
+  "name": "pillar-tests",
+  "private": true,
+  "description": "Checks for Pillar's own code (src/lib, the App section's kit) — plain Node, no test framework. Kept out of the root package.json so Vercel never installs it. React is pinned to the version Pillar ships. Run: npm install && npm test",
+  "scripts": {
+    "test": "node run.mjs"
+  },
+  "dependencies": {
+    "@babel/core": "7.29.7",
+    "@babel/plugin-transform-modules-commonjs": "7.29.7",
+    "@babel/plugin-transform-react-jsx": "7.29.7",
+    "react": "19.2.7",
+    "react-test-renderer": "19.2.7"
+  }
+}

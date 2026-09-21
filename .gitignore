@@ -44,3 +44,7 @@ src-tauri/widget/PillarWidget.xcodeproj
 src-tauri/widget/Info.plist
 src-tauri/widget/build
 src-tauri/widget/dist
+
+# test output: the suites in tests/ build throwaway copies of the code they check
+tests/build/
+tests/.build-*/

@@ -1,0 +1,11 @@
+{
+  "name": "pillar-supabase-tests",
+  "private": true,
+  "description": "Runs Pillar's SQL files against PGlite (Postgres in WebAssembly) — no Supabase project involved. Kept out of the root package.json so Vercel never installs it. Run: npm install && npm test",
+  "scripts": {
+    "test": "node run.mjs"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "0.5.8"
+  }
+}
