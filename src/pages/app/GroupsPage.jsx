@@ -191,27 +191,19 @@ export default function GroupsPage() {
     <AppShell
       title="Groups"
       subtitle="Groups and Ministries in the app, and the cards members swipe through there and in the Bulletin. Changes save as you type."
-      actions={(
-        <>
-          <button type="button" className="ax-btn" onClick={addPost}><Icon d={P.plus} size={17} />New card</button>
-          <button type="button" className="ax-btn primary" onClick={addGroup}><Icon d={P.plus} size={17} />New group</button>
-        </>
-      )}
+      tabs={{ value: tab, onChange: setTab, options: [
+        { key: 'groups', label: `Groups · ${gl.length}` },
+        { key: 'cards', label: `Cards · ${pl.length}` },
+      ] }}
     >
       <Alert onClose={error ? () => setError('') : null}>{error}</Alert>
 
-      <div style={{ marginBottom: 28 }}>
-        <Seg big label="Show" value={tab} onChange={setTab} options={[
-          { key: 'groups', label: `Groups · ${gl.length}` },
-          { key: 'cards', label: `Cards · ${pl.length}` },
-        ]} />
-      </div>
-
       {loading ? <Loading /> : tab === 'groups' ? (
         <div className="ax-split">
-          <section>
+          <section className="ax-col">
+            <button type="button" className="ax-btn primary" onClick={addGroup}><Icon d={P.plus} size={17} />New group</button>
             <div className="ax-panel tight">
-              <div className="ax-list-head" style={{ padding: '6px 8px 0' }}>
+              <div className="ax-list-head">
                 <span className="ax-list-count">{gl.length} group{gl.length === 1 ? '' : 's'} · {liveGroups} in the app</span>
               </div>
               <RowList rows={gl} picked={pickedGroup} onPick={setPickedGroup} onMove={(k) => reorder('group', k)}
@@ -234,7 +226,7 @@ export default function GroupsPage() {
                   );
                 }} />
             </div>
-            <p className="ax-hint" style={{ margin: '14px 8px 0' }}>Drag to change the order members see.</p>
+            <p className="ax-hint ax-list-hint">Drag to change the order members see.</p>
           </section>
 
           <section>
@@ -254,12 +246,12 @@ export default function GroupsPage() {
           <aside className="ax-aside">
             <div className="ax-sticky ax-panel white">
               <div className="ax-panel-title">Filter pills</div>
-              <p className="ax-panel-sub" style={{ marginBottom: 18 }}>What members see under the search on Groups and Ministries.</p>
+              <p className="ax-panel-sub spaced">What members see under the search on Groups and Ministries.</p>
               <div className="ax-chips">
                 <span className="ax-chip on">All</span>
                 {pills.map((p) => <span key={p} className="ax-chip">{p}</span>)}
               </div>
-              <p className="ax-hint" style={{ marginTop: 18 }}>
+              <p className="ax-hint ax-after">
                 {pills.length
                   ? 'Each kind in use becomes a pill. The calendar ties add Men, Women, Kids and Youth when those have events.'
                   : 'A kind pill appears once two different kinds are in use — one kind on every group is the same as “All”.'}
@@ -269,9 +261,10 @@ export default function GroupsPage() {
         </div>
       ) : (
         <div className="ax-split">
-          <section>
+          <section className="ax-col">
+            <button type="button" className="ax-btn primary" onClick={addPost}><Icon d={P.plus} size={17} />New card</button>
             <div className="ax-panel tight">
-              <div className="ax-list-head" style={{ padding: '6px 8px 0' }}>
+              <div className="ax-list-head">
                 <span className="ax-list-count">{pl.length} card{pl.length === 1 ? '' : 's'} · {livePosts} showing</span>
               </div>
               <RowList rows={pl} picked={pickedPost} onPick={setPickedPost} onMove={(k) => reorder('post', k)}
@@ -294,7 +287,7 @@ export default function GroupsPage() {
                   );
                 }} />
             </div>
-            <p className="ax-hint" style={{ margin: '14px 8px 0' }}>Drag to change the order members swipe through.</p>
+            <p className="ax-hint ax-list-hint">Drag to change the order members swipe through.</p>
           </section>
 
           <section>
@@ -392,7 +385,7 @@ function GroupEditor({ row, rows, persist, kinds, cards, isNew, onLive, onDelete
                   onClick={() => setLeaders((ls) => ls.filter((_, j) => j !== i))}><Icon d={P.close} size={18} /></button>
               </div>
             ))}
-            <button type="button" className="ax-btn sm" style={{ alignSelf: 'flex-start' }}
+            <button type="button" className="ax-btn sm fit"
               onClick={() => setLeaders((ls) => [...ls, { name: '', role: '' }])}>
               <Icon d={P.plus} size={15} />Add a leader
             </button>

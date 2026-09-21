@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { P, Icon } from '../../lib/icons';
 import {
-  listSheets, saveSheet, deleteSheet, sheetProblems, sheetReady, countBlanks,
-  notSetUp, SETUP_HINT, SHEET_LIMITS, BLANK,
+  listSheets, saveSheet, deleteSheet, sheetProblems, sheetReady, countBlanks, fromSermon, sermonLinkReady,
+  notSetUp, SETUP_HINT, SERMON_HINT, SHEET_LIMITS, BLANK,
 } from '../../lib/sermonSheets';
 import {
   useRows, useSaveQueue, useAutosave, useUndo,
@@ -12,20 +13,28 @@ import {
 // App → Watch → Notes: the fill-in-the-blank sermon notes the congregation gets on the app's Bible
 // page. Type the outline and put ___ wherever the congregation writes something in; the app turns
 // each one into a box they tap. What they type is kept on their own record, never here.
+//
+// Notes can go with one sermon from the Sermons tab: pick it at the top of the editor (or press
+// "Fill-in notes" on the sermon itself). Its title, speaker, date and video fill in, and the app
+// offers the notes on that sermon's card. One sheet per sermon.
 
 const formOf = (r) => ({
+  sermon_id: r.sermon_id ? String(r.sermon_id) : '',
   title: r.title || '', speaker: r.speaker || '', passage: r.passage || '', on_date: r.on_date || '',
   video_url: r.video_url || '', body: r.body || '', published: r.published === true,
 });
-const titled = (f) => !!String(f.title || '').trim();
+const cssUrl = (u) => `url("${String(u).replace(/["\\\n]/g, encodeURIComponent)}")`;
+const sermonTitle = (s) => String(s?.title || '').trim() || 'Untitled sermon';
+const sermonSub = (s) => [s?.speaker, s?.date].filter(Boolean).join(' · ') || 'No speaker or date yet';
 
-export default function NotesView() {
+export default function NotesView({ sermons = [] }) {
   const rows = useRows(formOf);
   const queue = useSaveQueue();
   const [picked, setPicked] = useState(null);
   const [error, setError] = useState('');
   const [setUp, setSetUp] = useState(true);
   const [toast, undo] = useUndo();
+  const [params, setParams] = useSearchParams();
 
   const load = useCallback(async () => {
     setError('');
@@ -46,10 +55,27 @@ export default function NotesView() {
     } catch (e) { rows.failed(key, notSetUp(e) ? SETUP_HINT : e.message); throw e; }
   }), [queue, rows]);
 
-  const add = () => setPicked(rows.add({
-    title: '', speaker: '', passage: '', on_date: '', video_url: '', body: '', published: false,
+  const add = (sermon) => setPicked(rows.add({
+    sermon_id: '', title: '', speaker: '', passage: '', on_date: '', video_url: '', body: '', published: false,
     sort: ((list || []).length + 1) * 10,
+    ...(sermon ? fromSermon(sermon) : {}),
   }, { first: true }));
+
+  // Opened from a sermon (Watch → Sermons → "Fill-in notes"): its notes, or new ones for it.
+  const forSermon = params.get('for');
+  const handled = useRef(null);
+  useEffect(() => {
+    if (!forSermon || list === null || handled.current === forSermon) return;
+    const theirs = list.find((r) => formOf(r).sermon_id === forSermon);
+    const sermon = sermons.find((s) => String(s.id) === forSermon);
+    if (!theirs && !sermon) return;   // the sermons are still on their way
+    handled.current = forSermon;
+    if (theirs) setPicked(theirs._key);
+    else if (setUp) add(sermon);
+    const next = new URLSearchParams(params);
+    next.delete('for');
+    setParams(next, { replace: true });
+  }, [forSermon, list, sermons]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const setLive = async (key, on) => {
     const r = rows.get(key);
@@ -79,18 +105,21 @@ export default function NotesView() {
 
   if (list === null) return <Loading />;
   const current = list.find((r) => r._key === picked) || null;
+  const sermonOf = (id) => (id ? sermons.find((s) => String(s.id) === id) || null : null);
+  // the sermons that already have notes, besides the one being changed
+  const taken = new Set(list.filter((r) => r !== current).map((r) => formOf(r).sermon_id).filter(Boolean));
 
   return (
     <>
       {!setUp && <Alert>{SETUP_HINT}</Alert>}
       {error && <Alert onClose={() => setError('')}>{error}</Alert>}
       <div className="ax-split">
-        <section className="ax-stack" style={{ gap: 14 }}>
-          <button type="button" className="ax-btn primary" onClick={add} disabled={!setUp}>
+        <section className="ax-col">
+          <button type="button" className="ax-btn primary" onClick={() => add()} disabled={!setUp}>
             <Icon d={P.plus} size={17} />New notes
           </button>
           <div className="ax-panel tight">
-            <div className="ax-list-head" style={{ padding: '6px 8px 0' }}>
+            <div className="ax-list-head">
               <span className="ax-list-count">
                 {`${list.length} sheet${list.length === 1 ? '' : 's'} · ${list.filter((r) => r.published).length} in the app`}
               </span>
@@ -100,9 +129,12 @@ export default function NotesView() {
               renderRow={(r) => {
                 const f = formOf(r);
                 const blanks = countBlanks(f.body);
+                const pic = sermonOf(f.sermon_id)?.thumbnailUrl;
                 return (
                   <>
-                    <span className="ax-thumb"><Icon d={P.doc} size={18} /></span>
+                    <span className="ax-thumb" style={pic ? { backgroundImage: cssUrl(pic) } : undefined}>
+                      {!pic && <Icon d={f.sermon_id ? P.link : P.doc} size={18} />}
+                    </span>
                     <span className="ax-row-main">
                       <span className={`ax-row-title${f.title.trim() ? '' : ' muted'}`}>{f.title.trim() || 'Untitled notes'}</span>
                       <span className="ax-row-sub">
@@ -120,7 +152,8 @@ export default function NotesView() {
         </section>
         <section>
           {current
-            ? <SheetEditor key={current._key} row={current} rows={rows} persist={persist} setLive={setLive} remove={remove} />
+            ? <SheetEditor key={current._key} row={current} rows={rows} persist={persist} setLive={setLive} remove={remove}
+                sermons={sermons} taken={taken} />
             : <div className="ax-panel"><div className="ax-empty"><strong>Pick a sheet to change it</strong>or write a new one.</div></div>}
         </section>
         <aside className="ax-aside">
@@ -138,23 +171,28 @@ export default function NotesView() {
   );
 }
 
-function SheetEditor({ row, rows, persist, setLive, remove }) {
+function SheetEditor({ row, rows, persist, setLive, remove, sermons, taken }) {
   const key = row._key;
   const f = formOf(row);
   const set = (k, v) => rows.patch(key, { [k]: v });
-  const auto = useAutosave({ value: f, savedJson: row._saved, ready: titled(f), save: () => persist(key) });
+  // the database takes a sheet once it has a title and some notes, so that's when it saves
+  const auto = useAutosave({ value: f, savedJson: row._saved, ready: sheetReady(f), save: () => persist(key) });
   const blanks = countBlanks(f.body);
+  const problem = sheetProblems(f)[0];
 
   return (
     <div className="ax-panel">
       <div className="ax-editor-head">
-        <SaveState auto={auto} waiting="Not saved — give the notes a title" />
+        <SaveState auto={auto} waiting={problem ? `Not saved yet. ${problem}` : 'Not saved yet'} />
         <Toggle checked={f.published} onChange={(on) => setLive(key, on)} label="In the app"
           sub={f.published ? 'Members see it now' : 'Hidden — only you see it'} />
       </div>
       <div className="ax-form">
+        <SermonField f={f} sermons={sermons} taken={taken}
+          onPick={(s) => rows.patch(key, (r) => fromSermon(s, formOf(r)))}
+          onClear={() => set('sermon_id', '')} />
         <Field label="Title">
-          <input className="ax-input title" value={f.title} autoFocus={row._saved === null}
+          <input className="ax-input title" value={f.title} autoFocus={row._saved === null && !f.sermon_id}
             maxLength={SHEET_LIMITS.title} placeholder="The message’s title"
             onChange={(e) => set('title', e.target.value)} />
         </Field>
@@ -169,7 +207,8 @@ function SheetEditor({ row, rows, persist, setLive, remove }) {
         <Field label="The notes"
           hint={`Put ${BLANK} wherever the congregation writes something in. ${blanks} blank${blanks === 1 ? '' : 's'} so far.`}
           count={f.body.length} max={SHEET_LIMITS.body}>
-          <GrowText value={f.body} minRows={12} onChange={(e) => set('body', e.target.value)}
+          <GrowText value={f.body} minRows={12} autoFocus={row._saved === null && !!f.sermon_id}
+            onChange={(e) => set('body', e.target.value)}
             placeholder={`1. God is ${BLANK} in all things.\n\n2. His mercy is ${BLANK} every morning.`} />
         </Field>
       </div>
@@ -178,6 +217,80 @@ function SheetEditor({ row, rows, persist, setLive, remove }) {
         <button type="button" className="ax-btn danger" onClick={() => remove(key)}><Icon d={P.trash} size={16} />Delete</button>
       </div>
     </div>
+  );
+}
+
+/** Which sermon these notes go with: the one picked, or a list to pick from. */
+function SermonField({ f, sermons, taken, onPick, onClear }) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState('');
+  if (!sermonLinkReady()) {
+    return <Field label="Sermon"><div className="ax-note"><Icon d={P.link} size={18} /><span>{SERMON_HINT}</span></div></Field>;
+  }
+  const current = f.sermon_id ? sermons.find((s) => String(s.id) === f.sermon_id) || null : null;
+  const needle = q.trim().toLowerCase();
+  const shown = needle
+    ? sermons.filter((s) => [s.title, s.speaker, s.date, s.series].some((v) => String(v || '').toLowerCase().includes(needle)))
+    : sermons;
+  const close = () => { setOpen(false); setQ(''); };
+
+  if (open) {
+    return (
+      <Field label="Sermon">
+        <div className="ax-subrow">
+          <input className="ax-input" type="search" value={q} autoFocus placeholder="Search title, speaker, date…"
+            onChange={(e) => setQ(e.target.value)} aria-label="Search sermons" />
+          <button type="button" className="ax-btn quiet sm" onClick={close}>Cancel</button>
+        </div>
+        <div className="ax-picker ax-list">
+          {shown.length === 0
+            ? <div className="ax-empty">{sermons.length ? 'No sermons match.' : 'No sermons yet. Add one on the Sermons tab.'}</div>
+            : shown.map((s) => {
+              const id = String(s.id);
+              const has = taken.has(id);
+              return (
+                <button key={id} type="button" className="ax-row pickable" disabled={has}
+                  onClick={() => { onPick(s); close(); }}>
+                  <span className="ax-thumb" style={s.thumbnailUrl ? { backgroundImage: cssUrl(s.thumbnailUrl) } : undefined}>
+                    {!s.thumbnailUrl && <Icon d={P.play} size={18} />}
+                  </span>
+                  <span className="ax-row-main">
+                    <span className="ax-row-title">{sermonTitle(s)}</span>
+                    <span className="ax-row-sub">{has ? 'Already has its own notes' : sermonSub(s)}</span>
+                  </span>
+                  {id === f.sermon_id ? <Icon d={P.check} size={16} /> : null}
+                </button>
+              );
+            })}
+        </div>
+      </Field>
+    );
+  }
+
+  if (!f.sermon_id) {
+    return (
+      <Field label="Sermon" hint="Pick the sermon these notes go with. Its title, speaker, date and video fill in, and members find the notes on that sermon in the app.">
+        <button type="button" className="ax-btn fit" onClick={() => setOpen(true)}><Icon d={P.link} size={16} />Choose the sermon</button>
+      </Field>
+    );
+  }
+
+  return (
+    <Field label="Sermon" hint="Members open these notes from this sermon in the app, and from Sermon notes on the Bible page while they’re the newest.">
+      <div className="ax-picked">
+        <span className="ax-thumb" style={current?.thumbnailUrl ? { backgroundImage: cssUrl(current.thumbnailUrl) } : undefined}>
+          {!current?.thumbnailUrl && <Icon d={P.play} size={18} />}
+        </span>
+        <span className="ax-row-main">
+          <span className="ax-row-title">{current ? sermonTitle(current) : 'A sermon that’s no longer on Watch'}</span>
+          <span className="ax-row-sub">{current ? sermonSub(current) : 'Pick another, or remove it'}</span>
+        </span>
+        <div className="ax-row-btns">
+          <button type="button" className="ax-btn sm" onClick={() => setOpen(true)}>Change</button>
+          <button type="button" className="ax-btn quiet sm" onClick={onClear}>Remove</button>
+        </div>
+      </div>
+    </Field>
   );
 }
 
@@ -199,7 +312,7 @@ function SheetPreview({ f }) {
                 {j < all.length - 1 ? <span className="ax-sheet-blank" /> : null}
               </span>
             ))}
-            {line.trim() === '' ? ' ' : null}
+            {line.trim() === '' ? ' ' : null}
           </p>
         ))}
       </div>

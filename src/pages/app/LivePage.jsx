@@ -94,8 +94,8 @@ function Stream() {
     <div className="ax-panel">
       <Alert onClose={error ? () => setError('') : null}>{error}</Alert>
       <div className="ax-editor-head">
-        <div className="ax-inline" style={{ gap: 16 }}>
-          <span className={`ax-dot ${stream.isLive ? 'live' : ''}`} style={{ width: 14, height: 14 }} />
+        <div className="ax-inline wide">
+          <span className={`ax-dot big ${stream.isLive ? 'live' : ''}`} />
           <div>
             <div className="ax-panel-title">{stream.isLive ? 'You’re live' : 'Not live'}</div>
             <p className="ax-panel-sub">{stream.isLive ? 'Every phone shows the live banner.' : 'Switch on when the stream has started.'}</p>
@@ -105,7 +105,7 @@ function Stream() {
           label={busy ? 'One moment…' : stream.isLive ? 'Live' : 'Go live'} />
       </div>
       <div className="ax-form">
-        <div className="ax-inline" style={{ justifyContent: 'flex-end', marginTop: -18 }}><SaveState auto={auto} /></div>
+        <div className="ax-inline end ax-tuck"><SaveState auto={auto} /></div>
         <Field label="Title">
           <input className="ax-input title" value={form.liveTitle} placeholder="Sunday worship"
             onChange={(e) => set('liveTitle', e.target.value)} />
@@ -199,14 +199,14 @@ function Cards() {
       </div>
       <Alert onClose={error ? () => setError('') : null}>{error}</Alert>
 
-      <div className="ax-note" style={{ marginBottom: 28, alignItems: 'center' }}>
+      <div className="ax-note spaced">
         {active === undefined ? <span>Checking what’s on screen…</span> : active ? (
           <>
-            <span style={{ flex: 1 }}>
+            <span className="ax-note-main">
               <span className="ax-tag">On screen now</span>
-              <strong style={{ display: 'block', marginTop: 4, color: 'var(--ax-ink)', fontSize: 16 }}>{summary(active)}</strong>
+              <strong className="ax-note-title">{summary(active)}</strong>
               {active.type === 'poll' && votes ? (
-                <span style={{ display: 'block', marginTop: 4 }}>
+                <span className="ax-note-line">
                   {(active.options || []).map((o, i) => `${o}: ${votes[i] || 0}`).join(' · ')}
                 </span>
               ) : null}
@@ -254,14 +254,14 @@ function Cards() {
                   </div>
                 ))}
                 {draft.options.length < 5 && (
-                  <button type="button" className="ax-btn sm" style={{ alignSelf: 'flex-start' }}
+                  <button type="button" className="ax-btn sm fit"
                     onClick={() => set('options', [...draft.options, ''])}><Icon d={P.plus} size={15} />Add an answer</button>
                 )}
               </div>
             </Field>
           </>
         )}
-        <div className="ax-inline" style={{ justifyContent: 'flex-end' }}>
+        <div className="ax-inline end">
           <button type="button" className="ax-btn" onClick={keep} disabled={busy || !valid}>Save for later</button>
           <button type="button" className="ax-btn primary" onClick={() => show(build())} disabled={busy || !valid}>
             <Icon d={P.send} size={16} />Show on screen
@@ -271,11 +271,11 @@ function Cards() {
 
       {saved.length > 0 && (
         <>
-          <div className="ax-divider" style={{ margin: '32px 0 24px' }} />
-          <div className="ax-panel-title" style={{ fontSize: 17, marginBottom: 14 }}>Ready to show</div>
+          <div className="ax-divider wide" />
+          <div className="ax-subhead">Ready to show</div>
           <div className="ax-list">
             {saved.map((t) => (
-              <div key={t.id} className="ax-row" style={{ cursor: 'default' }}>
+              <div key={t.id} className="ax-row static">
                 <span className="ax-row-main">
                   <span className="ax-row-title">{summary(t)}</span>
                   <span className="ax-row-sub">{CARD_TYPES.find((c) => c.key === (t.type || 'scripture'))?.label}</span>
@@ -310,7 +310,7 @@ function Chat() {
   return (
     <div className="ax-panel">
       <div className="ax-panel-title">Live chat</div>
-      <p className="ax-panel-sub" style={{ marginBottom: 20 }}>Read-only here. It clears when the stream ends.</p>
+      <p className="ax-panel-sub spaced">Read-only here. It clears when the stream ends.</p>
       <div className="ax-chat">
         {failed ? <p className="ax-hint">Couldn’t load the chat.</p>
           : msgs === null ? <p className="ax-hint">Loading…</p>

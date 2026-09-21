@@ -11,6 +11,15 @@
 --  are in member-app-auth.sql, so re-running that file keeps this behaviour.
 -- ============================================================
 
+-- Superseded by member-directory-open.sql (2026-09-21): once that has run, this file would put the
+-- old opt-in rules back, so it stops here and changes nothing.
+do $superseded$ begin
+  if exists (select 1 from information_schema.columns
+              where table_schema = 'public' and table_name = 'church_members' and column_name = 'share_address') then
+    raise exception 'member-directory-open.sql has already been run and replaces this file. Nothing was changed.';
+  end if;
+end $superseded$;
+
 alter table public.church_members
   add column if not exists directory_hidden boolean not null default false;   -- the member took themselves out of the directory
 

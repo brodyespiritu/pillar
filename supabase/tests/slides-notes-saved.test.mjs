@@ -89,6 +89,32 @@ ok('a sheet with no title is refused', !!r.error);
 r = await as('authenticated', STAFF, `insert into public.app_sermon_notes (title, body, video_url) values ('t', 'b', 'javascript:1')`);
 ok('a video that isn’t a web address is refused', !!r.error);
 
+console.log('\n── notes for a particular sermon ──');
+// a project that ran the first version of app-slides-notes-saved.sql, then the new file
+await db.exec(`drop index public.app_sermon_notes_one_per_sermon;
+  alter table public.app_sermon_notes drop constraint app_sermon_notes_sermon_id_check;
+  alter table public.app_sermon_notes drop column sermon_id;`);
+try { await db.exec(read('sermon-notes-for-a-sermon.sql')); err = null; } catch (e) { err = e.message; }
+const hasCol = (await db.query(`select count(*)::int n from information_schema.columns
+  where table_schema = 'public' and table_name = 'app_sermon_notes' and column_name = 'sermon_id'`)).rows[0].n === 1;
+ok('sermon-notes-for-a-sermon.sql brings an older table up to date', !err && hasCol, err);
+try { await db.exec(read('sermon-notes-for-a-sermon.sql')); err = null; } catch (e) { err = e.message; }
+ok('…and applies again', !err, err);
+r = await as('authenticated', STAFF, `update public.app_sermon_notes set sermon_id = '1789672414262' where id = $1 returning sermon_id`, [sheet]);
+ok('staff attach a sheet to a sermon', !r.error && r.rows[0]?.sermon_id === '1789672414262', JSON.stringify(r).slice(0, 120));
+r = await as('anon', null, `select sermon_id from public.app_sermon_notes where sermon_id is not null`);
+ok('a phone reads which sermon it goes with', !r.error && r.rows.length === 1, JSON.stringify(r).slice(0, 120));
+r = await as('authenticated', STAFF, `insert into public.app_sermon_notes (title, body, sermon_id) values ('Again', 'x ___', '1789672414262')`);
+ok('a second sheet for the same sermon is refused', !!r.error && /one_per_sermon|unique/i.test(r.error), r.error);
+r = await as('authenticated', STAFF, `insert into public.app_sermon_notes (title, body, sermon_id) values ('Blank', 'x', '   ')`);
+ok('a blank sermon is refused', !!r.error);
+r = await as('authenticated', STAFF, `insert into public.app_sermon_notes (title, body) values ('On its own', 'x ___'), ('Also on its own', 'y ___') returning id`);
+ok('notes that go with no sermon are still fine, as many as you like', !r.error && r.rows.length === 2, r.error);
+await as('authenticated', ANN, `update public.app_sermon_notes set sermon_id = 'taken-by-a-member'`);
+const hijacked = (await db.query(`select count(*)::int n from public.app_sermon_notes where sermon_id = 'taken-by-a-member'`)).rows[0].n;
+ok('a member can’t move notes onto a sermon', hijacked === 0, hijacked);
+await db.exec(`delete from public.app_sermon_notes where title in ('On its own', 'Also on its own')`);
+
 console.log('\n── what a member keeps ──');
 r = await as('authenticated', ANN, `select * from public.member_saved`);
 ok('nobody reads the table directly, not even its owner', !!r.error, JSON.stringify(r).slice(0, 100));

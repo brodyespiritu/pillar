@@ -91,12 +91,12 @@ export default function SlidesView() {
       {!setUp && <Alert>{SETUP_HINT}</Alert>}
       {error && <Alert onClose={() => setError('')}>{error}</Alert>}
       <div className="ax-split two wide-list">
-        <section className="ax-stack" style={{ gap: 14 }}>
+        <section className="ax-col">
           <button type="button" className="ax-btn primary" onClick={add} disabled={!setUp}>
             <Icon d={P.plus} size={17} />New slide
           </button>
           <div className="ax-panel tight">
-            <div className="ax-list-head" style={{ padding: '6px 8px 0' }}>
+            <div className="ax-list-head">
               <span className="ax-list-count">
                 {`${list.length} slide${list.length === 1 ? '' : 's'} · ${list.filter((r) => r.published).length} in the Bulletin`}
               </span>

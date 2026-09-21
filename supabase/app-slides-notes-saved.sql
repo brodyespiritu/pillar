@@ -56,6 +56,15 @@ alter table public.app_sermon_notes add constraint app_sermon_notes_check check 
   and char_length(body) between 1 and 20000
 );
 
+-- the sermon these notes go with, if any: its id in the app server's library. One sheet per sermon.
+-- (Added 2026-09-21; a project that ran this file before then runs sermon-notes-for-a-sermon.sql.)
+alter table public.app_sermon_notes add column if not exists sermon_id text;
+alter table public.app_sermon_notes drop constraint if exists app_sermon_notes_sermon_id_check;
+alter table public.app_sermon_notes add constraint app_sermon_notes_sermon_id_check
+  check (sermon_id is null or char_length(btrim(sermon_id)) between 1 and 80);
+create unique index if not exists app_sermon_notes_one_per_sermon
+  on public.app_sermon_notes (sermon_id) where sermon_id is not null;
+
 alter table public.app_bulletin_slides enable row level security;
 alter table public.app_sermon_notes    enable row level security;
 

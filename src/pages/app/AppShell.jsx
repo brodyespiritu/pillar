@@ -4,11 +4,15 @@ import TopNav from '../../components/TopNav';
 import { P, Icon } from '../../lib/icons';
 import { getLivestream } from '../../lib/appApi';
 import { liveUpdatesReady } from '../../lib/appRefresh';
+import { Seg } from './kit';
 import './appx.css';
 
 // Pillar → App: Pillar's top bar, then the app's pages down the side in the order members meet
 // them, then the page. Every page edits in place and saves as you go, so there is nothing to
 // "publish" (kit.jsx). Pillar's own blue theme, with room to breathe (appx.css).
+//
+// Every page has the same head, centred: its title, one line on what it's for, then its own tabs
+// (`tabs`). A page's "New …" button sits at the top of the list it adds to, not up here.
 export const PAGES = [
   { to: '/app/home',          label: 'Home',          icon: P.home },
   { to: '/app/bulletin',      label: 'Bulletin',      icon: P.announce },
@@ -23,7 +27,7 @@ export const PAGES = [
 let liveNow = null;
 let instant = null;
 
-export default function AppShell({ title, subtitle, actions, children }) {
+export default function AppShell({ title, subtitle, tabs, actions, children }) {
   const [live, setLive] = useState(liveNow);
   const [ready, setReady] = useState(instant);
 
@@ -66,10 +70,13 @@ export default function AppShell({ title, subtitle, actions, children }) {
       <main className="ax-main">
         <div className="ax-page">
           <header className="ax-head">
-            <div>
-              <h1 className="ax-title">{title}</h1>
-              {subtitle ? <p className="ax-sub">{subtitle}</p> : null}
-            </div>
+            <h1 className="ax-title">{title}</h1>
+            {subtitle ? <p className="ax-sub">{subtitle}</p> : null}
+            {tabs ? (
+              <div className="ax-head-tabs">
+                <Seg big label={tabs.label || 'Show'} value={tabs.value} onChange={tabs.onChange} options={tabs.options} />
+              </div>
+            ) : null}
             {actions ? <div className="ax-head-actions">{actions}</div> : null}
           </header>
           {children}

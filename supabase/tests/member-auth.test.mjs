@@ -163,7 +163,7 @@ let a = await row(M.alice);
 ok(!r.error && a.app_not_before === null && a.share_phone && a.share_email, 'reformatting a contact signs no one out and keeps sharing', r.error || JSON.stringify({ nb: a.app_not_before, sp: a.share_phone, se: a.share_email, dl: a.directory_listed, phone: a.phone, email: a.email }));
 r = await as('authenticated', staffJwt, `update church_members set phone = '706-312-0111' where id = $1`, [M.alice]);
 a = await row(M.alice);
-ok(!r.error && a.app_not_before !== null && !a.share_phone && a.share_email && a.directory_listed, 'changing the phone stamps the cutoff and stops sharing that phone');
+ok(!r.error && a.app_not_before !== null && a.share_phone && a.share_email && a.directory_listed, 'changing the phone stamps the cutoff; what the directory shows stays the member\'s own choice');
 const stamp1 = a.app_not_before;
 const fakeUser = uid();
 await db.query(`insert into auth.users (id, email) values ($1, 'x@example.com')`, [fakeUser]);
@@ -174,11 +174,11 @@ r = await as('authenticated', staffJwt, `update church_members set app_not_befor
 ok((await row(M.alice)).app_not_before.getTime() === stamp1.getTime(), 'the cutoff never moves backwards');
 r = await as('authenticated', staffJwt, `update church_members set app_not_before = now() + interval '10 years' where id = $1`, [M.alice]);
 a = await row(M.alice);
-ok(a.app_not_before.getTime() <= Date.now() + 5000 && !a.directory_listed, 'raising the cutoff is capped at now and clears the listing (revoke)');
+ok(a.app_not_before.getTime() <= Date.now() + 5000 && a.share_email && a.share_phone, 'raising the cutoff is capped at now (revoke); sharing stays the member\'s choice');
 await db.query(`update church_members set directory_listed = true where id = $1`, [M.bob]);
 r = await as('authenticated', staffJwt, `update church_members set status = 'Inactive' where id = $1`, [M.bob]);
 let b = await row(M.bob);
-ok(b.app_not_before !== null && !b.directory_listed, 'losing eligibility stamps the cutoff and clears the listing');
+ok(b.app_not_before !== null, 'losing eligibility stamps the cutoff (the directory leaves an inactive record out on its own)');
 await db.query(`update church_members set status = 'Active', app_not_before = null where id = $1`, [M.bob]);
 ok((await row(M.bob)).app_not_before !== null, '… and even the database owner cannot lower it again');
 r = await as('authenticated', { sub: uid(), role: 'authenticated' }, `update church_members set name = 'x' where id = $1 returning id`, [M.bob]);
@@ -389,7 +389,7 @@ await denied('app metadata pointing elsewhere gets nothing', `update auth.users 
   await db.query(`update church_members set share_email = true where id = $1`, [M.alice]);
   await as('authenticated', staffJwt, `update church_members set email = 'alice.new@example.com' where id = $1`, [M.alice]);
   ok(before?.member_id === M.alice && await me(jwt(aliceLogin, sid1)) === null, 'office changing the email signs existing sessions out');
-  ok(!(await row(M.alice)).share_email, '… and the new email is not shared until they say so');
+  ok((await row(M.alice)).share_email, '… and the new email shows as the old one did: sharing is the member\'s choice, not the address\'s');
   ok((await one(`select public.app_member_login_ok($1) v`, [M.alice])).v === false, '… and the old login must be recreated before the next sign-in');
 }
 
@@ -451,6 +451,11 @@ await db.query(`update church_members set photo_url = 'data:image/jpeg;base64,AA
 r = await as('authenticated', B, `select public.member_update_me(p_directory_listed => true, p_share_phone => true, p_share_photo => true) v`);
 ok(!r.error && r.rows[0].v.share_phone, 'Bob opts in', r.error || '');
 
+// what members keep back (opt-out, 2026-09-21): Bob his email, John everything
+r = await as('authenticated', B, `select public.member_update_me(p_share_email => false) v`);
+ok(!r.error && r.rows[0].v.share_email === false && r.rows[0].v.share_phone === true, 'Bob turns his email off and keeps the rest', r.error || '');
+await db.query(`update church_members set share_email = false, share_phone = false, share_photo = false, share_address = false, share_birthday = false where id = $1`, [M.john]);
+
 let dir = await as('authenticated', A, `select * from public.member_directory(null, 100)`);
 const dirNames = () => dir.rows.map((x) => x.name);
 ok(!dir.error && ['Alice Adams', 'Bob Brown', 'John Smith', 'Jane Smith', 'Office Oscar', 'Carl Cousin'].every((n) => dirNames().includes(n)),
@@ -461,14 +466,31 @@ ok(JSON.stringify(dirNames()) === JSON.stringify([...dirNames()].sort((a, b) => 
 const bobRow = dir.rows.find((x) => x.name === 'Bob Brown');
 const aliceRow = dir.rows.find((x) => x.name === 'Alice Adams');
 const johnRow = dir.rows.find((x) => x.name === 'John Smith');
-ok(bobRow && bobRow.phone === '706.312.0102' && bobRow.email === null && bobRow.has_photo === true, "shows only the fields a member shares");
-ok(aliceRow && aliceRow.email === 'alice.new@example.com' && aliceRow.phone === null && aliceRow.has_photo === false, '… for each member');
-ok(johnRow && johnRow.email === null && johnRow.phone === null && johnRow.has_photo === false, 'someone who shares nothing is listed by name only');
+ok(bobRow && bobRow.phone === '706.312.0102' && bobRow.email === null && bobRow.has_photo === true, "shows everything but what a member turned off");
+ok(aliceRow && aliceRow.email === 'alice.new@example.com' && aliceRow.phone === '706-312-0111' && aliceRow.has_photo === false, '… for each member', JSON.stringify(aliceRow));
+ok(johnRow && johnRow.email === null && johnRow.phone === null && johnRow.has_photo === false && johnRow.address === null && johnRow.birthday === null,
+  'someone who turned everything off is listed by name only', JSON.stringify(johnRow));
 await db.query(`update church_members set share_phone = true, share_email = true, photo_url = 'data:image/png;base64,BB', share_photo = true where id = $1`, [M.office]);
 dir = await as('authenticated', A, `select * from public.member_directory('oscar')`);
 r = await as('authenticated', A, `select public.member_directory_photo($1) v`, [M.office]);
-ok(!dir.error && dir.rows.length === 1 && dir.rows[0].phone === null && dir.rows[0].email === null && dir.rows[0].has_photo === false
-  && !r.error && r.rows[0].v === null, "a record without its own app login never shares contact details or a photo, whatever its flags say", dir.error || JSON.stringify(dir.rows));
+ok(!dir.error && dir.rows.length === 1 && dir.rows[0].phone === '706-312-0199' && dir.rows[0].has_photo === true
+  && !r.error && r.rows[0].v === 'data:image/png;base64,BB', "a record without the app shows its details too: every member, app or not (user, 2026-09-21)", dir.error || JSON.stringify(dir.rows));
+{
+  // the details the directory gained: a home address, and a birthday that never gives the year away
+  await db.query(`update church_members set address = '12 Oak St, Ellerslie, GA', birthday = '1958-09-14' where id = $1`, [M.alice]);
+  let d = await as('authenticated', B, `select * from public.member_directory('alice')`);
+  ok(!d.error && d.rows[0].address === '12 Oak St, Ellerslie, GA' && d.rows[0].birthday === '09-14',
+    'the directory shows a home address and a birthday: month and day, never the year', d.error || JSON.stringify(d.rows));
+  const mine = await me(A);
+  ok(mine && mine.share_address === true && mine.share_birthday === true && mine.has_birthday === true && 'directory_review_due' in mine,
+    'a member sees what they share, and whether they have a review to do', JSON.stringify(mine));
+  r = await as('authenticated', A, `select public.member_update_me(p_share_address => false, p_share_birthday => false) v`);
+  d = await as('authenticated', B, `select * from public.member_directory('alice')`);
+  ok(!r.error && d.rows[0].address === null && d.rows[0].birthday === null, 'turning them off takes them out of the directory', r.error || JSON.stringify(d.rows));
+  r = await as('authenticated', A, `select public.member_update_me(p_directory_reviewed => true) v`);
+  ok(!r.error && r.rows[0].v.directory_review_due === false, '… and once they have looked it over, they are not asked again', r.error || '');
+  await db.query(`update church_members set address = null, birthday = null, share_address = true, share_birthday = true where id = $1`, [M.alice]);
+}
 await db.query(`update church_members set share_phone = false, share_email = false, photo_url = null, share_photo = false where id = $1`, [M.office]);
 r = await as('authenticated', B, `select public.member_update_me(p_directory_listed => false) v`);
 ok(!r.error && r.rows[0].v.directory_listed === false && (await row(M.bob)).directory_hidden === true, 'a member hides themselves (Show me in the directory → off)', r.error || '');
@@ -517,7 +539,8 @@ ok(!dir.error && !page2.error && dir.rows.length === 2 && page2.rows.length === 
   await db.query(`update church_members set deacon_id = null where id = $1`, [M.john]);
   await db.query(`delete from church_members where id = any($1)`, [[deacon, hiddenSis, outSis, kidSmith, goneSmith]]);
 }
-ok(!JSON.stringify(dir.rows).match(/notes|tags|address|birthday|members\.invalid/), 'directory never includes notes, tags, address, birthday or login addresses');
+ok(!JSON.stringify(dir.rows).match(/notes|tags|members\.invalid/) && dir.rows.every((x) => Object.keys(x).join() === 'id,name,email,phone,has_photo,address,birthday'),
+  'directory never includes notes, tags or login addresses', JSON.stringify(dir.rows[0]));
 dir = await as('authenticated', A, `select * from public.member_directory('bo%')`);
 ok(!dir.error && dir.rows.length === 0, 'search wildcards are escaped');
 dir = await as('authenticated', A, `select * from public.member_directory('BOB')`);
@@ -593,8 +616,8 @@ ok(!r.error && r.rows[0].v === true && await me(B) === null, 'staff revoke signs
 {
   const bobNow = await row(M.bob);
   dir = await as('authenticated', A, `select * from public.member_directory('bob')`);
-  ok(!bobNow.share_phone && !bobNow.share_photo && !bobNow.directory_hidden && dir.rows.length === 1 && dir.rows[0].phone === null && dir.rows[0].has_photo === false,
-    '… stops sharing his details; the directory keeps his name (hiding is his own choice)', JSON.stringify(dir.rows));
+  ok(bobNow.share_phone && bobNow.share_photo && !bobNow.directory_hidden && dir.rows.length === 1 && dir.rows[0].phone === '706.312.0102' && dir.rows[0].has_photo === true,
+    '… and his directory entry stays as he chose it: it isn\'t tied to his app login', JSON.stringify(dir.rows));
 }
 ok((await one(`select public.app_member_forget_login($1, $2) v`, [M.alice, alice2])).v === true && await me(A) === null, 'delete-account clears the link and the session');
 const aliceAfter = await row(M.alice);
@@ -615,8 +638,8 @@ section('review follow-ups');
      values ('Decoy', '706-312-0177', $1, 'x@members.invalid', now() + interval '1 hour', gen_random_uuid(), now() - interval '1 day', true, true) returning id`, [STAFF]);
   ok(!planted.error, 'staff can still add members', planted.error || '');
   const d = await row(planted.rows[0].id);
-  ok(d.auth_user_id === null && d.app_login_email === null && d.app_mint_lease_until === null && d.app_mint_lease === null && d.app_not_before === null && !d.directory_listed && !d.share_phone,
-    'a new record added by staff carries no login, lease, cutoff or directory choices', JSON.stringify(d));
+  ok(d.auth_user_id === null && d.app_login_email === null && d.app_mint_lease_until === null && d.app_mint_lease === null && d.app_not_before === null && !d.directory_listed && d.share_phone && d.share_email,
+    'a new record added by staff carries no login, lease or cutoff (and shows its details, like every record)', JSON.stringify(d));
   // even if a login link gets set by hand (SQL editor), sign-in detaches it instead of deleting that account
   await db.query(`update church_members set auth_user_id = $1 where id = $2`, [STAFF, d.id]);
   const pd = await prep(d.id, 'm-44444444444444444444444444444444@members.invalid');
@@ -653,14 +676,14 @@ section('review follow-ups');
   await release(ban, pl2.lease);
   await db.query(`delete from auth.users where id = $1`, [l2]);    // e.g. Dashboard → Users → Delete
   const gone = await row(ban);
-  ok(gone.app_not_before !== null && !gone.directory_listed && !gone.share_email, 'a login deleted from the Dashboard stamps the cutoff and clears the listing');
+  ok(gone.app_not_before !== null && gone.share_email, 'a login deleted from the Dashboard stamps the cutoff; the directory entry stays as it was');
 }
 {
-  // changed contacts that aren't usable sign-in contacts still stop being shared
+  // changed contacts that aren't usable sign-in contacts keep showing: sharing is the member's choice
   const ann = await member({ name: 'Ann Multi', email: 'ann@example.com', phone: 'H 706-312-0150 C 706-312-0151', directory_listed: true, share_phone: true });
   await db.query(`update church_members set share_phone = true, directory_listed = true where id = $1`, [ann]);
   await as('authenticated', staffJwt, `update church_members set phone = 'H 706-312-0150 C 404-312-0199' where id = $1`, [ann]);
-  ok(!(await row(ann)).share_phone, 'editing an unusual phone field stops sharing it');
+  ok((await row(ann)).share_phone, 'editing an unusual phone field keeps it shared (the member\'s choice)');
 }
 {
   // household split: a session that came through a now-ambiguous shared contact stops working
@@ -729,22 +752,43 @@ section('review follow-ups');
   const bobEmail = (await one(`select email from auth.users where id = $1`, [bobLogin])).email;
   await db.query(`update auth.users set email = 'moved@example.com' where id = $1`, [bobLogin]);
   const d2 = await as('authenticated', J, `select * from public.member_directory(null)`);
-  ok(!d2.error && d2.rows.some((x) => x.name === 'Bob Brown' && x.phone === null), 'a member whose login was tampered with shares nothing more (still listed by name)', JSON.stringify(d2.rows.find((x) => x.name === 'Bob Brown')));
+  ok(!d2.error && d2.rows.some((x) => x.name === 'Bob Brown' && x.phone === '706.312.0102'),
+    'a member\'s directory entry doesn\'t depend on their app login (every member, app or not)', JSON.stringify(d2.rows.find((x) => x.name === 'Bob Brown')));
   await db.query(`update auth.users set email = $2 where id = $1`, [bobLogin, bobEmail]);
 }
 
-section('member-directory-everyone.sql (the live-database update)');
+section('member-directory-open.sql (the live-database update)');
 {
   const defs = async () => (await all(`select p.proname, pg_get_functiondef(p.oid) d, array_to_string(p.proacl, ',') acl from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-    where n.nspname = 'public' and p.proname in ('member_me', 'member_update_me', 'member_directory', 'member_directory_photo', 'member_directory_family', 'app_member_forget_login') order by 1`));
+    where n.nspname = 'public' and p.proname in ('member_me', 'member_update_me', 'member_directory', 'member_directory_photo', 'member_directory_family',
+      'app_member_forget_login', 'app_member_login_guard') order by 1`));
   const before = await defs();
   const fs = await import('node:fs');
-  const sql = fs.readFileSync(path.join(SUPA, 'member-directory-everyone.sql'), 'utf8');
+  const open = fs.readFileSync(path.join(SUPA, 'member-directory-open.sql'), 'utf8');
   let err = null;
-  try { await db.exec(sql); await db.exec(sql); } catch (e) { err = e.message; }
+  try { await db.exec(open); await db.exec(open); } catch (e) { err = e.message; }
   const after = await defs();
-  ok(!err && before.length === 6 && JSON.stringify(before) === JSON.stringify(after),
+  ok(!err && before.length === 7 && JSON.stringify(before) === JSON.stringify(after),
     'applies twice and matches member-app-auth.sql exactly (definitions and grants)', err || JSON.stringify(after.map((x, i) => x.d === before[i]?.d && x.acl === before[i]?.acl)));
+
+  // on a project that still had the old opt-in rules: everything shared once, and everyone asked to look it over
+  await db.exec(`alter table church_members drop column directory_review_due`);
+  await db.query(`update church_members set share_email = false, share_phone = false where id = $1`, [M.john]);
+  await db.exec(open);
+  const j = await row(M.john);
+  ok(j.share_email && j.share_phone && j.directory_review_due === true, 'the switch shares everything once and asks every member to look it over',
+    JSON.stringify({ e: j.share_email, p: j.share_phone, due: j.directory_review_due }));
+  await db.query(`update church_members set share_address = false where id = $1`, [M.bob]);
+  await db.exec(open);
+  ok((await row(M.bob)).share_address === false, 'running it again never undoes a choice a member made since');
+  await db.query(`update church_members set share_address = true where id = $1`, [M.bob]);
+
+  // the older file stops itself now, and changes nothing
+  const everyone = fs.readFileSync(path.join(SUPA, 'member-directory-everyone.sql'), 'utf8');
+  let refused = null;
+  try { await db.exec(everyone); } catch (e) { refused = e.message; }
+  ok(/replaces this file/.test(refused || '') && JSON.stringify(await defs()) === JSON.stringify(before),
+    'member-directory-everyone.sql refuses to run over it, and changes nothing', refused || 'it ran');
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

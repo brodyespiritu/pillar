@@ -15,14 +15,16 @@ import {
   listFeatured, setFeatured, notSetUp, SETUP_HINT, SERIES_LIMITS,
 } from '../../lib/mediaSeries';
 import NotesView from './NotesView';
+import { listSheetLinks } from '../../lib/sermonSheets';
 import {
   useServerList, useRows, useSaveQueue, useAutosave, useLeaveGuard, useUndo,
   SaveState, Field, GrowText, Toggle, Seg, Alert, Loading, RowList, ImageDrop, VideoDrop,
 } from './kit';
 
 // App → Watch: everything on the app's Media tab — the sermons, the series they belong to, the
-// extra videos and the resources. One page, four views; each list works like the rest of App:
-// pick, change (it saves as you type), switch on or off.
+// extra videos, the resources and the fill-in-the-blank notes. One page, five views; each list works
+// like the rest of App: pick, change (it saves as you type), switch on or off. Notes can go with one
+// sermon, and each sermon has a button that opens (or starts) its notes.
 //
 // Two switches decide where something shows in the app:
 //   In the app   members can see it at all
@@ -145,6 +147,8 @@ export default function WatchPage() {
   const [toast, undo] = useUndo();
   const feat = useFeatured();
   const sugg = useSuggested();
+  const noteLinks = useNoteLinks(tab);
+  const openNotes = (id) => setParams({ tab: 'notes', for: String(id) });
 
   const sermons = useServerList({
     get: getSermons, save: saveSermon, del: deleteSermon, formOf: sermonForm, undo, noun: 'sermon', ready: titled,
@@ -174,13 +178,6 @@ export default function WatchPage() {
     })),
   ], [sermons.rows.rows, blocks.rows.rows]);
 
-  const actions = tab === 'sermons'
-    ? <button type="button" className="ax-btn primary" onClick={() => sermons.add(genId())}><Icon d={P.plus} size={17} />New sermon</button>
-    : tab === 'videos'
-      ? <button type="button" className="ax-btn primary" onClick={() => blocks.add(genId())}><Icon d={P.plus} size={17} />New video</button>
-      : tab === 'resources'
-        ? <button type="button" className="ax-btn primary" onClick={() => resources.add(genId())}><Icon d={P.plus} size={17} />New resource</button>
-        : null;
   const error = (tab === 'sermons' ? sermons.error : tab === 'videos' ? blocks.error : tab === 'resources' ? resources.error : '') || feat.error || sugg.error;
   const clear = () => {
     feat.setError('');
@@ -191,17 +188,16 @@ export default function WatchPage() {
   };
 
   return (
-    <AppShell title="Watch" subtitle="Everything on the app’s Media tab. Changes save as you type." actions={actions}>
-      <div style={{ marginBottom: 28 }}>
-        <Seg big label="Show" value={tab} onChange={setTab} options={TABS} />
-      </div>
+    <AppShell title="Watch" subtitle="Everything on the app’s Media tab. Changes save as you type."
+      tabs={{ value: tab, onChange: setTab, options: TABS }}>
       <Alert onClose={error ? clear : null}>{error}</Alert>
 
-      {tab === 'sermons' && <SermonsView list={sermons} feat={feat} sugg={sugg} />}
+      {tab === 'sermons' && <SermonsView list={sermons} feat={feat} sugg={sugg} onAdd={() => sermons.add(genId())}
+        noteLinks={noteLinks} openNotes={openNotes} />}
       {tab === 'series' && <SeriesView library={library} undo={undo} />}
-      {tab === 'videos' && <BlocksView list={blocks} feat={feat} />}
-      {tab === 'resources' && <ResourcesView list={resources} />}
-      {tab === 'notes' && <NotesView />}
+      {tab === 'videos' && <BlocksView list={blocks} feat={feat} onAdd={() => blocks.add(genId())} />}
+      {tab === 'resources' && <ResourcesView list={resources} onAdd={() => resources.add(genId())} />}
+      {tab === 'notes' && <NotesView sermons={(sermons.rows.rows || []).filter((r) => r._saved !== null)} />}
       {toast}
     </AppShell>
   );
@@ -214,7 +210,7 @@ function ListColumn({ list, count, empty, sub, thumb, tall, search, star }) {
   const shown = search ? rows.filter(search) : rows;
   return (
     <div className="ax-panel tight">
-      <div className="ax-list-head" style={{ padding: '6px 8px 0' }}>
+      <div className="ax-list-head">
         <span className="ax-list-count">{count(rows)}</span>
       </div>
       <RowList rows={shown} picked={list.picked} onPick={list.setPicked}
@@ -266,7 +262,19 @@ const Pick = ({ noun }) => (
 
 /* ── sermons ── */
 
-function SermonsView({ list, feat, sugg }) {
+// which sermons have fill-in notes (Watch → Notes), asked again whenever Sermons comes back up
+function useNoteLinks(tab) {
+  const [links, setLinks] = useState(() => new Map());
+  useEffect(() => {
+    if (tab !== 'sermons') return undefined;
+    let alive = true;
+    listSheetLinks().then((m) => { if (alive) setLinks(m); }).catch(() => {});
+    return () => { alive = false; };
+  }, [tab]);
+  return links;
+}
+
+function SermonsView({ list, feat, sugg, onAdd, noteLinks, openNotes }) {
   const [q, setQ] = useState('');
   const rows = list.rows.rows;
   if (rows === null) return <Loading>Reaching the app server… (the first load can take up to a minute)</Loading>;
@@ -274,7 +282,8 @@ function SermonsView({ list, feat, sugg }) {
   const current = rows.find((r) => r._key === list.picked) || null;
   return (
     <div className="ax-split wide-list">
-      <section className="ax-stack" style={{ gap: 14 }}>
+      <section className="ax-col">
+        <button type="button" className="ax-btn primary" onClick={onAdd}><Icon d={P.plus} size={17} />New sermon</button>
         <input className="ax-input" type="search" value={q} placeholder="Search title, speaker, series…"
           onChange={(e) => setQ(e.target.value)} aria-label="Search sermons" />
         <ListColumn list={list} thumb={(r) => r.thumbnailUrl}
@@ -285,7 +294,10 @@ function SermonsView({ list, feat, sugg }) {
           empty={needle ? 'No sermons match.' : <><strong>No sermons</strong>Add the first one.</>} />
       </section>
       <section>
-        {current ? <SermonEditor key={current._key} row={current} list={list} feat={feat} sugg={sugg} /> : <Pick noun="sermon" />}
+        {current
+          ? <SermonEditor key={current._key} row={current} list={list} feat={feat} sugg={sugg}
+              hasNotes={noteLinks.has(String(current.id))} openNotes={openNotes} />
+          : <Pick noun="sermon" />}
       </section>
       <aside className="ax-aside">
         <div className="ax-sticky ax-phone-wrap">
@@ -300,7 +312,7 @@ function SermonsView({ list, feat, sugg }) {
   );
 }
 
-function SermonEditor({ row, list, feat, sugg }) {
+function SermonEditor({ row, list, feat, sugg, hasNotes, openNotes }) {
   const key = row._key;
   const f = sermonForm(row);
   const set = (k, v) => list.rows.patch(key, { [k]: v });
@@ -343,6 +355,13 @@ function SermonEditor({ row, list, feat, sugg }) {
       </Field>
       <Field label="Notes" hint="Shown with the sermon in the app.">
         <GrowText value={f.notes} onChange={(e) => set('notes', e.target.value)} />
+      </Field>
+      <Field label="Fill-in notes" hint={row._saved === null
+        ? 'Give the sermon a title first. Then write an outline with blanks that members fill in while they watch.'
+        : hasNotes ? 'Members open them from this sermon in the app.' : 'An outline with blanks that members fill in while they watch.'}>
+        <button type="button" className="ax-btn fit" disabled={row._saved === null} onClick={() => openNotes(row.id)}>
+          <Icon d={P.doc} size={16} />{hasNotes ? 'Open this sermon’s notes' : 'Write notes for this sermon'}
+        </button>
       </Field>
     </EditorFrame>
   );
@@ -452,12 +471,12 @@ function SeriesView({ library, undo }) {
       {!setUp && <Alert>{SETUP_HINT}</Alert>}
       {error && <Alert onClose={() => setError('')}>{error}</Alert>}
       <div className="ax-split two">
-        <section className="ax-stack" style={{ gap: 14 }}>
+        <section className="ax-col">
           <button type="button" className="ax-btn primary" onClick={add} disabled={!setUp}>
             <Icon d={P.plus} size={17} />New series
           </button>
           <div className="ax-panel tight">
-            <div className="ax-list-head" style={{ padding: '6px 8px 0' }}>
+            <div className="ax-list-head">
               <span className="ax-list-count">
                 {`${list.length} series · ${list.filter((r) => r.published).length} on Media`}
               </span>
@@ -592,13 +611,14 @@ function SeriesEditor({ row, rows, library, persist, setLive, remove }) {
 
 /* ── videos (Watch's own video cards) ── */
 
-function BlocksView({ list, feat }) {
+function BlocksView({ list, feat, onAdd }) {
   const rows = list.rows.rows;
   if (rows === null) return <Loading>Reaching the app server…</Loading>;
   const current = rows.find((r) => r._key === list.picked) || null;
   return (
     <div className="ax-split two wide-list">
-      <section>
+      <section className="ax-col">
+        <button type="button" className="ax-btn primary" onClick={onAdd}><Icon d={P.plus} size={17} />New video</button>
         <ListColumn list={list} thumb={(r) => r.thumbnail}
           star={(r) => <FeaturedSwitch small feat={feat} id={r.id} kind="video" saved={r._saved !== null} />}
           count={(all) => `${all.length} video${all.length === 1 ? '' : 's'} · ${feat.count} featured`}
@@ -647,13 +667,14 @@ function BlockEditor({ row, list, feat }) {
 
 /* ── resources ── */
 
-function ResourcesView({ list }) {
+function ResourcesView({ list, onAdd }) {
   const rows = list.rows.rows;
   if (rows === null) return <Loading>Reaching the app server…</Loading>;
   const current = rows.find((r) => r._key === list.picked) || null;
   return (
     <div className="ax-split two">
-      <section>
+      <section className="ax-col">
+        <button type="button" className="ax-btn primary" onClick={onAdd}><Icon d={P.plus} size={17} />New resource</button>
         <ListColumn list={list} tall thumb={(r) => r.coverUrl}
           count={(all) => `${all.length} resource${all.length === 1 ? '' : 's'}`}
           sub={(r) => [r.type, r.subtitle].filter(Boolean).join(' · ')}

@@ -5,7 +5,7 @@ import { P, Icon } from '../../lib/icons';
 import { getAnnouncements, saveAnnouncement, deleteAnnouncement, genId } from '../../lib/appApi';
 import {
   useRows, useSaveQueue, useAutosave, useLeaveGuard, useUndo,
-  SaveState, Field, GrowText, Toggle, Seg, Alert, Loading, RowList,
+  SaveState, Field, GrowText, Toggle, Alert, Loading, RowList,
 } from './kit';
 import SlidesView from './SlidesView';
 
@@ -108,21 +108,17 @@ export default function BulletinPage() {
     <AppShell
       title="Bulletin"
       subtitle="The announcements at the top of the app’s Digital Bulletin. Changes save as you type."
-      actions={view === 'notices'
-        ? <button type="button" className="ax-btn primary" onClick={add}><Icon d={P.plus} size={17} />New announcement</button>
-        : null}
+      tabs={{ value: view, onChange: setView, options: VIEWS }}
     >
-      <div style={{ marginBottom: 28 }}>
-        <Seg big label="Show" value={view} onChange={setView} options={VIEWS} />
-      </div>
       <Alert onClose={error ? () => setError('') : null}>{error}</Alert>
 
       {view === 'slides' ? <SlidesView />
         : rows.rows === null ? <Loading>Reaching the app server… (the first load can take up to a minute)</Loading> : (
         <div className="ax-split">
-          <section>
+          <section className="ax-col">
+            <button type="button" className="ax-btn primary" onClick={add}><Icon d={P.plus} size={17} />New announcement</button>
             <div className="ax-panel tight">
-              <div className="ax-list-head" style={{ padding: '6px 8px 0' }}>
+              <div className="ax-list-head">
                 <span className="ax-list-count">{list.length} announcement{list.length === 1 ? '' : 's'} · {shown.length} in the Bulletin</span>
               </div>
               <RowList
@@ -148,7 +144,7 @@ export default function BulletinPage() {
                 }}
               />
             </div>
-            <p className="ax-hint" style={{ margin: '14px 8px 0' }}>The switch puts an announcement in the Bulletin or takes it out.</p>
+            <p className="ax-hint ax-list-hint">The switch puts an announcement in the Bulletin or takes it out.</p>
           </section>
 
           <section>

@@ -192,24 +192,18 @@ export default function HomePage() {
     <AppShell
       title="Home"
       subtitle="The cards under the four boxes on the app’s Home page. Changes save as you type."
-      actions={view === 'cards'
-        ? <button type="button" className="ax-btn primary" onClick={add}><Icon d={P.plus} size={17} />New card</button>
-        : null}
+      tabs={{ value: view, onChange: setView, options: [
+        { key: 'cards', label: `Cards · ${list.length}` },
+        { key: 'boxes', label: 'Four boxes' },
+      ] }}
     >
       <Alert onClose={error ? () => setError('') : null}>{error}</Alert>
 
-      <div style={{ marginBottom: 28 }}>
-        <Seg big label="Show" value={view} onChange={setView} options={[
-          { key: 'cards', label: `Cards · ${list.length}` },
-          { key: 'boxes', label: 'Four boxes' },
-        ]} />
-      </div>
-
       {view === 'boxes' ? (
         <div className="ax-split">
-          <section>
+          <section className="ax-col">
             <div className="ax-panel tight">
-              <div className="ax-list-head" style={{ padding: '6px 8px 0' }}>
+              <div className="ax-list-head">
                 <span className="ax-list-count">The four boxes under the search</span>
               </div>
               <RowList rows={boxes} picked={box} onPick={setBox} empty={<Loading />}
@@ -232,7 +226,7 @@ export default function HomePage() {
                   );
                 }} />
             </div>
-            <p className="ax-hint" style={{ margin: '14px 8px 0' }}>
+            <p className="ax-hint ax-list-hint">
               What each box opens never changes — only what it says and shows.
             </p>
           </section>
@@ -253,9 +247,10 @@ export default function HomePage() {
         </div>
       ) : rows.rows === null ? <Loading /> : (
         <div className="ax-split">
-          <section>
+          <section className="ax-col">
+            <button type="button" className="ax-btn primary" onClick={add}><Icon d={P.plus} size={17} />New card</button>
             <div className="ax-panel tight">
-              <div className="ax-list-head" style={{ padding: '6px 8px 0' }}>
+              <div className="ax-list-head">
                 <span className="ax-list-count">
                   {list.length} card{list.length === 1 ? '' : 's'} · {liveCount} on phones
                 </span>
@@ -289,7 +284,7 @@ export default function HomePage() {
                 }}
               />
             </div>
-            <p className="ax-hint" style={{ margin: '14px 8px 0' }}>
+            <p className="ax-hint ax-list-hint">
               Drag a card to change the order. The switch puts it on phones or takes it off.
             </p>
           </section>
@@ -435,7 +430,7 @@ function CardEditor({ row, rows, persist, isNew, uploading, onLive, onDelete }) 
                   </div>
                 ))}
                 {f.buttons.length < LIMITS.buttons && (
-                  <button type="button" className="ax-btn sm" style={{ alignSelf: 'flex-start' }}
+                  <button type="button" className="ax-btn sm fit"
                     onClick={() => setButtons((bs) => [...bs, { label: '', action: 'url', target: '' }])}>
                     <Icon d={P.plus} size={15} />Add a button
                   </button>
@@ -490,7 +485,7 @@ function BoxEditor({ row, rows, persist, disabled }) {
       </div>
 
       {disabled ? (
-        <div className="ax-note" style={{ marginBottom: 24 }}>
+        <div className="ax-note spaced">
           <Icon d={P.settings} size={18} />
           <span>These boxes can’t be changed yet — run <strong>supabase/app-home-tiles.sql</strong> in Supabase, then reload.</span>
         </div>

@@ -17,7 +17,7 @@ const siteForm = (s) => ({ churchName: s?.churchName || '', tagline: s?.tagline 
 export default function SettingsPage() {
   return (
     <AppShell title="Settings" subtitle="The connection to the app server, and what the church website borrows from it.">
-      <div className="ax-stack" style={{ maxWidth: 880 }}>
+      <div className="ax-stack ax-narrow">
         <Connection />
         <Website />
       </div>
@@ -74,7 +74,7 @@ function Connection() {
       </div>
       {result ? (
         result.ok
-          ? <div className="ax-note" style={{ marginBottom: 24 }}><Icon d={P.check} size={18} /><span>{result.msg}</span></div>
+          ? <div className="ax-note spaced"><Icon d={P.check} size={18} /><span>{result.msg}</span></div>
           : <Alert>{result.msg}</Alert>
       ) : null}
       <div className="ax-inline">
@@ -87,14 +87,14 @@ function Connection() {
       </div>
 
       {dev ? (
-        <div className="ax-form" style={{ marginTop: 28, paddingTop: 28, borderTop: '1px solid var(--ax-line)' }}>
+        <div className="ax-form ruled">
           <p className="ax-hint">
             Only for a local development copy of Pillar, which has no server of its own. The key stays in this
             browser. On the real Pillar, leave this alone — the key belongs in Vercel as APP_API_KEY.
           </p>
           {local ? (
             <div className="ax-note">
-              <span style={{ flex: 1 }}>A key is saved in this browser.</span>
+              <span className="ax-note-main">A key is saved in this browser.</span>
               <button type="button" className="ax-btn quiet sm" onClick={() => { setAppApiAuth({ key: '' }); setLocal(false); }}>Remove it</button>
             </div>
           ) : null}

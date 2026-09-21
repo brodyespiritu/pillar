@@ -486,11 +486,11 @@ export function ImageDrop({ value, onChange, upload, tall, label = 'Choose a pho
         <input className="ax-input" value={value || ''} inputMode="url" placeholder="https://…"
           onChange={(e) => onChange(e.target.value)} aria-label="Picture address" />
       ) : (
-        <button type="button" className="ax-btn quiet sm" style={{ alignSelf: 'flex-start' }} onClick={() => setPaste(true)}>
+        <button type="button" className="ax-btn quiet sm fit" onClick={() => setPaste(true)}>
           Use a picture that’s already online
         </button>
       )}
-      {error ? <p className="ax-hint" style={{ color: 'var(--ax-danger)' }}>{error}</p> : null}
+      {error ? <p className="ax-hint bad">{error}</p> : null}
     </div>
   );
 }
@@ -635,7 +635,7 @@ export function VideoDrop({ value, onChange, onStill, busyRef, linkHint = 'YouTu
       <input className="ax-input" value={value || ''} inputMode="url" placeholder="…or paste a link"
         onChange={(e) => { onChange(e.target.value); setNote(''); }} aria-label="Video link" />
       {note ? <p className="ax-hint">{note}</p> : <p className="ax-hint">{linkHint}</p>}
-      {error ? <p className="ax-hint" style={{ color: 'var(--ax-danger)' }}>{error}</p> : null}
+      {error ? <p className="ax-hint bad">{error}</p> : null}
     </div>
   );
 }

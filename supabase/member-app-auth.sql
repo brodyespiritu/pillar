@@ -142,9 +142,31 @@ alter table public.church_members
   add column if not exists app_mint_lease       uuid,          -- … and which sign-in holds it
   add column if not exists directory_listed     boolean not null default false,   -- legacy opt-in flag (unused by the directory since 2026-09-15)
   add column if not exists directory_hidden     boolean not null default false,   -- the member took themselves out of the directory
-  add column if not exists share_email          boolean not null default false,
-  add column if not exists share_phone          boolean not null default false,
-  add column if not exists share_photo          boolean not null default false;
+  add column if not exists share_email          boolean not null default true,
+  add column if not exists share_phone          boolean not null default true,
+  add column if not exists share_photo          boolean not null default true;
+
+-- What each member shows in the directory: everything, until they turn a detail off (opt-out, 2026-09-21).
+alter table public.church_members add column if not exists share_address  boolean not null default true;
+alter table public.church_members add column if not exists share_birthday boolean not null default true;
+alter table public.church_members alter column share_email set default true;
+alter table public.church_members alter column share_phone set default true;
+alter table public.church_members alter column share_photo set default true;
+
+-- The switch to opt-out happens once: some members had turned sharing off under the old opt-in
+-- rules, and nothing tells them apart from members who were never asked, so the church chose to share
+-- everything and have every member look over their directory settings on their next sign-in
+-- (directory_review_due). Adding that column is what marks the switch as done, so running this file
+-- again changes nobody's choices.
+do $open$
+begin
+  if not exists (select 1 from information_schema.columns
+                  where table_schema = 'public' and table_name = 'church_members' and column_name = 'directory_review_due') then
+    alter table public.church_members add column directory_review_due boolean not null default true;
+    update public.church_members
+       set share_email = true, share_phone = true, share_photo = true, share_address = true, share_birthday = true;
+  end if;
+end $open$;
 
 do $$
 begin
@@ -234,9 +256,9 @@ create index if not exists church_members_norm_phone_idx on public.church_member
 --    NORMALISED email/phone actually changes, when the record stops being eligible, or when the
 --    login is unlinked by anything other than a sign-in replacing it under its own lease —
 --    reformatting "(706) 555-0100" as "706-555-0100" signs no one out
---  · a changed contact stops being shared; losing eligibility, a revoke or an unlink stops all
---    sharing (the directory still lists the name unless the member hid themselves: directory_hidden
---    is the member's own choice and nothing here resets it)
+--  · what the directory shows is the member's own choice (opt-out, member-directory-open.sql): a
+--    new email or phone, a revoke, an unlink or lost eligibility no longer switches sharing off (the
+--    directory leaves out anyone who isn't eligible anyway), and directory_hidden is theirs alone
 create or replace function public.app_member_login_guard()
 returns trigger language plpgsql set search_path = ''
 as $$
@@ -246,13 +268,12 @@ declare
   v_phone_changed boolean;
   v_lost          boolean;
   v_unlinked      boolean;
-  v_revoked       boolean;
 begin
   if tg_op = 'INSERT' then
     if v_api then
       new.auth_user_id := null; new.app_linked_at := null; new.app_login_email := null;
       new.app_mint_lease_until := null; new.app_mint_lease := null; new.app_not_before := null;
-      new.directory_listed := false; new.share_email := false; new.share_phone := false; new.share_photo := false;
+      new.directory_listed := false;
     end if;
     return new;
   end if;
@@ -269,21 +290,11 @@ begin
   -- (greatest/least skip NULLs, so keep "never set" as NULL explicitly)
   new.app_not_before := case when old.app_not_before is null and new.app_not_before is null then null
                              else least(greatest(old.app_not_before, new.app_not_before), clock_timestamp()) end;
-  v_revoked  := new.app_not_before is distinct from old.app_not_before;
   v_lost     := public.app_member_is_eligible(old) and not public.app_member_is_eligible(new);
   v_unlinked := old.auth_user_id is not null and new.auth_user_id is null
                 and (v_api or old.app_mint_lease_until is null or old.app_mint_lease_until < now());
   if v_email_changed or v_phone_changed or v_lost or v_unlinked then
     new.app_not_before := clock_timestamp();
-  end if;
-  if v_email_changed or (new.email is distinct from old.email and public.app_norm_email(new.email) is null) then
-    new.share_email := false;
-  end if;
-  if v_phone_changed or (new.phone is distinct from old.phone and public.app_norm_phone(new.phone) is null) then
-    new.share_phone := false;
-  end if;
-  if v_lost or v_unlinked or v_revoked then
-    new.directory_listed := false; new.share_email := false; new.share_phone := false; new.share_photo := false;
   end if;
   return new;
 end $$;
@@ -886,6 +897,8 @@ as $$
            'address', m.address, 'photo_url', m.photo_url,
            'directory_listed', not m.directory_hidden, 'share_email', m.share_email,
            'share_phone', m.share_phone, 'share_photo', m.share_photo,
+           'share_address', m.share_address, 'share_birthday', m.share_birthday,
+           'has_birthday', m.birthday is not null, 'directory_review_due', m.directory_review_due,
            'directory_allowed', m.include_directory is not false)
     from public.church_members m
    where m.id = public.app_caller_member_id()
@@ -937,14 +950,18 @@ begin
   return public.member_me();
 end $$;
 
--- Members edit their address and directory choices. Name, email and phone are the church's
--- record (and the sign-in credentials), so changes to those go through the office.
+-- Members edit their address and what the directory shows of them. Name, email and phone are the
+-- church's record (and the sign-in credentials), so changes to those go through the office.
+drop function if exists public.member_update_me(text, boolean, boolean, boolean, boolean);
 create or replace function public.member_update_me(
-  p_address          text    default null,
-  p_directory_listed boolean default null,
-  p_share_email      boolean default null,
-  p_share_phone      boolean default null,
-  p_share_photo      boolean default null)
+  p_address            text    default null,
+  p_directory_listed   boolean default null,
+  p_share_email        boolean default null,
+  p_share_phone        boolean default null,
+  p_share_photo        boolean default null,
+  p_share_address      boolean default null,
+  p_share_birthday     boolean default null,
+  p_directory_reviewed boolean default null)
 returns jsonb
 language plpgsql security definer
 set search_path = ''
@@ -956,14 +973,18 @@ begin
     raise exception 'address too long' using errcode = '22001';
   end if;
   update public.church_members set
-    address          = case when p_address is null then address else nullif(btrim(p_address), '') end,
-    directory_listed = coalesce(p_directory_listed, directory_listed),
+    address              = case when p_address is null then address else nullif(btrim(p_address), '') end,
+    directory_listed     = coalesce(p_directory_listed, directory_listed),
     -- "Show me in the directory": everyone is in it until they turn this off
-    directory_hidden = case when p_directory_listed is null then directory_hidden else not p_directory_listed end,
-    share_email      = coalesce(p_share_email, share_email),
-    share_phone      = coalesce(p_share_phone, share_phone),
-    share_photo      = coalesce(p_share_photo, share_photo),
-    updated_at       = now()
+    directory_hidden     = case when p_directory_listed is null then directory_hidden else not p_directory_listed end,
+    share_email          = coalesce(p_share_email, share_email),
+    share_phone          = coalesce(p_share_phone, share_phone),
+    share_photo          = coalesce(p_share_photo, share_photo),
+    share_address        = coalesce(p_share_address, share_address),
+    share_birthday       = coalesce(p_share_birthday, share_birthday),
+    -- they've looked over what the directory shows (once, after the switch to opt-out)
+    directory_review_due = case when p_directory_reviewed then false else directory_review_due end,
+    updated_at           = now()
   where id = v_id;
   return public.member_me();
 end $$;
@@ -971,21 +992,21 @@ end $$;
 -- The church directory: signed-in members only. Everyone on the church's list is in it by default
 -- (user, 2026-09-15) — every eligible adult record the office hasn't marked "not in directory" —
 -- unless the member took themselves out (directory_hidden, from My Profile or by deleting their app
--- account). Names for everyone; email, phone and photo only where that member chose to share them,
--- and only while their app login is intact. Photos are fetched one at a time (often stored inline).
-create or replace function public.member_directory(p_query text default null, p_limit int default 50, p_offset int default 0)
-returns table (id uuid, name text, email text, phone text, has_photo boolean)
+-- account). And everything shows — email, phone, photo, home address and birthday (month and day,
+-- never the year) — whether or not they use the app, until they turn a detail off (opt-out, user
+-- 2026-09-21). Photos are fetched one at a time (often stored inline).
+drop function if exists public.member_directory(text, int, int);
+create function public.member_directory(p_query text default null, p_limit int default 50, p_offset int default 0)
+returns table (id uuid, name text, email text, phone text, has_photo boolean, address text, birthday text)
 language sql stable security definer set search_path = ''
 as $$
   select m.id, btrim(m.name),
-         case when m.share_email and l.intact then m.email end,
-         case when m.share_phone and l.intact then m.phone end,
-         (m.share_photo and l.intact and nullif(m.photo_url, '') is not null)
+         case when m.share_email then nullif(btrim(m.email), '') end,
+         case when m.share_phone then nullif(btrim(m.phone), '') end,
+         (m.share_photo and nullif(m.photo_url, '') is not null),
+         case when m.share_address then nullif(btrim(m.address), '') end,
+         case when m.share_birthday then to_char(m.birthday, 'MM-DD') end
     from public.church_members m
-    cross join lateral (
-      select m.auth_user_id is not null
-             and exists (select 1 from auth.users u where u.id = m.auth_user_id and u.email = m.app_login_email) as intact
-    ) l
    where (select public.app_caller_member_id()) is not null
      and not m.directory_hidden
      and m.include_directory is not false
@@ -1006,8 +1027,6 @@ as $$
    where (select public.app_caller_member_id()) is not null
      and m.id = p_member_id
      and not m.directory_hidden and m.share_photo and m.include_directory is not false
-     and m.auth_user_id is not null
-     and exists (select 1 from auth.users u where u.id = m.auth_user_id and u.email = m.app_login_email)
      and public.app_member_is_eligible(m)
 $$;
 
@@ -1136,11 +1155,11 @@ grant execute on function
   to service_role;
 
 revoke all on function public.member_me(), public.member_bind_session(text),
-  public.member_update_me(text, boolean, boolean, boolean, boolean),
+  public.member_update_me(text, boolean, boolean, boolean, boolean, boolean, boolean, boolean),
   public.member_directory(text, int, int), public.member_directory_photo(uuid), public.member_directory_family(uuid),
   public.member_family() from public, anon;
 grant execute on function public.member_me(), public.member_bind_session(text),
-  public.member_update_me(text, boolean, boolean, boolean, boolean),
+  public.member_update_me(text, boolean, boolean, boolean, boolean, boolean, boolean, boolean),
   public.member_directory(text, int, int), public.member_directory_photo(uuid), public.member_directory_family(uuid),
   public.member_family() to authenticated;
 

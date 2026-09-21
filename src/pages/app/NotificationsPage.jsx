@@ -41,8 +41,8 @@ export default function NotificationsPage() {
         <div className="ax-panel">
           <Alert onClose={error ? () => setError('') : null}>{error}</Alert>
           {sent ? (
-            <div className="ax-note" style={{ marginBottom: 28 }}>
-              <Icon d={P.check} size={18} /><span style={{ flex: 1 }}>{sent}</span>
+            <div className="ax-note spaced">
+              <Icon d={P.check} size={18} /><span className="ax-note-main">{sent}</span>
               <button type="button" className="ax-btn quiet sm" onClick={() => setSent('')}>Write another</button>
             </div>
           ) : null}
@@ -66,14 +66,14 @@ export default function NotificationsPage() {
 
         <aside className="ax-aside">
           <div className="ax-sticky ax-phone-wrap">
-            <div className="ax-phone" style={{ background: 'linear-gradient(180deg, #3d5a80 0%, #98c1d9 100%)', minHeight: 360 }}>
-              <div style={{ textAlign: 'center', color: '#fff', margin: '14px 0 28px' }}>
-                <div style={{ fontSize: 15, fontWeight: 600, opacity: 0.9 }}>Sunday</div>
-                <div style={{ fontSize: 64, fontWeight: 700, lineHeight: 1, letterSpacing: -2 }}>9:41</div>
+            <div className="ax-phone lock">
+              <div className="ax-lock">
+                <div className="ax-lock-day">Sunday</div>
+                <div className="ax-lock-time">9:41</div>
               </div>
               <div className="ax-push">
                 <div className="ax-push-icon">B</div>
-                <div style={{ flex: 1, minWidth: 0 }}>
+                <div className="ax-push-main">
                   <div className="ax-push-top"><span>BethesdaApp</span><span>now</span></div>
                   <div className="ax-push-title">{title.trim() || 'Title'}</div>
                   <div className="ax-push-body">{body.trim() || 'Your message shows here.'}</div>
