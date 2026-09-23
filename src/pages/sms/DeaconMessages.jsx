@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { P, Icon } from '../../lib/icons';
 import {
-  fetchDeaconMessages, buildDeaconThreads, formatPhone, sepLabel, stampLabel,
+  fetchDeaconMessages, buildDeaconThreads, formatPhone, sepLabel, stampLabel, readableSendError,
 } from '../../lib/deaconMessages';
 import './DeaconMessages.css';
 
@@ -18,7 +18,13 @@ import './DeaconMessages.css';
  */
 
 const initials = n => (n || '#').trim().split(/\s+/).map(w => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase() || '#';
-const preview = m => (m ? `${m.direction === 'in' ? '' : 'Sent: '}${String(m.body || '').replace(/\s+/g, ' ').trim()}` : 'Nothing sent yet');
+const preview = m => {
+  if (!m) return 'Nothing sent yet';
+  const text = String(m.body || '').replace(/\s+/g, ' ').trim();
+  if (m.direction === 'in') return text;
+  return `${m.undelivered ? 'Not delivered: ' : 'Sent: '}${text}`;
+};
+const ordinal = n => `${n}${n % 10 === 1 && n % 100 !== 11 ? 'st' : n % 10 === 2 && n % 100 !== 12 ? 'nd' : n % 10 === 3 && n % 100 !== 13 ? 'rd' : 'th'}`;
 
 export default function DeaconMessages({ deacons }) {
   const [rows, setRows] = useState([]);
@@ -106,7 +112,7 @@ export default function DeaconMessages({ deacons }) {
                 </span>
                 <span className={`dm-thread-prev ${t.sent || t.replies ? '' : 'quiet'}`}>{preview(t.last)}</span>
               </span>
-              {t.failed > 0 && <span className="dm-flag" title={`${t.failed} didn't arrive`}>!</span>}
+              {t.failed > 0 && <span className="dm-flag" title={`${t.failed} never delivered`}>!</span>}
             </button>
           ))}
         </div>
@@ -120,28 +126,38 @@ export default function DeaconMessages({ deacons }) {
               <div className="dm-head-info">
                 <span className="dm-head-name">{active.label}</span>
                 <span className="dm-head-sub">
-                  {formatPhone(active.phone10)} · {active.sent} sent
+                  {formatPhone(active.phone10)} · {active.sent} delivered
+                  {active.late ? ` (${active.late} on a retry)` : ''}
                   {active.replies ? ` · ${active.replies} replied` : ''}
-                  {active.failed ? ` · ${active.failed} not delivered` : ''}
+                  {active.failed ? ` · ${active.failed} never delivered` : ''}
                 </span>
               </div>
             </header>
 
             <div className="dm-scroll" ref={scrollRef}>
-              {active.messages.length === 0 ? (
+              {active.items.length === 0 ? (
                 <p className="dm-empty-thread">Nothing has been sent to {active.label} yet.</p>
-              ) : active.messages.map((m, i) => {
-                const prev = active.messages[i - 1];
+              ) : active.items.map((m, i) => {
+                const prev = active.items[i - 1];
                 const dir = m.direction === 'in' ? 'in' : 'out';
                 const showSep = !prev || (new Date(m.created_at) - new Date(prev.created_at)) > 30 * 60 * 1000;
-                const failed = m.status === 'Failed';
+                const reason = readableSendError(m.undelivered ? m.error : m.delayedBy);
                 return (
                   <div key={m.id || i}>
                     {showSep && <div className="dm-sep">{sepLabel(m.created_at)}</div>}
                     <div className={`dm-msg ${dir}`}>
-                      <div className={`dm-bubble ${failed ? 'failed' : ''}`}>{m.body}</div>
+                      <div className={`dm-bubble ${m.undelivered ? 'failed' : ''}`}>{m.body}</div>
                     </div>
-                    {failed && <div className="dm-failed">Not delivered{m.error ? ` — ${m.error}` : ''}</div>}
+                    {m.undelivered ? (
+                      <div className="dm-failed">
+                        Never delivered{m.retries ? ` after ${m.retries + 1} tries` : ''}{reason ? ` — ${reason}` : ''}
+                      </div>
+                    ) : m.retries > 0 && (
+                      <div className="dm-retried">
+                        Went through on the {ordinal(m.retries + 1)} try · first tried {sepLabel(m.firstTriedAt)}
+                        {reason ? ` · ${reason}` : ''}
+                      </div>
+                    )}
                   </div>
                 );
               })}

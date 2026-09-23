@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { normPhone, formatPhone, sepLabel } from './conversations';
+import { readableSendError } from '../../supabase/functions/_shared/sendErrors.ts';
 
 /*
  * What each deacon was told.
@@ -20,7 +21,7 @@ export const canSeeDeaconMessages = profile => {
   return ['view', 'edit'].includes(String(profile.permissions?.cares || 'none'));
 };
 
-export { formatPhone, sepLabel };
+export { formatPhone, sepLabel, readableSendError };
 
 /* Both directions store the other party's number, so one number is one deacon's thread. */
 const FETCH_PAGE = 1000;
@@ -47,6 +48,54 @@ export async function fetchDeaconMessages() {
 }
 
 /*
+ * A failed attempt that a later retry delivered is not a failure anyone needs to
+ * read about. The care job re-sends whatever did not arrive on its next half-hour
+ * run, so a provider outage leaves a row of red attempts ahead of the text that
+ * finally went through — on Sep 23, three of them for one message. They fold
+ * into that one message, with a note saying it went through on a retry.
+ *
+ * Only attempts within a day of each other count as the same message: an
+ * identical alert sent the following week is a new text, not a retry.
+ */
+const RETRY_WINDOW_MS = 24 * 60 * 60 * 1000;
+const byTime = (a, b) => String(a.created_at).localeCompare(String(b.created_at)) || String(a.id).localeCompare(String(b.id));
+const gaveUp = tries => ({
+  ...tries[tries.length - 1], retries: tries.length - 1, firstTriedAt: tries[0].created_at, undelivered: true,
+});
+const apart = (a, b) => new Date(b.created_at) - new Date(a.created_at);
+
+export function foldRetries(messages = []) {
+  const out = [];
+  const pending = new Map();   // text → failed attempts still waiting for a delivery
+  for (const m of [...messages].sort(byTime)) {
+    const outbound = m.direction !== 'in';
+    const key = String(m.body || '');
+    if (outbound && m.status === 'Failed') {
+      const tries = pending.get(key);
+      if (tries && apart(tries[0], m) <= RETRY_WINDOW_MS) tries.push(m);
+      else {
+        if (tries) out.push(gaveUp(tries));
+        pending.set(key, [m]);
+      }
+      continue;
+    }
+    if (outbound && pending.has(key)) {
+      const tries = pending.get(key);
+      pending.delete(key);
+      if (apart(tries[0], m) <= RETRY_WINDOW_MS) {
+        out.push({ ...m, retries: tries.length, firstTriedAt: tries[0].created_at, delayedBy: tries[tries.length - 1].error });
+        continue;
+      }
+      out.push(gaveUp(tries));
+    }
+    out.push(m);
+  }
+  // Attempts no later text ever answered really did fail.
+  for (const tries of pending.values()) out.push(gaveUp(tries));
+  return out.sort(byTime);
+}
+
+/*
  * One thread per deacon, newest activity first. Deacons the directory knows but
  * who have never been texted are kept — "nothing has gone to them" is an answer
  * the office needs as much as the messages themselves.
@@ -67,15 +116,18 @@ export function buildDeaconThreads(rows = [], deacons = []) {
   }
 
   const threads = [...byPhone.values()].map(t => {
-    const last = t.messages[t.messages.length - 1] || null;
+    const items = foldRetries(t.messages);
+    const last = items[items.length - 1] || null;
     return {
       ...t,
+      items,
       label: t.name || formatPhone(t.phone10),
       last,
       lastAt: last?.created_at || null,
-      sent: t.messages.filter(m => m.direction !== 'in').length,
-      replies: t.messages.filter(m => m.direction === 'in').length,
-      failed: t.messages.filter(m => m.status === 'Failed').length,
+      sent: items.filter(m => m.direction !== 'in' && !m.undelivered).length,
+      replies: items.filter(m => m.direction === 'in').length,
+      failed: items.filter(m => m.undelivered).length,
+      late: items.filter(m => m.retries > 0 && !m.undelivered).length,
     };
   });
   /* Most recent first; deacons with nothing yet fall to the bottom, by name. */

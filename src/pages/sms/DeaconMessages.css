@@ -97,6 +97,8 @@
 .dm-msg.in .dm-bubble { background: var(--surface-2); color: var(--text); border-bottom-left-radius: 5px; }
 .dm-bubble.failed { background: var(--surface-2); color: var(--text-2); border: 1px dashed var(--red, #D93025); }
 .dm-failed { margin: 0 2px 8px; text-align: right; font-size: 11.5px; font-weight: 600; color: var(--red, #D93025); }
+/* Delivered in the end: a quiet note, not an alarm. */
+.dm-retried { margin: 0 2px 8px; text-align: right; font-size: 11.5px; color: var(--text-3); }
 .dm-empty-thread { padding: 28px 10px; text-align: center; font-size: 14px; color: var(--text-3); }
 
 .dm-foot {

@@ -24,6 +24,7 @@ import { toGsm } from '../_shared/smsEncoding.ts';
 import { authorizeSender } from '../_shared/callers.ts';
 import { toE164 } from '../_shared/phone.ts';
 import { loadRoster, screenMessages, parseTarget, parseAudience } from '../_shared/recipients.ts';
+import { readProviderReply } from '../_shared/sendErrors.ts';
 
 const TELNYX_API_KEY   = Deno.env.get('TELNYX_API_KEY')!;
 const TELNYX_FROM       = Deno.env.get('TELNYX_FROM_NUMBER')!;
@@ -209,8 +210,10 @@ Deno.serve(async (req) => {
            */
           body: JSON.stringify({ from: TELNYX_FROM, to: toE164(m.to_number), text: toGsm(m.body) }),
         });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data?.errors?.[0]?.detail || `HTTP ${res.status}`);
+        /* An outage answers with an HTML page, not JSON: say so, rather than
+           logging the parser's complaint about it. */
+        const { data, error: sendError } = await readProviderReply(res);
+        if (sendError) throw new Error(sendError);
         sent++;
         rows.push({ to_number: m.to_number, to_name: m.to_name, body: m.body, status: label, provider_id: data?.data?.id, channel: chan, campaign: about, created_at: at });
       } catch (e) {
