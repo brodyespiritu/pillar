@@ -1,0 +1,124 @@
+/*
+ * Deacon messages — the guests conversations layout, living inside the SMS
+ * page rather than over the top of it. Two columns, each its own scroll
+ * container: min-height 0 on both is what lets the row cap them, or the
+ * message list grows to the height of the thread and nothing scrolls.
+ */
+
+.dm-shell {
+  flex: 1; min-height: 420px;
+  display: grid; grid-template-columns: 320px minmax(0, 1fr);
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); overflow: hidden;
+}
+
+/* ── The deacons ── */
+.dm-side {
+  display: flex; flex-direction: column; min-width: 0; min-height: 0;
+  background: var(--surface-2); border-right: 1px solid var(--border);
+}
+.dm-side-head {
+  flex-shrink: 0; display: flex; align-items: flex-start; justify-content: space-between; gap: 10px;
+  padding: 15px 14px 10px;
+}
+.dm-side-head h2 { margin: 0; font-size: 19px; font-weight: 800; letter-spacing: -0.4px; color: var(--text); }
+.dm-side-sub { margin: 3px 0 0; font-size: 12.5px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.dm-refresh {
+  flex-shrink: 0; width: 32px; height: 32px; border-radius: 9px;
+  display: flex; align-items: center; justify-content: center;
+  background: none; color: var(--text-2); transition: background 0.12s, color 0.12s;
+}
+.dm-refresh:hover { background: var(--surface); color: var(--text); }
+
+.dm-search {
+  flex-shrink: 0; display: flex; align-items: center; gap: 8px; margin: 0 14px 8px;
+  padding: 7px 11px; border-radius: var(--radius-sm);
+  background: var(--surface); border: 1px solid var(--border); color: var(--text-3);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.dm-search:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(0,107,255,0.1); }
+.dm-search input { flex: 1; min-width: 0; border: none; background: none; outline: none; font: inherit; font-size: 14px; color: var(--text); }
+
+.dm-list { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 8px 10px; }
+.dm-note { padding: 16px 10px; font-size: 13px; line-height: 1.55; color: var(--text-3); }
+
+.dm-thread {
+  display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 11px;
+  width: 100%; padding: 10px; border-radius: 12px; background: none; text-align: left;
+  transition: background 0.1s;
+}
+.dm-thread:hover { background: var(--surface); }
+/* A selected row lifts to --surface on the tinted rail, like .cv-thread.on. */
+.dm-thread.on { background: var(--surface); }
+.dm-thread.on .dm-thread-name { color: var(--accent); }
+.dm-thread-main { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.dm-thread-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.dm-thread-name { font-size: 14.5px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dm-thread-time { flex-shrink: 0; font-size: 11.5px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.dm-thread-prev {
+  font-size: 13px; color: var(--text-2); line-height: 1.4;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.dm-thread-prev.quiet { color: var(--text-3); font-style: italic; }
+.dm-flag {
+  flex-shrink: 0; width: 18px; height: 18px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--red, #D93025); color: #fff; font-size: 11px; font-weight: 800;
+}
+
+.dm-ava {
+  flex-shrink: 0; width: 36px; height: 36px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--accent-soft, #EAF2FF); color: var(--accent);
+  font-size: 13px; font-weight: 700;
+}
+.dm-ava.sm { width: 30px; height: 30px; font-size: 11.5px; }
+
+/* ── What they were sent ── */
+.dm-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--surface); }
+.dm-head {
+  flex-shrink: 0; display: flex; align-items: center; gap: 10px;
+  padding: 12px 18px; border-bottom: 1px solid var(--border);
+}
+.dm-head-info { min-width: 0; display: flex; flex-direction: column; }
+.dm-head-name { font-size: 15.5px; font-weight: 700; color: var(--text); }
+.dm-head-sub { font-size: 12.5px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+
+.dm-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 18px 20px 10px; }
+.dm-sep { margin: 14px 0 10px; text-align: center; font-size: 11.5px; font-weight: 600; color: var(--text-3); }
+.dm-msg { display: flex; margin-bottom: 6px; }
+.dm-msg.out { justify-content: flex-end; }
+.dm-msg.in { justify-content: flex-start; }
+.dm-bubble {
+  max-width: min(680px, 78%); padding: 9px 13px; border-radius: 17px;
+  font-size: 14.5px; line-height: 1.45; white-space: pre-wrap; word-break: break-word;
+}
+.dm-msg.out .dm-bubble { background: var(--accent); color: #fff; border-bottom-right-radius: 5px; }
+.dm-msg.in .dm-bubble { background: var(--surface-2); color: var(--text); border-bottom-left-radius: 5px; }
+.dm-bubble.failed { background: var(--surface-2); color: var(--text-2); border: 1px dashed var(--red, #D93025); }
+.dm-failed { margin: 0 2px 8px; text-align: right; font-size: 11.5px; font-weight: 600; color: var(--red, #D93025); }
+.dm-empty-thread { padding: 28px 10px; text-align: center; font-size: 14px; color: var(--text-3); }
+
+.dm-foot {
+  flex-shrink: 0; margin: 0; padding: 11px 18px;
+  border-top: 1px solid var(--border); background: var(--surface-2);
+  font-size: 12.5px; color: var(--text-3);
+}
+
+.dm-placeholder {
+  flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 6px; padding: 40px; text-align: center;
+}
+.dm-placeholder-ic {
+  width: 64px; height: 64px; border-radius: 50%; margin-bottom: 6px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--surface-2); color: var(--text-3);
+}
+.dm-placeholder p { margin: 0; font-size: 16px; font-weight: 700; color: var(--text); }
+.dm-placeholder span { max-width: 420px; font-size: 13.5px; line-height: 1.55; color: var(--text-3); }
+
+/* Narrow windows: the rail becomes a short list above the thread. */
+@media (max-width: 900px) {
+  .dm-shell { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(160px, 34%) minmax(0, 1fr); }
+  .dm-side { border-right: none; border-bottom: 1px solid var(--border); }
+}

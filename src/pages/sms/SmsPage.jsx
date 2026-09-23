@@ -23,6 +23,8 @@ import { tallyReplies, parseHeadcount } from '../../lib/rsvp';
 import { groupCampaigns, campaignLabel } from '../../lib/campaigns';
 import { pollOptions, pollChoice } from '../../lib/poll';
 import RsvpLink, { MenuEditor } from './RsvpLink';
+import DeaconMessages from './DeaconMessages';
+import { canSeeDeaconMessages } from '../../lib/deaconMessages';
 import SmsOverview from './SmsOverview';
 import PillMenu from './PillMenu';
 import { splitByHours, windowOpen, WINDOW_LABEL } from '../../lib/quietHours';
@@ -52,10 +54,20 @@ const TABS = [
   { key: 'responses', name: 'Responses' },
 ];
 
+/* Tabs that fill the window rather than sitting in a column of text. */
+const PANE_TABS = ['responses', 'deacons'];
+
 export default function SmsPage() {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const isMobile = useIsMobile();
   const [tab, setTab] = useState('broadcast');
+  /* Care alerts are only readable by staff with Cares access — the same rule
+     the database enforces (supabase/sms-deacon-visibility.sql). */
+  const seeDeacons = canSeeDeaconMessages(profile);
+  const tabs = useMemo(
+    () => (seeDeacons ? [...TABS, { key: 'deacons', name: 'Deacons' }] : TABS),
+    [seeDeacons],
+  );
   const [contacts, setContacts] = useState({ rows: [], missing: false });
   const [threads, setThreads] = useState({ rows: [], missing: false });
   const [groups, setGroups] = useState({ rows: [], missing: false });
@@ -103,7 +115,7 @@ export default function SmsPage() {
   return (
     <div className="sms-wrap">
       <TopNav />
-      <main className={`sms-scroll ${tab === 'responses' ? 'pane' : ''}`}>
+      <main className={`sms-scroll ${PANE_TABS.includes(tab) ? 'pane' : ''}`}>
         {/* A coloured band, with the composer sitting across its lower edge. */}
         <div className={`sms-band ${tab === 'broadcast' ? 'tall' : ''}`}>
           <div className="sms-band-inner">
@@ -112,7 +124,7 @@ export default function SmsPage() {
                 counts are already on the sections below the composer. */}
             {!missing && (
               <nav className="sms-tabs">
-                {TABS.map(t => (
+                {tabs.map(t => (
                   <button key={t.key} className={`sms-tab ${tab === t.key ? 'on' : ''}`} onClick={() => setTab(t.key)}>
                     {t.name}
                   </button>
@@ -122,7 +134,7 @@ export default function SmsPage() {
           </div>
         </div>
 
-        <div className={`sms-container ${tab === 'broadcast' ? 'overlap' : ''} ${tab === 'responses' ? 'pane' : ''}`}>
+        <div className={`sms-container ${tab === 'broadcast' ? 'overlap' : ''} ${PANE_TABS.includes(tab) ? 'pane' : ''}`}>
           {missing ? (
             <div className="adm-placeholder">
               <div className="adm-placeholder-icon"><Icon d={P.sms} size={28} /></div>
@@ -144,6 +156,7 @@ export default function SmsPage() {
                                  contacts={contacts.rows} deacons={deacons} reload={load} />}
             {tab === 'responses' && <Responses threads={threads} contacts={contacts.rows}
               library={library.rows} pollAnswers={pollAnswers} reload={load} />}
+            {tab === 'deacons' && seeDeacons && <DeaconMessages deacons={deacons || []} />}
           </>)}
         </div>
       </main>

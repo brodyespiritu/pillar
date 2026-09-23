@@ -13,7 +13,15 @@
  * lands mid-box without measuring anything at runtime.
  */
 :root { --compose-half: 110px; }
-.sms-container { max-width: 1120px; margin: 26px auto 0; padding: 0 32px 64px; position: relative; z-index: 1; }
+/*
+ * The page fills the window, the way the guests conversations screen does.
+ * Blocks that are read — the composer, the lists — still cap themselves, so a
+ * line of text never runs the full width of a 27-inch monitor. The two-pane
+ * tabs (Responses, Deacons) take the whole width, which is their point.
+ */
+.sms-container { max-width: none; margin: 26px auto 0; padding: 0 clamp(20px, 3vw, 44px) 64px; position: relative; z-index: 1; }
+.sms-container > * { width: 100%; max-width: 1440px; margin-inline: auto; }
+.sms-container.pane > * { max-width: none; }
 .sms-container.overlap { margin-top: calc(var(--compose-half) * -1); }
 
 /* The coloured band behind the top of the page, matching the home dashboard. */
