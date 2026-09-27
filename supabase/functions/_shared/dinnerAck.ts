@@ -76,8 +76,25 @@ export async function activeDinner(supabase: any, now: number) {
   return (data || []).slice().sort((a: any, b: any) => when(b) - when(a))[0] || null;
 }
 
-/* Was the last thing we sent this person a dinner invitation? */
-async function repliedToDinner(supabase: any, last10: string) {
+/* How far back to look for the invitation a headcount answers. */
+const LOOKBACK = 25;
+
+/*
+ * Is the last thing we ASKED this person a dinner invitation?
+ *
+ * Asked, not sent. The dinner goes out Sunday; a Silver Liners announcement goes
+ * to the same list an hour later; "2" arrives Monday. That "2" answers the
+ * dinner, and the Responses tab has always counted it there (groupCampaigns,
+ * lastAsk). This used to read only the newest text, so the headcount was counted
+ * but the person never got their "Reservation received" — the announcement was
+ * simply what went out last.
+ *
+ * So announcements are looked past, the same way the count looks past them. A
+ * poll is a question too, and a bare number after one is a poll choice, so a
+ * poll stops the search. Only invitations inside the reservation window count:
+ * a "2" is never acknowledged against a dinner that stopped taking bookings.
+ */
+async function repliedToDinner(supabase: any, last10: string, now: number = Date.now()) {
   /*
    * Our own acknowledgements and reminders are skipped — neither is a question,
    * and either would otherwise mask the invitation: an acknowledgement the
@@ -95,6 +112,7 @@ async function repliedToDinner(supabase: any, last10: string) {
    * acknowledgements: none of them is a question, and a staff "see you there!"
    * must not stop the headcount that follows it being recognised.
    */
+  const cutoff = new Date(now - ACTIVE_DAYS * 864e5).toISOString();
   const { data, error: lookupErr } = await supabase
     .from('sms_messages')
     .select('body, status, campaign')
@@ -102,23 +120,12 @@ async function repliedToDinner(supabase: any, last10: string) {
     .eq('direction', 'out')
     .eq('channel', 'sms')
     .not('status', 'in', `("${ACK_STATUS}","Reply","Notice","Failed","Blocked")`)
+    .gte('created_at', cutoff)
     .order('created_at', { ascending: false })
-    .limit(1);
+    .limit(LOOKBACK);
   if (lookupErr) console.error('dinner reply lookup failed:', lookupErr.message);
-  const row = data?.[0];
-  if (!row) return false;
-
-  // We asked them outright how many; a bare number answers that.
-  if (row.status === ASK_STATUS) return true;
-
-  /*
-   * A reminder is a question about an earlier campaign, not about its own text,
-   * so it answers for whatever it was chasing.
-   */
-  const asked = String(
-    (row.status === REMIND_STATUS ? row.campaign : row.body) || '',
-  ).trim();
-  if (!asked) return false;
+  const rows = data || [];
+  if (!rows.length) return false;
 
   /*
    * Library bodies are stored trimmed while the sent copy keeps whatever the
@@ -127,9 +134,26 @@ async function repliedToDinner(supabase: any, last10: string) {
    * nothing to acknowledge, rather than an error.
    */
   const { data: lib, error } = await supabase
-    .from('sms_library').select('body').eq('message_type', 'Dinner');
+    .from('sms_library').select('body, message_type').in('message_type', ['Dinner', 'Poll']);
   if (error) { console.error('dinner lookup failed:', error.message); return false; }
-  return (lib || []).some((r: any) => String(r.body || '').trim() === asked);
+  const bodies = (type: string) => new Set((lib || [])
+    .filter((r: any) => r.message_type === type).map((r: any) => String(r.body || '').trim()));
+  const dinners = bodies('Dinner');
+  const polls = bodies('Poll');
+
+  for (const row of rows) {                 // newest first
+    // We asked them outright how many; a bare number answers that.
+    if (row.status === ASK_STATUS) return true;
+    /*
+     * A reminder is a question about an earlier campaign, not about its own
+     * text, so it answers for whatever it was chasing.
+     */
+    const asked = String((row.status === REMIND_STATUS ? row.campaign : row.body) || '').trim();
+    if (dinners.has(asked)) return true;
+    if (polls.has(asked)) return false;      // a number now is a poll choice
+    // An announcement asks nothing: keep looking back.
+  }
+  return false;
 }
 
 async function send(baseUrl: string, key: string, to: string, body: string, status: string) {
@@ -164,7 +188,7 @@ export async function dinnerAck(
   // Ordinary chatter, with no keyword to place it — nothing to look up.
   if (!keyed && !seats) return null;
 
-  const belongs = keyed ? !!(await activeDinner(supabase, now)) : await repliedToDinner(supabase, last10);
+  const belongs = keyed ? !!(await activeDinner(supabase, now)) : await repliedToDinner(supabase, last10, now);
   if (!belongs) return null;
 
   if (seats) {
