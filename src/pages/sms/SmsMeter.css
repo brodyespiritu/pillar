@@ -1,0 +1,55 @@
+/*
+ * The marked-up message box. The backdrop and the textarea must lay text out
+ * IDENTICALLY or the caret drifts away from the words: both carry the caller's
+ * class for font, size, line height and padding, and every wrapping rule is
+ * pinned here on both — plus `scrollbar-gutter: stable`, so a scrollbar
+ * appearing on the textarea can't narrow one layer and not the other.
+ */
+.smh-bg,
+.smh-ta {
+  white-space: pre-wrap; overflow-wrap: break-word; word-break: normal;
+  letter-spacing: normal; scrollbar-gutter: stable;
+}
+.smh-bg {
+  position: absolute; inset: 0; overflow: hidden;
+  pointer-events: none; color: var(--text);
+}
+.smh-ta {
+  position: relative; background: transparent; overflow-y: auto;
+  /* Safari paints field text with -webkit-text-fill-color; both are needed. */
+  color: transparent; -webkit-text-fill-color: transparent; caret-color: var(--text);
+}
+.smh-ta::placeholder { color: var(--text-3); -webkit-text-fill-color: var(--text-3); }
+.smh-ta::selection { background: rgba(0, 107, 255, 0.22); }
+
+/* Past the two-segment line */
+.smh-over { background: #FFD6A8; border-radius: 3px; }
+/* Forces the 70-character alphabet */
+.smh-costly { background: #FFE866; border-radius: 3px; }
+
+/* Where a full segment ends: a green bracket that takes up no room, so the
+   text on both layers still lines up character for character. */
+.smh-seg-end { position: relative; }
+.smh-seg-end::after {
+  content: ''; position: absolute; left: -2px; top: 0.18em; height: 1.1em; width: 4px;
+  border: 2px solid var(--green); border-left: none; border-radius: 0 3px 3px 0;
+}
+
+/* Maintenance hides the draft; the marks go with it. */
+.sms-compose.paused .smh-bg,
+.sm-compose.paused .smh-bg { visibility: hidden; }
+
+/* ── The price line under the box ── */
+.smc { margin: 12px 4px 0; display: flex; flex-direction: column; gap: 4px; }
+.smc p { margin: 0; font-size: 13px; line-height: 1.45; color: var(--text-2); }
+.smc-main b { color: var(--text); font-size: 14px; font-variant-numeric: tabular-nums; }
+.smc-sep { color: var(--text-3); }
+.smc-warn { display: flex; align-items: flex-start; gap: 7px; }
+.smc-warn.over { color: #9A4A00; }
+.smc-warn.costly { color: #7A5A00; }
+.smc-swatch { flex-shrink: 0; width: 12px; height: 12px; margin-top: 2px; border-radius: 3px; }
+.smc-swatch.over { background: #FFD6A8; }
+.smc-swatch.costly { background: #FFE866; }
+
+.smc.compact { margin: 10px 2px 0; }
+.smc.compact p { font-size: 13px; }

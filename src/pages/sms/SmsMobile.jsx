@@ -1,7 +1,9 @@
 import { useMemo, useState, useEffect } from 'react';
 import { P, Icon } from '../../lib/icons';
 import { confirmDialog } from '../../lib/dialog';
-import { sendBroadcast, recordSend, smsSegments, scheduleBroadcast, planRecipients, targetSpec } from '../../lib/broadcast';
+import { sendBroadcast, recordSend, scheduleBroadcast, planRecipients, targetSpec } from '../../lib/broadcast';
+import { meterText } from '../../lib/smsMeter';
+import { SmsMeterBox, SmsCostLine } from './SmsMeter';
 import { REPEATS } from '../../lib/recurrence';
 import { groupCampaigns } from '../../lib/campaigns';
 import { sendText, markRead, formatPhone } from '../../lib/conversations';
@@ -76,7 +78,8 @@ export default function SmsMobile({ owner, contacts, groups, members, threads, l
   );
   const unread = campaigns.reduce((n, c) => n + c.unread, 0);
 
-  const seg = smsSegments(body);
+  /* The price as it is typed (smsMeter.js), the same figure the desktop shows. */
+  const meter = useMemo(() => meterText(body, recipients.length), [body, recipients.length]);
   /* Scheduled texting maintenance greys out and locks the composer. */
   const paused = useMaintenance();
 
@@ -110,14 +113,15 @@ export default function SmsMobile({ owner, contacts, groups, members, threads, l
         {/* ── Say something ── */}
         <section className={`sm-compose ${paused ? 'paused' : ''}`}>
           <div className="sm-input-wrap">
-            <textarea
+            <SmsMeterBox
+              meter={meter}
               className="sm-input"
               value={body}
-              onChange={e => setBody(e.target.value)}
+              onChange={setBody}
               disabled={!!paused}
               placeholder={paused ? '' : 'What do you want to say to the congregation?'}
               rows={4}
-              aria-label="Message"
+              ariaLabel="Message"
             />
             {paused && <p className="sm-paused" role="status">{maintenanceLabel(paused)}</p>}
           </div>
@@ -156,10 +160,7 @@ export default function SmsMobile({ owner, contacts, groups, members, threads, l
             {type === 'Dinner' && <span className="sm-tag">Dinner</span>}
           </p>
 
-          {/* Only worth saying once the message is long enough to cost extra. */}
-          {seg.segments > 1 && (
-            <p className="sm-seg">{seg.segments} texts · {seg.len} characters</p>
-          )}
+          <SmsCostLine meter={meter} people={recipients.length} compact />
         </section>
 
         {queued && (

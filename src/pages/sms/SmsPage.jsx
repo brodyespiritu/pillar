@@ -24,6 +24,8 @@ import { groupCampaigns, campaignLabel } from '../../lib/campaigns';
 import { pollOptions, pollChoice } from '../../lib/poll';
 import RsvpLink, { MenuEditor } from './RsvpLink';
 import DeaconMessages from './DeaconMessages';
+import { SmsMeterBox, SmsCostLine } from './SmsMeter';
+import { meterText } from '../../lib/smsMeter';
 import { canSeeDeaconMessages } from '../../lib/deaconMessages';
 import SmsOverview from './SmsOverview';
 import PillMenu from './PillMenu';
@@ -221,7 +223,8 @@ function Broadcast({ owner, initialBody = '', contacts, groups, members, landlin
     ? 'All congregation'
     : (groups.find(g => g.id === target)?.name || 'Group');
 
-  const seg = smsSegments(body);
+  /* The price as it is typed: segments, people, and where the next one starts. */
+  const meter = useMemo(() => meterText(body, recipients.length), [body, recipients.length]);
 
   async function send() {
     if (paused || !body.trim() || !recipients.length) return;
@@ -272,10 +275,11 @@ function Broadcast({ owner, initialBody = '', contacts, groups, members, landlin
         */}
       <div className={`sms-compose ${paused ? 'paused' : ''}`}>
         <div className="sms-body-wrap">
-          <textarea className="sms-body" rows={5} value={body}
-            onChange={e => setBody(e.target.value)}
+          <SmsMeterBox meter={meter} className="sms-body" rows={5} value={body}
+            onChange={setBody}
             disabled={!!paused}
-            placeholder={paused ? '' : 'What do you want to say to the congregation?'} />
+            placeholder={paused ? '' : 'What do you want to say to the congregation?'}
+            ariaLabel="Message" />
           {paused && <p className="sms-paused" role="status">{maintenanceLabel(paused)}</p>}
         </div>
 
@@ -318,9 +322,9 @@ function Broadcast({ owner, initialBody = '', contacts, groups, members, landlin
         </div>
       </div>
 
+      <SmsCostLine meter={meter} people={recipients.length} />
       <p className="sms-meta">
         {recipients.length} recipient{recipients.length === 1 ? '' : 's'} · {targetLabel}
-        {seg.len > 0 && ` · ${seg.segments} segment${seg.segments === 1 ? '' : 's'} each, ${(seg.segments * recipients.length).toLocaleString()} billed`}
         {' · '}Each person gets their own text, not a group thread.
         {leftOut && ` Left out: ${leftOut}.`}
       </p>
