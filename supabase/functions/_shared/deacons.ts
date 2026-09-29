@@ -18,7 +18,7 @@ import { last10 } from './phone.ts';
 import { pollOptions } from './poll.ts';
 import { splitMessage } from './smsParts.ts';
 import { isDeaconTag } from './recipients.ts';
-import { shortDate, wherePlace, byWhom } from './careDigest.ts';
+import { shortDate, wherePlace } from './careDigest.ts';
 
 export { last10 };
 const normName = (n: unknown) => String(n ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
@@ -188,10 +188,10 @@ export function addedAlert(m: any): Alert {
   };
 }
 
-/* "Update on Mary Smith (Phone Call; by Pastor Tim):" — how, and who said so. */
-export function updateAlert(name: string, note: string, ctx: { type?: string; by?: string } = {}): Alert {
-  const extra = [ctx.type && ctx.type !== 'Update/Visit' ? clean(ctx.type) : '', byWhom(ctx.by)].filter(Boolean).join('; ');
-  return { header: `Update on ${clean(name)}${extra ? ` (${extra})` : ''}:`, lines: [clean(note)] };
+/* "Update on Mary Smith:" then the note as written. How it came in and who
+   logged it stay on the care record, out of the text (renderUpdate says why). */
+export function updateAlert(name: string, note: string): Alert {
+  return { header: `Update on ${clean(name)}:`, lines: [clean(note)] };
 }
 
 export const alertText = (a: Alert) => [a.header, ...a.lines].join('\n');

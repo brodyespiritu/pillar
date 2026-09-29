@@ -206,7 +206,7 @@ export default function EventWizard({ calendar, initialDate, event, onClose, onS
             <p className="gf-q">Anything special?</p>
             <label className="cw-check">
               <input type="checkbox" checked={f.featured} onChange={e => set('featured', e.target.checked)} disabled={f.is_private} />
-              <Icon d={P.star} size={15} /> Featured — a big card on the app’s Home page
+              <Icon d={P.star} size={15} /> Featured — first in Announcements on the app’s Home page, and at the top of its Calendar
             </label>
             {f.featured && (
               <div className="cw-featured">

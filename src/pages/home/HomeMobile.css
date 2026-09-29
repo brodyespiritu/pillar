@@ -275,3 +275,8 @@
   margin: 38px 0 8px; text-align: center;
   font-size: 14px; color: var(--text-3);
 }
+
+/* Member requests (MemberRequests.jsx), under the greeting */
+.hm-requests { padding: 0 16px; }
+.hm-requests .mr { margin-top: 16px; }
+.hm-requests .ar { position: static; width: auto; max-width: none; margin: 16px 0 0; }   /* TESTING — goes with AppReports */

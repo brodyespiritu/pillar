@@ -1,0 +1,389 @@
+/* ═══ Pillar → App → Live ═══
+ *
+ * Live's own styles (LivePage.jsx): the control room — stream, the card last sent and the saved
+ * cards, the composer and the chat — and the live player as a phone draws it, with a card over it
+ * (BethesdaApp screens/MediaPlayer.js).
+ *
+ * Pulled in by the @import lines at the top of ../appx.css, so the page needs no JS import (and its
+ * tests no new stubs). Everything here keeps the ax- prefix. The shared workspace, panes and fields
+ * live in ./base.css; the member app's own look for phone previews in ./phone.css (.ax-phone-app).
+ * base.css loads BEFORE this file, so a rule here with the same selector as a shared one wins on
+ * order alone (write the same selector, or add a class — never !important).
+ *
+ * The control room (redesign 2026-09-23, the approved mockup Live.dc.html): the panes sit in a grid
+ * on the workspace (.ax-work.ax-live) the height of the window, each scrolling on its own, so a
+ * service runs from one screen with nothing to scroll (horizontal first). Widths follow the room the
+ * sidebar leaves — container queries on the page, whose content box IS the workspace's width:
+ *   ≥ 1560     stream | show | write | phone | chat
+ *   1140–1559  stream | show | write | chat — Preview puts the phone in the chat's column, so the
+ *              card being written stays beside its words (proximity), and the chat becomes a drawer
+ *              (Chat in the head, Esc closes) rather than disappearing
+ *   760–1139   stream over show | write; the chat is a drawer; Preview adds the phone as a third
+ *              column, so Take down and every saved card's Show stay in view (Fitts)
+ *   < 760      one column in that order: stream, show, write, (phone), chat
+ * LivePage.jsx's chatIsDrawer() holds the same numbers for the keys (Esc) and the focus.
+ */
+
+/* ── the grid ── */
+.ax-work.ax-live {
+  display: grid; gap: 14px;
+  /* 1164 (1440 × 900, full sidebar): stream 260 · show 269 · write 349 · chat 244 */
+  grid-template-columns: clamp(260px, 22%, 320px) minmax(0, 1fr) clamp(330px, 30%, 420px) clamp(240px, 21%, 320px);
+  grid-template-rows: minmax(0, 1fr);
+  grid-template-areas: "stream show compose chat";
+}
+.ax-work.ax-live.phone-open {
+  grid-template-columns: clamp(250px, 21%, 320px) minmax(0, 1fr) clamp(330px, 29%, 420px) clamp(290px, 23%, 340px);
+  grid-template-areas: "stream show compose phone";
+}
+.ax-work.ax-live > .ax-live-stream { grid-area: stream; }
+.ax-work.ax-live > .ax-live-show { grid-area: show; }
+.ax-work.ax-live > .ax-live-compose { grid-area: compose; }
+.ax-work.ax-live > .ax-live-phone { grid-area: phone; display: none; }
+.ax-work.ax-live > .ax-live-chat { grid-area: chat; }
+.ax-work.ax-live.phone-open > .ax-live-phone { display: flex; }
+.ax-live-scrim, .ax-live-chat-close, .ax-live-chat-toggle { display: none; }
+/* every pane's head the height of the composer's (60), so their first lines line up */
+.ax-work.ax-live > .ax-pane > .ax-pane-bar { min-height: 60px; }
+
+/* ≥ 1560: room for everything at once — the phone keeps its own column, no Preview button needed */
+@container page (min-width: 1560px) {
+  .ax-work.ax-live, .ax-work.ax-live.phone-open {
+    grid-template-columns: clamp(260px, 17%, 320px) minmax(0, 1fr) clamp(340px, 24%, 440px) clamp(300px, 20%, 360px) clamp(250px, 17%, 320px);
+    grid-template-areas: "stream show compose phone chat";
+  }
+  .ax-work.ax-live > .ax-live-phone { display: flex; }
+  .ax-live-preview-toggle, .ax-live-phone-close { display: none; }
+}
+
+/* 1140–1559 with Preview open: the phone has the chat's column, and the chat is a drawer from the
+   right (the head's Chat opens it) — the same drawer as under 1140 */
+@container page (min-width: 1140px) and (max-width: 1559px) {
+  .ax-work.ax-live.phone-open > .ax-live-chat {
+    display: flex; grid-area: auto; position: absolute; top: 0; right: 0; bottom: 0; z-index: 20; width: min(340px, 92%);
+    box-shadow: -14px 0 30px rgba(11, 53, 88, 0.14);
+    transform: translateX(calc(100% + 24px)); visibility: hidden;
+    transition: transform 0.24s cubic-bezier(0.32, 0.72, 0, 1), visibility 0s linear 0.24s;
+  }
+  .ax-work.ax-live.phone-open.chat-open > .ax-live-chat { transform: none; visibility: visible; transition: transform 0.24s cubic-bezier(0.32, 0.72, 0, 1); }
+  .ax-work.ax-live.phone-open > .ax-live-scrim {
+    display: block; grid-area: auto; position: absolute; inset: 0; z-index: 19;
+    border-radius: var(--ax-radius); background: rgba(11, 53, 88, 0.08);
+  }
+  .ax-work.ax-live.phone-open .ax-live-chat-close, .ax-live-chat-toggle.with-phone { display: inline-flex; }
+}
+
+/* 760–1139: two columns — the stream over the show pane, the composer beside them; the chat a drawer */
+@container page (max-width: 1139px) {
+  .ax-work.ax-live, .ax-work.ax-live.phone-open {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+    grid-template-rows: fit-content(55%) minmax(0, 1fr);
+    grid-template-areas: "stream compose" "show compose";
+  }
+  /* Preview: the phone as a third column beside the words it draws (proximity); nothing hides, so
+     Take down and the saved cards' Show stay one click away (Fitts) */
+  .ax-work.ax-live.phone-open {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr) clamp(230px, 29%, 300px);
+    grid-template-areas: "stream compose phone" "show compose phone";
+  }
+  .ax-work.ax-live > .ax-live-chat {
+    display: flex; grid-area: auto; position: absolute; top: 0; right: 0; bottom: 0; z-index: 20; width: min(340px, 92%);
+    box-shadow: -14px 0 30px rgba(11, 53, 88, 0.14);
+    transform: translateX(calc(100% + 24px)); visibility: hidden;
+    transition: transform 0.24s cubic-bezier(0.32, 0.72, 0, 1), visibility 0s linear 0.24s;
+  }
+  .ax-work.ax-live.chat-open > .ax-live-chat { transform: none; visibility: visible; transition: transform 0.24s cubic-bezier(0.32, 0.72, 0, 1); }
+  .ax-work.ax-live > .ax-live-scrim {
+    display: block; grid-area: auto; position: absolute; inset: 0; z-index: 19;
+    border-radius: var(--ax-radius); background: rgba(11, 53, 88, 0.08);
+  }
+  .ax-live-chat-close { display: inline-flex; }
+}
+/* the head's Chat button: whenever the chat is a drawer */
+@container page (min-width: 760px) and (max-width: 1139px) {
+  .ax-live-chat-toggle { display: inline-flex; }
+}
+
+/* < 760: one column, in the order the service runs — the workspace scrolls as one (base.css) */
+@container page (max-width: 759px) {
+  .ax-work.ax-live, .ax-work.ax-live.phone-open { display: flex; flex-direction: column; }
+  .ax-work.ax-live > .ax-live-chat {
+    position: static; width: auto; transform: none; visibility: visible; box-shadow: var(--shadow); transition: none;
+  }
+  .ax-work.ax-live > .ax-live-scrim { display: none; }
+  .ax-live-chat-close { display: none; }
+  .ax-live-show-body > .ax-live-tiles { overflow: visible; min-height: 0; }
+  .ax-live-chat-body > .ax-live-chat-list { max-height: 420px; }
+}
+@media (max-width: 767px) {
+  /* stacked panes: only the last one (the chat) needs room under it for MobileNav's round button */
+  .ax-work.ax-live > .ax-pane > .ax-pane-body { padding-bottom: 16px; }
+  .ax-work.ax-live > .ax-live-chat > .ax-pane-body { padding-bottom: calc(96px + var(--pillar-safe-bottom, env(safe-area-inset-bottom, 0px))); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ax-work.ax-live > .ax-live-chat, .ax-work.ax-live.chat-open > .ax-live-chat,
+  .ax-work.ax-live.phone-open > .ax-live-chat, .ax-work.ax-live.phone-open.chat-open > .ax-live-chat { transition: none; }
+}
+
+/* ── head buttons ── */
+.ax-live-chat-toggle.on, .ax-btn.ax-live-preview-toggle.on {
+  background: var(--ax-pick); border-color: var(--ax-accent); color: var(--ax-accent);
+}
+.ax-live-chat-n {
+  display: inline-grid; place-items: center; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 999px;
+  background: var(--ax-pick); color: var(--ax-accent); font-size: 12px; font-weight: 800; font-variant-numeric: tabular-nums;
+}
+/* a retry inside a line of text: looks like a link, 44 to hit (Fitts) */
+.ax-live-retry {
+  position: relative; padding: 0; border: 0; background: none; color: var(--ax-accent); font: inherit; font-weight: 700;
+  text-decoration: underline; text-underline-offset: 3px; cursor: pointer;
+}
+.ax-live-retry::after { content: ''; position: absolute; inset: -12px -6px; }
+/* words only a screen reader needs (the Show pane's one live region) */
+.ax-live-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+/* ── Stream ── */
+.ax-live-stream-body { display: flex; flex-direction: column; gap: 18px; padding: 16px; }
+.ax-live-stream-body > .ax-alert { margin-bottom: 0; }
+/* the switch in a box of its own, first thing in the pane: red while live (Von Restorff) */
+.ax-live-status {
+  display: flex; flex-direction: column; gap: 12px; padding: 14px; border-radius: 14px;
+  border: 1px solid var(--ax-line); background: var(--ax-field);
+}
+.ax-live-status.on { border-color: color-mix(in srgb, var(--ax-live) 30%, transparent); background: var(--ax-danger-soft); }
+.ax-live-status-top { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.ax-live-status-words { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ax-live-status-words strong { font-size: 15px; font-weight: 800; color: var(--ax-ink); }
+.ax-live-status.on .ax-live-status-words strong { color: var(--ax-live); }
+.ax-live-status-words span { font-size: 12.5px; line-height: 1.4; color: var(--ax-ink-2); }
+.ax-live-status .ax-toggle { align-self: flex-start; min-height: 44px; }
+.ax-live-status .ax-hint { font-size: 12.5px; line-height: 1.45; }
+/* a narrow column: the title a little smaller than an editor's, so "Sunday Morning Worship" fits */
+.ax-live-stream-body .ax-input.title { font-size: 17px; min-height: 48px; }
+
+/* ── Show: the card last sent, then the saved cards ── */
+.ax-live-show-body { display: flex; flex-direction: column; gap: 14px; padding: 16px; }
+.ax-live-show-body > * { flex: none; }
+/* the saved cards scroll under the sent box; on a short window the whole pane scrolls instead */
+.ax-live-show-body > .ax-live-tiles { flex: 1 1 auto; min-height: 140px; overflow-y: auto; overscroll-behavior: contain; }
+
+.ax-live-now {
+  position: relative; display: flex; flex-direction: column; gap: 8px; padding: 14px; border-radius: 14px;
+  border: 1.5px dashed var(--ax-line-2); background: var(--ax-field);
+}
+/* sent = green, the one "on" colour (Von Restorff) */
+.ax-live-now.on { border-style: solid; border-color: var(--ax-on); background: var(--ax-on-soft); }
+/* the tag and Take down share a line while they fit; in a narrow pane Take down drops under the tag */
+.ax-live-now-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-height: 44px; }
+.ax-live-now-tag { font-size: 11.5px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; color: var(--ax-ink-3); }
+.ax-live-now.on .ax-live-now-tag { color: var(--ax-on); }
+.ax-live-now-title { font-size: 15px; font-weight: 800; line-height: 1.35; color: var(--ax-ink); overflow-wrap: anywhere; }
+.ax-live-now-line {
+  font-size: 13.5px; line-height: 1.5; color: var(--ax-ink-2); overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+}
+.ax-live-now-when, .ax-live-now-warn { font-size: 12.5px; line-height: 1.45; }
+.ax-btn.ax-live-takedown {
+  background: var(--surface); border-color: color-mix(in srgb, var(--ax-danger) 30%, transparent); color: var(--ax-danger);
+}
+.ax-btn.ax-live-takedown:hover:not(:disabled) { background: var(--ax-danger-soft); border-color: var(--ax-danger); }
+/* a poll's votes: a bar, the percentage and the count for each answer, and the total */
+.ax-live-tally { display: flex; flex-direction: column; gap: 6px; }
+.ax-live-bar { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--ax-ink); }
+.ax-live-bar-label { flex: 0 1 40%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ax-live-bar-track {
+  position: relative; flex: 1 1 auto; height: 8px; border-radius: 4px; overflow: hidden;
+  background: color-mix(in srgb, var(--ax-on) 20%, transparent);
+}
+.ax-live-bar-track > span { position: absolute; top: 0; bottom: 0; left: 0; border-radius: inherit; background: var(--ax-on); transition: width 0.3s ease; }
+.ax-live-bar-n { flex: none; min-width: 64px; text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
+.ax-live-total { font-size: 11.5px; color: var(--ax-ink-3); }
+
+.ax-live-ready-head { display: flex; flex-direction: column; gap: 10px; }
+.ax-live-ready-title { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 2px 10px; min-height: 22px; }
+.ax-live-ready-n { font-size: 12px; color: var(--ax-ink-3); white-space: nowrap; }
+/* the saved cards: tiles, one click from the screen (Fitts) — side by side when the pane is wide */
+.ax-live-tiles {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 232px), 1fr)); align-content: start; gap: 10px;
+  margin: 0 -4px; padding: 2px 4px 4px;
+}
+.ax-live-tiles > .ax-hint, .ax-live-tiles > .ax-live-empty { grid-column: 1 / -1; }
+.ax-live-empty { padding: 24px 12px; text-align: center; font-size: 14px; line-height: 1.55; color: var(--ax-ink-3); }
+.ax-live-empty strong { display: block; margin-bottom: 4px; font-size: 15.5px; color: var(--ax-ink); }
+.ax-live-tile {
+  container: ax-live-tile / inline-size;
+  display: flex; flex-direction: column; gap: 10px; min-width: 0; padding: 12px; border-radius: 14px;
+  border: 1px solid var(--ax-line); background: var(--surface); transition: border-color 0.12s, background 0.12s;
+}
+.ax-live-tile:hover { border-color: var(--ax-line-2); }
+.ax-live-tile.on { border-color: var(--ax-on); background: var(--ax-on-soft); }
+.ax-live-tile.editing { border-color: var(--ax-accent); box-shadow: inset 0 0 0 1px var(--ax-accent); }
+/* the head is the tile's Edit: the kind, the name and what it carries, and a pencil (a tick while
+   it's in the composer) — one big target instead of a third 44px button beside Show (Fitts, Hick) */
+.ax-live-tile-top {
+  display: flex; align-items: center; gap: 10px; width: 100%; min-width: 0; min-height: 44px; margin: 0; padding: 0;
+  border: 0; border-radius: 10px; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer;
+}
+.ax-live-tile-top:focus-visible { outline: none; box-shadow: 0 0 0 4px var(--ax-focus); }
+.ax-live-tile-main { flex: 1 1 auto; min-width: 0; }
+.ax-live-tile-mark {
+  flex: none; display: grid; place-items: center; width: 28px; height: 28px; border-radius: 8px;
+  color: var(--ax-ink-3); transition: background 0.12s, color 0.12s;
+}
+.ax-live-tile-top:hover .ax-live-tile-mark { background: var(--ax-card-hover); color: var(--ax-ink); }
+.ax-live-tile.editing .ax-live-tile-mark { background: var(--ax-pick); color: var(--ax-accent); }
+.ax-live-kindic {
+  flex: none; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 10px;
+  background: var(--surface-2); color: var(--ax-ink-2);
+}
+/* Show takes the tile's width, Remove beside it */
+.ax-live-tile-acts { display: flex; align-items: center; gap: 8px; }
+.ax-live-tile-acts > .ax-live-go { flex: 1 1 auto; min-width: 0; }
+.ax-live-go-word { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* a narrow tile (Preview open beside a 1140–1300 page): the marks go, the words stay whole —
+   "Show again" needs 134px with its icon, 110 without */
+@container ax-live-tile (max-width: 199px) {
+  .ax-live-kindic, .ax-live-go > svg { display: none; }
+}
+/* Show: outlined blue — the composer's Show now is the one filled button (Von Restorff) */
+.ax-btn.ax-live-go { border-color: var(--ax-accent); color: var(--ax-accent); }
+.ax-btn.ax-live-go:hover:not(:disabled) { background: var(--ax-pick); border-color: var(--ax-accent); }
+
+/* ── Write a card ── */
+.ax-live-compose .ax-editor-status { gap: 12px; flex-wrap: wrap; }
+.ax-live-form { display: flex; flex-direction: column; gap: 18px; }
+/* the three kinds, and where a button goes, as full-width switches on one line (Hick: one choice
+   decides which fields show); each option as wide as its word, the room left shared out */
+.ax-live-seg .ax-seg { display: flex; flex-wrap: nowrap; width: 100%; }
+.ax-live-seg .ax-seg button { flex: 1 1 auto; min-width: 0; padding: 0 10px; overflow: hidden; text-overflow: ellipsis; }
+.ax-live-acts { display: flex; flex-wrap: wrap; gap: 10px; }
+/* what's missing, said in words beside the buttons it holds back */
+.ax-live-why { margin-top: -8px; font-size: 13px; font-weight: 600; color: var(--ax-ink-2); }
+.ax-live-why.ok { font-weight: 500; color: var(--ax-ink-3); }
+/* leaving a saved card's edit was stopped: it can't save as it is, and says so (never lost silently) */
+.ax-live-why.held { color: var(--ax-danger); }
+
+/* ── Chat ── */
+.ax-live-chat-body { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px 14px; overflow: hidden; }
+.ax-live-chat-sub { flex: none; font-size: 12.5px; }
+.ax-live-chat-list {
+  flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+  display: flex; flex-direction: column; gap: 12px; padding-right: 2px;
+}
+.ax-live-chat-count { font-size: 12px; color: var(--ax-ink-3); white-space: nowrap; }
+.ax-live-msg { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ax-live-msg-top { display: flex; align-items: baseline; gap: 6px; min-width: 0; font-size: 12.5px; }
+.ax-live-msg-who { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 700; color: var(--ax-ink); }
+.ax-live-msg-at { flex: none; color: var(--ax-ink-3); font-variant-numeric: tabular-nums; }
+.ax-live-msg-text { font-size: 13.5px; line-height: 1.45; color: var(--ax-ink); overflow-wrap: anywhere; }
+
+/* ═══ The phone: the member app's live service (BethesdaApp components/LiveOverlay.js over MediaPlayer.js) ═══
+ * In points, 1 CSS px = 1 pt, scaled as one piece by PhoneFrame (css/phone.css). Every number is the
+ * app's own — tests/live-redesign.test.cjs reads them out of LiveOverlay.js and MediaPlayer.js and checks
+ * they agree. The player covers the whole screen: its status bar is hidden (the island is the phone's own),
+ * the dock slides away and the profile button hides (App.js, ProfileButton.js). The live screen is the
+ * app's Be Vietnam Pro; the card is the player's, in Geist.
+ */
+.ax-live-screen { background: #000; }
+.ax-live-screen .ax-pa-time, .ax-live-screen .ax-pa-sys { visibility: hidden; }
+.ax-live-screen .ax-pa-homebar { background: #fff; }   /* iOS draws the home bar light over black */
+.ax-live-player {
+  position: absolute; inset: 0; overflow: hidden; background: #000; color: #fff;
+  font-family: var(--ax-app-font); line-height: normal;
+}
+/* the stream, fitted across the middle (contentFit 'contain' of a 16:9 picture) — a dim stage here,
+   since a preview can't play the stream */
+.ax-live-video {
+  position: absolute; left: 0; right: 0; top: 50%; aspect-ratio: 16 / 9; transform: translateY(-50%);
+  background: radial-gradient(120% 95% at 50% 32%, #3B3631 0%, #1D1916 55%, #0D0B0A 100%);
+}
+/* shade where the words sit: 55% black at the top, gone by insets.top + 150; the bottom 45% up to 60% */
+.ax-live-shade-top {
+  position: absolute; left: 0; right: 0; top: 0; height: 209px; pointer-events: none;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.55) 0%, rgba(0, 0, 0, 0) 100%);
+}
+.ax-live-shade-bottom {
+  position: absolute; left: 0; right: 0; bottom: 0; height: 45%; pointer-events: none;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0) 0%, rgba(0, 0, 0, 0.6) 100%);
+}
+/* the top: insets.top + 6 above, 16 in on the left, 6 on the right (the ✕'s 44pt box ends 16 from the edge) */
+.ax-live-top { position: absolute; top: 0; left: 0; right: 0; z-index: 10; padding: 65px 6px 0 16px; }
+.ax-live-toprow { display: flex; align-items: center; justify-content: space-between; min-height: 44px; }
+.ax-live-meta { display: flex; align-items: center; gap: 12px; }
+.ax-live-viewers { display: flex; align-items: center; gap: 6px; color: #fff; }
+.ax-live-viewers-n { font-size: 15px; font-weight: 600; line-height: 20px; color: #fff; }
+/* components/LiveBadge.js: the live red (white on it 4.62:1), radius 8, 4 × 9, the white dot 6 */
+.ax-live-livebadge {
+  display: inline-flex; align-items: center; gap: 5px; padding: 4px 9px; border-radius: 8px;
+  background: #D53E28; color: #fff; font-size: 12px; font-weight: 700; letter-spacing: 0.5px;
+}
+.ax-live-livebadge > i { width: 6px; height: 6px; border-radius: 3px; background: #fff; }
+.ax-live-exit { display: grid; place-items: center; width: 44px; height: 44px; color: #fff; }
+.ax-live-title {
+  margin-top: 4px; padding-right: 10px; font-size: 18px; font-weight: 700; line-height: 24px; letter-spacing: -0.2px;
+  color: #fff; overflow-wrap: anywhere; text-shadow: 0 1px 8px rgba(0, 0, 0, 0.35); white-space: pre-wrap;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.ax-live-notes {
+  display: inline-flex; align-items: center; gap: 7px; margin-top: 10px; min-height: 36px; padding: 0 14px;
+  border-radius: 18px; background: rgba(28, 24, 22, 0.86); color: #fff; font-size: 14px; font-weight: 600;
+}
+/* the foot: insets.bottom + 8 under the comment row, 16 either side; the chat, a card, then the row */
+.ax-live-bottom { position: absolute; left: 0; right: 0; bottom: 0; z-index: 20; display: flex; flex-direction: column; padding: 0 16px 42px; }
+.ax-live-bubbles { display: flex; flex-direction: column; align-items: flex-start; margin-bottom: 10px; }
+.ax-live-bubble { max-width: 86%; margin-top: 8px; padding: 9px 14px; border-radius: 16px; background: rgba(28, 24, 22, 0.78); }
+.ax-live-bubble.joined { margin-top: 4px; }
+.ax-live-who {
+  display: block; margin-bottom: 1px; font-size: 13px; font-weight: 600; line-height: 17px; color: rgba(255, 255, 255, 0.68);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ax-live-said { display: block; font-size: 16px; font-weight: 500; line-height: 21px; color: #fff; overflow-wrap: anywhere; }
+.ax-live-row { display: flex; align-items: center; gap: 10px; }
+.ax-live-field {
+  flex: 1 1 0; min-width: 0; height: 48px; display: flex; align-items: center; padding: 0 16px; border-radius: 16px;
+  background: rgba(28, 24, 22, 0.86); font-size: 16px; color: rgba(255, 255, 255, 0.55);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ax-live-round { flex: none; display: grid; place-items: center; width: 48px; height: 48px; border-radius: 24px; background: rgba(28, 24, 22, 0.86); color: #fff; }
+.ax-live-round.bible { color: #F05A0F; }
+
+/* the card: verseCardWrap 20 in (the foot's 16 + 4), 12 above the comment row (composerTop + 12), the chat
+   12 above it; verseCard — the player's, in Geist */
+.ax-live-cardwrap { margin: 0 4px 12px; }
+.ax-live-bubbles + .ax-live-cardwrap { margin-top: 2px; }
+.ax-live-card { padding: 20px; border-radius: 20px; border: 1px solid rgba(255, 255, 255, 0.1); background: rgba(18, 18, 18, 0.96); font-family: var(--ax-app-font-ui); }
+.ax-live-card-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.ax-live-badge {
+  display: flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: 20px;
+  background: rgba(232, 112, 60, 0.15); color: #E84A0A;
+}
+.ax-live-badge > span { font-size: 10px; font-weight: 700; letter-spacing: 1px; }
+.ax-live-badge.informative { background: rgba(59, 130, 246, 0.18); color: #3b82f6; }
+.ax-live-badge.poll { background: rgba(168, 85, 247, 0.18); color: #a855f7; }
+.ax-live-card-acts { display: flex; align-items: center; gap: 6px; }
+.ax-live-save { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 15px; border: 1.5px solid #E84A0A; color: #E84A0A; }
+.ax-live-close { display: flex; padding: 4px; color: rgba(255, 255, 255, 0.5); }
+.ax-live-ref { margin-bottom: 6px; font-size: 15px; font-weight: 700; color: #fff; overflow-wrap: anywhere; }
+.ax-live-ref.q { margin-bottom: 10px; }
+/* verseCardText asks for italic, but the app loads no italic Geist and iOS never slants a face that
+   has none, so an iPhone draws the verse upright; font-synthesis: none makes the browser do the same
+   (the italic stays, for the day the app loads Geist_400Regular_Italic) */
+.ax-live-text {
+  margin-bottom: 8px; font-size: 15px; font-weight: 400; font-style: italic; font-synthesis: none; line-height: 22px;
+  color: rgba(255, 255, 255, 0.85); overflow-wrap: anywhere; white-space: pre-line;
+}
+.ax-live-text.plain { margin-bottom: 14px; font-style: normal; }
+.ax-live-note { margin-bottom: 12px; font-size: 13px; color: rgba(255, 255, 255, 0.45); overflow-wrap: anywhere; }
+/* infoActionBtn */
+.ax-live-infobtn {
+  display: flex; align-items: center; justify-content: center; gap: 7px; margin-top: 2px; padding: 12px 16px;
+  border-radius: 12px; background: #3b82f6; color: #fff;
+}
+.ax-live-infobtn > span { min-width: 0; font-size: 14px; font-weight: 700; overflow-wrap: anywhere; }
+/* pollOption, before this phone has voted — "Tap to vote" under them */
+.ax-live-opt {
+  display: flex; align-items: center; overflow: hidden; margin-bottom: 8px; padding: 12px;
+  border-radius: 10px; border: 1px solid rgba(168, 85, 247, 0.4);
+}
+.ax-live-opt > span { flex: 1 1 auto; min-width: 0; font-size: 14px; color: rgba(255, 255, 255, 0.85); overflow-wrap: anywhere; }
+.ax-live-tap { margin-top: 6px; font-size: 11px; text-align: center; color: rgba(255, 255, 255, 0.35); }

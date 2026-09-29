@@ -1,0 +1,106 @@
+/* ═══ Pillar → App → Notifications ═══
+ *
+ * Notifications's own styles (NotificationsPage.jsx): the message form beside a locked phone with
+ * the app’s icon (BethesdaApp assets/icon.png).
+ *
+ * Pulled in by the @import lines at the top of ../appx.css, so the page needs no JS import (and its
+ * tests no new stubs). Everything here keeps the ax- prefix. The shared workspace, panes and fields
+ * live in ./base.css; the member app's own look for phone previews in ./phone.css (.ax-phone-app).
+ * base.css loads BEFORE this file, so a rule here with the same selector as a shared one wins on
+ * order alone (write the same selector, or add a class — never !important).
+ *
+ * Layout: the workspace has no list and no drawer (Workspace without hasPreview), so the editor and
+ * the locked phone stay side by side down to 760px of room and stack below it (base.css) — the
+ * preview is the page's whole point, so it never slides away behind a button (horizontal first).
+ */
+
+/* ── the form: the words, then Send at their foot (proximity) ── */
+.ax-nt-send {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 12px 16px;
+  padding-top: 18px; border-top: 1px solid var(--ax-line);
+}
+.ax-nt-send-hint { flex: 1 1 200px; min-width: 0; }
+.ax-nt-keys { flex: none; }
+.ax-nt-send .ax-btn.primary { margin-left: auto; }
+.ax-nt-missing { margin-top: -8px; }
+/* "try again" when the announcements couldn't be read: a link's look on a real button */
+.ax-nt-retry { padding: 0; border: 0; background: none; font: inherit; cursor: pointer; }
+
+/* ── who gets it: the reach, big (the one number that matters before sending), then three facts ── */
+.ax-nt-reach {
+  display: flex; align-items: flex-start; gap: 14px; padding: 18px 20px; border-radius: 16px;
+  background: var(--ax-pick); color: var(--ax-accent);
+}
+.ax-nt-reach > svg { flex-shrink: 0; margin-top: 6px; }
+.ax-nt-reach-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ax-nt-reach-n { font-size: 30px; font-weight: 800; line-height: 1.1; letter-spacing: -0.8px; color: var(--ax-ink); font-variant-numeric: tabular-nums; }
+.ax-nt-reach-word { font-size: 14px; line-height: 1.45; color: var(--ax-ink-2); }
+.ax-nt-facts { display: flex; flex-direction: column; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.ax-nt-facts li { position: relative; padding-left: 18px; font-size: 14px; line-height: 1.5; color: var(--ax-ink-2); }
+.ax-nt-facts li::before {
+  content: ''; position: absolute; left: 2px; top: 8px; width: 6px; height: 6px; border-radius: 50%; background: var(--ax-ink-3);
+}
+
+/* ═══ the locked iPhone ═══
+ * iOS's own lock screen, not the app — so SF Pro (the system's face), not the app's Be Vietnam Pro.
+ * Everything is in the phone's points (1 CSS px = 1 pt at 393 × 852, PhoneFrame's one scale does the
+ * rest): the padlock under the Dynamic Island, the date over the big clock, the frosted notification
+ * near the foot where iOS puts a new one, and the torch and camera buttons in the bottom corners. */
+.ax-nt-lock { background: #0E1A2B; }
+/* a lock screen's status bar has no time — the big clock is the time */
+.ax-nt-lock .ax-pa-time { visibility: hidden; }
+/* …and over a dark wallpaper iOS draws the home bar light */
+.ax-nt-lock .ax-pa-homebar { background: #FFFFFF; }
+.ax-nt-screen {
+  position: relative; height: 100%; overflow: hidden; color: #FFFFFF;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+.ax-nt-wall {
+  position: absolute; inset: 0;
+  background:
+    radial-gradient(120% 70% at 20% 10%, rgba(117, 154, 214, 0.55) 0%, rgba(117, 154, 214, 0) 60%),
+    radial-gradient(90% 60% at 90% 85%, rgba(232, 150, 110, 0.45) 0%, rgba(232, 150, 110, 0) 65%),
+    linear-gradient(180deg, #1D3557 0%, #2C4A73 45%, #3B3355 100%);
+}
+.ax-nt-padlock { position: absolute; top: 66px; left: 50%; width: 16px; height: 21px; margin-left: -8px; color: #FFFFFF; }
+.ax-nt-date {
+  position: absolute; top: 98px; left: 0; right: 0; text-align: center;
+  font-size: 21px; font-weight: 600; line-height: 26px; letter-spacing: 0.2px; color: rgba(255, 255, 255, 0.92);
+}
+.ax-nt-clock {
+  position: absolute; top: 122px; left: 0; right: 0; text-align: center;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Helvetica Neue', system-ui, sans-serif;
+  font-size: 100px; font-weight: 700; line-height: 1.05; letter-spacing: -1.5px; color: rgba(255, 255, 255, 0.96);
+  font-variant-numeric: tabular-nums;
+}
+/* the notification: the system's light frosted material, the app's icon, the title on one line and
+   "now" beside it, the message cut to four lines */
+.ax-nt-push {
+  position: absolute; left: 16px; right: 16px; bottom: 126px; z-index: 2;
+  display: flex; align-items: flex-start; gap: 10px; padding: 14px 16px 14px 14px; border-radius: 22px;
+  background: rgba(246, 246, 248, 0.78);
+  -webkit-backdrop-filter: blur(28px) saturate(180%); backdrop-filter: blur(28px) saturate(180%);
+  box-shadow: 0 8px 26px rgba(0, 0, 0, 0.16); color: #000000;
+}
+.ax-nt-icon { flex: none; display: block; width: 38px; height: 38px; margin-top: 1px; }
+.ax-nt-push-main { flex: 1 1 auto; min-width: 0; }
+.ax-nt-push-top { display: flex; align-items: baseline; gap: 8px; }
+.ax-nt-push-title { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; font-weight: 600; line-height: 20px; letter-spacing: -0.2px; }
+.ax-nt-push-when { flex: none; font-size: 13px; line-height: 18px; color: rgba(60, 60, 67, 0.6); }
+.ax-nt-push-body {
+  margin-top: 1px; font-size: 15px; line-height: 20px; letter-spacing: -0.2px; overflow-wrap: anywhere; white-space: pre-line;
+  display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden;
+}
+/* nothing typed yet: where the words will go, faded */
+.ax-nt-push-title.empty, .ax-nt-push-body.empty { color: rgba(60, 60, 67, 0.45); }
+/* the torch and the camera, 50pt frosted discs in the bottom corners */
+.ax-nt-quick {
+  position: absolute; bottom: 48px; z-index: 2; width: 50px; height: 50px; border-radius: 50%;
+  display: grid; place-items: center; color: #FFFFFF;
+  background: rgba(0, 0, 0, 0.26);
+  -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px);
+}
+.ax-nt-quick.torch { left: 46px; }
+.ax-nt-quick.camera { right: 46px; }
+.ax-nt-quick svg { display: block; }

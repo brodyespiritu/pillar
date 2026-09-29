@@ -26,6 +26,12 @@
 .smh-over { background: #FFD6A8; border-radius: 3px; }
 /* Forces the 70-character alphabet */
 .smh-costly { background: #FFE866; border-radius: 3px; }
+/* Sent as plain punctuation, free. An underline changes no text metrics, so
+   the two layers still line up. */
+.smh-fixed {
+  text-decoration: underline dotted var(--green);
+  text-decoration-thickness: 2px; text-underline-offset: 4px;
+}
 
 /* Where a full segment ends: a green bracket that takes up no room, so the
    text on both layers still lines up character for character. */
@@ -50,6 +56,8 @@
 .smc-swatch { flex-shrink: 0; width: 12px; height: 12px; margin-top: 2px; border-radius: 3px; }
 .smc-swatch.over { background: #FFD6A8; }
 .smc-swatch.costly { background: #FFE866; }
+.smc-warn.fixed { color: #0A6B50; }
+.smc-swatch.fixed { background: none; border-bottom: 2px dotted var(--green); border-radius: 0; height: 9px; }
 
 .smc.compact { margin: 10px 2px 0; }
 .smc.compact p { font-size: 13px; }

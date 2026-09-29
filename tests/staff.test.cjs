@@ -94,7 +94,7 @@ const { saveChurchMember } = require(xform(path.join(PILLAR, 'src/lib/members.js
     const auth = fs.readFileSync(path.join(PILLAR, 'supabase/member-app-auth.sql'), 'utf8');
     for (const [name, text] of [['member-directory-open.sql', sql], ['member-app-auth.sql', auth]]) {
       assert.ok(/'staff_title', nullif\(btrim\(m\.staff_title\), ''\)/.test(text), `${name}: member_me sends it`);
-      assert.ok(/birthday text,\s*staff_title text\)/.test(text), `${name}: member_directory returns it`);
+      assert.ok(/birthday text,\s*staff_title text/.test(text), `${name}: member_directory returns it`);
     }
     if (!fs.existsSync(APP)) { console.log('     (the app repo is not beside Pillar — skipped the app half)'); return; }
     const memberAuth = fs.readFileSync(path.join(APP, 'utils/memberAuth.js'), 'utf8');
@@ -103,8 +103,11 @@ const { saveChurchMember } = require(xform(path.join(PILLAR, 'src/lib/members.js
     const profile = fs.readFileSync(path.join(APP, 'screens/ProfileScreen.js'), 'utf8');
     assert.ok(/staffTitle:\s+me\.staff_title/.test(memberAuth), 'the app reads member_me\'s staff_title');
     assert.ok(/staffTitle: m\.staff_title/.test(account), 'the app reads the directory\'s staff_title');
-    assert.ok(/<StaffBanner title=\{m\.staffTitle\}>/.test(card), 'the member card shows it');
-    assert.ok(/<StaffBanner title=\{staffTitle\}>/.test(profile), 'My Profile shows it');
+    // the mark on the picture, and the role under the name (user, 2026-09-22)
+    assert.ok(/<StaffBanner title=\{m\.staffTitle\}/.test(card) && /<StaffRole title=\{m\.staffTitle\} \/>/.test(card),
+      'the member card marks the picture and says the position under the name');
+    assert.ok(/<StaffBanner title=\{staffTitle\}/.test(profile) && /<StaffRole title=\{staffTitle\} \/>/.test(profile),
+      'My Profile does the same');
   });
 
   if (failed) { console.log(`${ok} passed, ${failed} failed`); process.exit(1); }

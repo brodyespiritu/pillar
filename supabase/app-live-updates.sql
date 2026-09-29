@@ -27,12 +27,15 @@ create table if not exists public.app_refresh (
 --   sermons        the sermon list (app server)
 --   media          the Watch page's layout, videos and resources (app server)
 --   live           whether the church is live (app server)
+--   replies        the office answered a tester's report (TESTING — app-report-replies.sql)
+--   popup          the update popup was posted, changed or taken down (TESTING — app-test-popups.sql)
+--   directory      the member list (church_members) — the app's Directory reads it again (2026-09-29)
 alter table public.app_refresh drop constraint if exists app_refresh_part_check;
 alter table public.app_refresh add constraint app_refresh_part_check
-  check (part in ('home', 'announcements', 'calendar', 'groups', 'sermons', 'media', 'live'));
+  check (part in ('home', 'announcements', 'calendar', 'groups', 'sermons', 'media', 'live', 'replies', 'popup', 'directory'));
 
 insert into public.app_refresh (part)
-select p from unnest(array['home', 'announcements', 'calendar', 'groups', 'sermons', 'media', 'live']) as p
+select p from unnest(array['home', 'announcements', 'calendar', 'groups', 'sermons', 'media', 'live', 'replies', 'popup', 'directory']) as p
 on conflict (part) do nothing;
 
 alter table public.app_refresh enable row level security;
@@ -82,6 +85,10 @@ begin
     ('locations',      'calendar'),
     ('church_groups',  'groups'),
     ('group_posts',    'groups'),
+    -- the member list: any add, edit or removal in Pillar (or an import, an approved member request, a
+    -- member hiding themselves) and every open Directory shows it (user, 2026-09-29: "Make sure the
+    -- directory automatically updates to the member list on pillar")
+    ('church_members', 'directory'),
     ('app_home_cards', 'home')
   ) as v(tbl, part)
   loop

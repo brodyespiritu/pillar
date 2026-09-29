@@ -13,8 +13,9 @@ import { supabase } from './supabase';
 export const REPORT_COLUMNS = 'id,name,contact,message,created_at,handled_at';
 const MARK = '[TEST]';
 
-/** Everything a tester sent that hasn't been closed out, newest first. */
-export async function fetchReports({ limit = 20 } = {}) {
+/** Everything a tester sent that hasn't been closed out, newest first — all of it, so "See all" can
+ *  show every one (user, 2026-09-23: "I need the ability to see all the bug reports on pillar"). */
+export async function fetchReports({ limit = 500 } = {}) {
   const { data, error } = await supabase
     .from('member_access_requests')
     .select(REPORT_COLUMNS)
@@ -46,10 +47,14 @@ export function parseReport(row) {
     const m = /^([A-Za-z ]+):\s*(.+)$/.exec(line.trim());
     if (m) facts[m[1].trim().toLowerCase()] = m[2].trim();
   });
+  // the sending phone's reply code (BethesdaApp components/testkit/replies.js) — builds before
+  // 2026-09-24 don't send one, and a reply can't reach those phones
+  const code = facts['reply code'] || '';
   return {
     id: row.id,
     kind,
     words,
+    canReply: /^[A-Za-z0-9_-]{16,64}$/.test(code),
     link,
     video: isVideo(link),
     lost: /couldn’t be uploaded|couldn't be uploaded/i.test(said),
@@ -58,6 +63,24 @@ export function parseReport(row) {
     contact: String(row.contact || '').trim(),
     at: row.created_at,
   };
+}
+
+/**
+ * Implemented: the office's words go to the phone that sent the report — a card there says the bug is
+ * fixed or the idea is in the app — and the report is closed out (supabase/app-report-replies.sql).
+ * `kind` 'fixed' | 'added'; `said` is what the tester wrote, shown back to them.
+ */
+export async function replyToReport(id, { message, kind = 'fixed', said = '' }) {
+  const { data, error } = await supabase.rpc('app_report_reply', {
+    p_request: id, p_message: String(message || '').trim(), p_kind: kind === 'added' ? 'added' : 'fixed', p_said: String(said || '').slice(0, 300),
+  });
+  if (error) {
+    if (/PGRST202|could not find the function|does not exist/i.test(`${error.code || ''} ${error.message || ''}`)) {
+      throw new Error('Implemented needs one step in Supabase first: run supabase/app-report-replies.sql in the SQL Editor.');
+    }
+    throw new Error(error.message || 'It wouldn’t send. Try again in a moment.');
+  }
+  return data;
 }
 
 /** Done with it: it won't come back. */

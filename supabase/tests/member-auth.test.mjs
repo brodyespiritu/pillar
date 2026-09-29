@@ -5,6 +5,7 @@
 //   or:  PGLITE_MODULE=/path/to/@electric-sql/pglite/dist/index.js node member-auth.test.mjs
 // Node 22.6+ (it imports functions/_shared/memberContact.ts directly for the SQL ↔ TS parity check).
 
+import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { SUPA, supabaseLikeDb } from './_pg.mjs';
@@ -26,6 +27,21 @@ const all = async (sql, params = []) => (await db.query(sql, params)).rows;
 section('migration');
 ok(!migrationError, 'member-app-auth.sql applies cleanly, twice', migrationError || '');
 if (migrationError) { console.log(`\n${pass} passed, ${fail} failed`); process.exit(1); }
+
+// The family-address file is how the live database gets these two (it's shorter to run than this
+// whole file): it must say what member-app-auth.sql says, word for word, and everything below runs
+// with it applied on top — as the live database has it.
+const HOUSEHOLD_SQL = fs.readFileSync(path.join(SUPA, 'member-household-signin.sql'), 'utf8');
+const fnText = (sql, name) => { const i = sql.indexOf(`create or replace function public.${name}(`); return i < 0 ? null : sql.slice(i, sql.indexOf('end $$;', i)); };
+const AUTH_SQL = fs.readFileSync(path.join(SUPA, 'member-app-auth.sql'), 'utf8');
+for (const name of ['app_login_candidates', 'app_caller_member_id']) {
+  ok(fnText(HOUSEHOLD_SQL, name) && fnText(HOUSEHOLD_SQL, name) === fnText(AUTH_SQL, name), `member-household-signin.sql's ${name} is member-app-auth.sql's`);
+}
+{
+  let e = null;
+  try { await db.exec(HOUSEHOLD_SQL); await db.exec(HOUSEHOLD_SQL); } catch (x) { e = x.message; }
+  ok(!e, 'member-household-signin.sql applies on top, twice', e || '');
+}
 
 const fnExists = async (name) => (await one(`select count(*)::int n from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.proname = $1`, [name])).n > 0;
 for (const f of ['member_claim', 'app_caller_email', 'app_caller_phone', 'app_auth_user_for_identifier', 'app_members_for_identifier', 'app_rate_check', 'app_phone10']) {
@@ -392,6 +408,38 @@ await denied('app metadata pointing elsewhere gets nothing', `update auth.users 
   ok((await row(M.alice)).share_email, '… and the new email shows as the old one did: sharing is the member\'s choice, not the address\'s');
   ok((await one(`select public.app_member_login_ok($1) v`, [M.alice])).v === false, '… and the old login must be recreated before the next sign-in');
 }
+{
+  // A family on one address (member-household-signin.sql): a wife with nothing of her own signs in
+  // through her husband's email. The gate re-checks "the contact that signed them in" on every call,
+  // and used to look only at her own (empty) email — so her sign-in never held (user, 2026-09-24:
+  // "A user is stating that they keep getting logged out of the app").
+  const dad = await member({ name: 'Hank Hill', email: 'hills@example.com', family_id: 'H-HILL', family_position: 'Head' });
+  const mom = await member({ name: 'Peggy Hill', family_id: 'H-HILL', family_position: 'Spouse' });
+  const pp = await prep(mom, 'm-44444444444444444444444444444444@members.invalid');
+  const momLogin = await createLogin(mom, pp.login_email);
+  ok(await link(mom, momLogin, 'hills@example.com', null, pp.lease) === true, 'family address: the wife links her own login through it');
+  await release(mom, pp.lease);
+  const GH = 'j'.repeat(43);
+  ok(await grant(await sha(GH), mom, momLogin, 'email') === true, '… and gets a grant');
+  const sidH = await session(momLogin);
+  const bound = await as('authenticated', jwt(momLogin, sidH), `select public.member_bind_session($1) v`, [GH]);
+  ok(!bound.error && bound.rows[0].v?.member_id === mom, '… and binding it signs her in', bound.error || JSON.stringify(bound.rows));
+  ok((await me(jwt(momLogin, sidH)))?.name === 'Peggy Hill', '… and she stays signed in: every call finds her through the family address');
+  await as('authenticated', staffJwt, `update church_members set email = 'hank@example.com' where id = $1`, [dad]);
+  ok(await me(jwt(momLogin, sidH)) === null, "… the family address changing ends the session it signed her in with, as it ends his");
+  await db.query(`update member_sessions set minted_at = clock_timestamp() where session_id = $1`, [sidH]);
+  ok((await me(jwt(momLogin, sidH)))?.member_id === mom, '… and a sign-in after that, through the new address, holds');
+  await db.query(`update church_members set family_id = 'H-PEGGY' where id = $1`, [mom]);
+  ok(await me(jwt(momLogin, sidH)) === null, '… moving her to another household ends it');
+  await db.query(`update church_members set family_id = 'H-HILL', family_position = 'Child' where id = $1`, [mom]);
+  ok(await me(jwt(momLogin, sidH)) === null, '… and so does her record saying she is a child');
+  await db.query(`update church_members set family_position = 'Spouse' where id = $1`, [mom]);
+  await db.query(`update member_sessions set minted_at = clock_timestamp() where session_id = $1`, [sidH]);
+  await db.query(`update church_members set email = 'peggy@example.com' where id = $1`, [mom]);
+  ok(await me(jwt(momLogin, sidH)) === null, '… and so does an email of her own: she signs in with that from then on');
+  await db.query(`delete from auth.users where id = $1`, [momLogin]);
+  await db.query(`delete from church_members where id = any($1)`, [[dad, mom]]);
+}
 
 // ── Member surface ───────────────────────────────────────────────────────────
 section('member functions');
@@ -468,7 +516,8 @@ const aliceRow = dir.rows.find((x) => x.name === 'Alice Adams');
 const johnRow = dir.rows.find((x) => x.name === 'John Smith');
 ok(bobRow && bobRow.phone === '706.312.0102' && bobRow.email === null && bobRow.has_photo === true, "shows everything but what a member turned off");
 ok(aliceRow && aliceRow.email === 'alice.new@example.com' && aliceRow.phone === '706-312-0111' && aliceRow.has_photo === false, '… for each member', JSON.stringify(aliceRow));
-ok(johnRow && johnRow.email === null && johnRow.phone === null && johnRow.has_photo === false && johnRow.address === null && johnRow.birthday === null,
+ok(johnRow && johnRow.email === null && johnRow.phone === null && johnRow.has_photo === false && johnRow.address === null && johnRow.birthday === null
+  && johnRow.birth_year === null,
   'someone who turned everything off is listed by name only', JSON.stringify(johnRow));
 await db.query(`update church_members set share_phone = true, share_email = true, photo_url = 'data:image/png;base64,BB', share_photo = true where id = $1`, [M.office]);
 dir = await as('authenticated', A, `select * from public.member_directory('oscar')`);
@@ -476,20 +525,53 @@ r = await as('authenticated', A, `select public.member_directory_photo($1) v`, [
 ok(!dir.error && dir.rows.length === 1 && dir.rows[0].phone === '706-312-0199' && dir.rows[0].has_photo === true
   && !r.error && r.rows[0].v === 'data:image/png;base64,BB', "a record without the app shows its details too: every member, app or not (user, 2026-09-21)", dir.error || JSON.stringify(dir.rows));
 {
-  // the details the directory gained: a home address, and a birthday that never gives the year away
+  // the details the directory gained: a home address, and a birthday — month and day, with the year
+  // apart for their age (user, 2026-09-21: "For birthday, add how old they are")
   await db.query(`update church_members set address = '12 Oak St, Ellerslie, GA', birthday = '1958-09-14' where id = $1`, [M.alice]);
   let d = await as('authenticated', B, `select * from public.member_directory('alice')`);
   ok(!d.error && d.rows[0].address === '12 Oak St, Ellerslie, GA' && d.rows[0].birthday === '09-14',
-    'the directory shows a home address and a birthday: month and day, never the year', d.error || JSON.stringify(d.rows));
+    'the directory shows a home address and a birthday: month and day', d.error || JSON.stringify(d.rows));
+  ok(!d.error && d.rows[0].birth_year === 1958 && typeof d.rows[0].birth_year === 'number',
+    '… and the year they were born, as a number, for their age', d.error || JSON.stringify(d.rows));
   const mine = await me(A);
   ok(mine && mine.share_address === true && mine.share_birthday === true && mine.has_birthday === true && 'directory_review_due' in mine,
     'a member sees what they share, and whether they have a review to do', JSON.stringify(mine));
   r = await as('authenticated', A, `select public.member_update_me(p_share_address => false, p_share_birthday => false) v`);
   d = await as('authenticated', B, `select * from public.member_directory('alice')`);
   ok(!r.error && d.rows[0].address === null && d.rows[0].birthday === null, 'turning them off takes them out of the directory', r.error || JSON.stringify(d.rows));
+  ok(!r.error && d.rows[0].birth_year === null, '… the year and the age with the birthday: one switch, both or neither', JSON.stringify(d.rows));
   r = await as('authenticated', A, `select public.member_update_me(p_directory_reviewed => true) v`);
   ok(!r.error && r.rows[0].v.directory_review_due === false, '… and once they have looked it over, they are not asked again', r.error || '');
   await db.query(`update church_members set address = null, birthday = null, share_address = true, share_birthday = true where id = $1`, [M.alice]);
+}
+{
+  // Birthdays Today at the top of the directory (user, 2026-09-21): everyone whose shared birthday is
+  // the day asked about, in the directory's own shape — one or two days a call, never the calendar
+  await db.query(`update church_members set birthday = '1958-09-14' where id = $1`, [M.alice]);
+  await db.query(`update church_members set birthday = '1990-09-14', share_birthday = false where id = $1`, [M.office]);
+  let d = await as('authenticated', B, `select * from public.member_birthdays(array['09-14'])`);
+  ok(!d.error && d.rows.map((x) => x.name).join() === 'Alice Adams' && d.rows[0].birthday === '09-14' && d.rows[0].birth_year === 1958,
+    "birthdays today: whoever shares theirs, with the year for their age", d.error || JSON.stringify(d.rows));
+  ok(!d.error && Object.keys(d.rows[0]).join() === 'id,name,email,phone,has_photo,address,birthday,staff_title,birth_year',
+    '… in exactly the directory’s columns', d.error || JSON.stringify(d.rows[0]));
+  const dir = await as('authenticated', B, `select * from public.member_directory('alice')`);
+  ok(!dir.error && JSON.stringify(dir.rows[0]) === JSON.stringify(d.rows[0]), '… and the very same row the directory shows', JSON.stringify([dir.rows[0], d.rows[0]]));
+  d = await as('authenticated', B, `select * from public.member_birthdays(array['09-13', '09-14'])`);
+  ok(!d.error && d.rows.length === 1, 'two days at once (28 February brings the 29th along)', d.error || JSON.stringify(d.rows));
+  d = await as('authenticated', B, `select * from public.member_birthdays(array['09-12', '09-13', '09-14'])`);
+  ok(!d.error && d.rows.length === 0, 'three or more days: nothing — it is for today, not a calendar', d.error || JSON.stringify(d.rows));
+  d = await as('authenticated', B, `select * from public.member_birthdays(array[]::text[])`);
+  ok(!d.error && d.rows.length === 0, 'no day: nothing', d.error || JSON.stringify(d.rows));
+  d = await as('authenticated', B, `select * from public.member_birthdays(null)`);
+  ok(!d.error && d.rows.length === 0, '… nor with none at all', d.error || JSON.stringify(d.rows));
+  await db.query(`update church_members set directory_hidden = true where id = $1`, [M.alice]);
+  d = await as('authenticated', B, `select * from public.member_birthdays(array['09-14'])`);
+  ok(!d.error && d.rows.length === 0, 'someone hidden from the directory isn’t in it either', d.error || JSON.stringify(d.rows));
+  await db.query(`update church_members set directory_hidden = false where id = $1`, [M.alice]);
+  d = await as('anon', null, `select * from public.member_birthdays(array['09-14'])`);
+  ok(/permission denied/.test(d.error || ''), '… and nobody signed out can ask', d.error || 'allowed');
+  await db.query(`update church_members set birthday = null where id = any($1)`, [[M.alice, M.office]]);
+  await db.query(`update church_members set share_birthday = true where id = $1`, [M.office]);
 }
 await db.query(`update church_members set share_phone = false, share_email = false, photo_url = null, share_photo = false where id = $1`, [M.office]);
 r = await as('authenticated', B, `select public.member_update_me(p_directory_listed => false) v`);
@@ -539,7 +621,7 @@ ok(!dir.error && !page2.error && dir.rows.length === 2 && page2.rows.length === 
   await db.query(`update church_members set deacon_id = null where id = $1`, [M.john]);
   await db.query(`delete from church_members where id = any($1)`, [[deacon, hiddenSis, outSis, kidSmith, goneSmith]]);
 }
-ok(!JSON.stringify(dir.rows).match(/notes|tags|members\.invalid/) && dir.rows.every((x) => Object.keys(x).join() === 'id,name,email,phone,has_photo,address,birthday,staff_title'),
+ok(!JSON.stringify(dir.rows).match(/notes|tags|members\.invalid/) && dir.rows.every((x) => Object.keys(x).join() === 'id,name,email,phone,has_photo,address,birthday,staff_title,birth_year'),
   'directory never includes notes, tags or login addresses', JSON.stringify(dir.rows[0]));
 dir = await as('authenticated', A, `select * from public.member_directory('bo%')`);
 ok(!dir.error && dir.rows.length === 0, 'search wildcards are escaped');

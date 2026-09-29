@@ -8,9 +8,10 @@ import { smsCost, toGsm } from '../../supabase/functions/_shared/smsEncoding.ts'
  *   - a green bracket where each full segment ends,
  *   - orange on anything past the two-segment line,
  *   - yellow on a character that forces the costlier alphabet (an emoji, an
- *     accented letter), where a segment holds 70 characters instead of 160.
- * Curly quotes, long dashes and odd spaces are not marked: Pillar sends those
- * as plain punctuation (toGsm), so they cost nothing extra.
+ *     accented letter), where a segment holds 70 characters instead of 160,
+ *   - a green dotted underline on curly quotes, long dashes and odd spaces:
+ *     Pillar sends those as plain punctuation (toGsm), so they cost nothing
+ *     extra, and the price line says what they would have cost otherwise.
  *
  * Everything is measured on the text as it will go out, not as typed, so an
  * ellipsis counts as the three dots it becomes and a stray zero-width space as
@@ -63,6 +64,7 @@ export function meterText(text, people = 0) {
 
   const runs = [];
   const costly = [];
+  const fixed = [];
   let at = 0;
   chars.forEach((ch, i) => {
     const w = pieces[i];
@@ -70,7 +72,10 @@ export function meterText(text, people = 0) {
     at += unitsOf(w);
     const isCostly = !gsm && w !== '' && smsCost(w).encoding === 'UCS-2';
     if (isCostly && ch.trim()) costly.push(ch);
-    const cls = isCostly ? 'costly' : multipart && at > budget ? 'over' : 'plain';
+    // Typed one way, sent another: a curly quote, a long dash, an ellipsis.
+    const isFixed = gsm && w !== ch && ch.trim() !== '';
+    if (isFixed) fixed.push(ch);
+    const cls = isCostly ? 'costly' : multipart && at > budget ? 'over' : isFixed ? 'fixed' : 'plain';
     const segEnd = multipart && Math.floor(start / per) < Math.floor(at / per);
     const last = runs.at(-1);
     // A segment ending on a line break: the bracket closes the line it ends,
@@ -92,6 +97,8 @@ export function meterText(text, people = 0) {
   const plainSegments = costly.length
     ? smsCost(toGsm(chars.filter(c => !costly.includes(c)).join(''))).segments
     : segments;
+  // What it would bill if the curly quotes and dashes went out as typed.
+  const typedSegments = typed.length ? smsCost(typed).segments : 0;
 
   return {
     segments, units: total.units, per, single, encoding: total.encoding,
@@ -99,6 +106,8 @@ export function meterText(text, people = 0) {
     overBy: multipart && total.units > budget ? total.units - budget : 0,
     costly: [...new Set(costly)],
     costIfPlain: price(plainSegments), plainSegments,
+    fixed: [...new Set(fixed)], fixedCount: fixed.length,
+    costAsTyped: price(typedSegments), typedSegments,
     runs,
   };
 }

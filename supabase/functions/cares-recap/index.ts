@@ -235,7 +235,7 @@ async function planDeaconAlerts(
   for (const l of logs || []) {
     const cm = (l as any).care_members;
     if (!cm || !String(l.notes || '').trim()) continue;
-    events.push({ kind: 'update', ref: l.id, care: cm, alert: updateAlert(cm.full_name, l.notes, { type: (l as any).type, by: (l as any).logged_by_name }), at: l.created_at });
+    events.push({ kind: 'update', ref: l.id, care: cm, alert: updateAlert(cm.full_name, l.notes), at: l.created_at });
   }
   counts.events = events.length;
 
@@ -282,7 +282,7 @@ async function planDeaconAlerts(
     for (const m of dAdded || []) push(m, m.created_at, alertText(addedAlert(m)));
     for (const l of dLogs || []) {
       const cm = (l as any).care_members;
-      if (cm && String(l.notes || '').trim()) push(cm, l.created_at, alertText(updateAlert(cm.full_name, l.notes, { type: (l as any).type, by: (l as any).logged_by_name })));
+      if (cm && String(l.notes || '').trim()) push(cm, l.created_at, alertText(updateAlert(cm.full_name, l.notes)));
     }
     for (const [phone, v] of byDeacon) {
       if (v.lines.length) daily.push({ phone, deacon: v.deacon, kind: 'daily', ref: stamp, parts: dailyParts(v.lines) });
@@ -503,7 +503,6 @@ Deno.serve(async (req) => {
         const cm = (l as any).care_members || {};
         return {
           name: cm.full_name || 'Unknown', notes: l.notes, id: l.member_id,
-          type: (l as any).type, by: (l as any).logged_by_name,
           /* Where to find them, when that is a hospital bed. */
           where: cm.category === 'Hospitalized' ? wherePlace(cm) : '',
         };

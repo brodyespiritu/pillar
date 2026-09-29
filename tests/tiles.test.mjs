@@ -49,12 +49,18 @@ console.log('\n── the four boxes ──');
 
 await t('the office may write a word and a line into any of the four', () => {
   for (const s of SLOTS) assert.deepStrictEqual(tileProblems({ slot: s.slot, title: 'Hello', subtitle: 'Come in' }), []);
-  assert.ok(tileProblems({ slot: 'give', title: 'x' }).some((p) => /one of the four/.test(p)));
+  assert.ok(tileProblems({ slot: 'give', title: 'x' }).some((p) => /one of Home’s shortcuts/.test(p)));
 });
 
 await t('a box says what fits on a phone, and nothing longer', () => {
-  assert.deepStrictEqual(tileProblems({ slot: 'prayer', title: 'x'.repeat(TILE_LIMITS.title) }), []);
-  assert.ok(tileProblems({ slot: 'prayer', title: 'x'.repeat(TILE_LIMITS.title + 1) }).length === 1);
+  // since the Home redesign (2026-09-23) prayer, connect and bulletin are round buttons: one short word
+  for (const slot of ['prayer', 'connect', 'bulletin']) {
+    assert.deepStrictEqual(tileProblems({ slot, title: 'x'.repeat(TILE_LIMITS.button) }), [], slot);
+    assert.ok(tileProblems({ slot, title: 'x'.repeat(TILE_LIMITS.button + 1) }).some((p) => /round button/.test(p)), slot);
+  }
+  // the latest post is a card, with room for a title
+  assert.deepStrictEqual(tileProblems({ slot: 'post', title: 'x'.repeat(TILE_LIMITS.title) }), []);
+  assert.ok(tileProblems({ slot: 'post', title: 'x'.repeat(TILE_LIMITS.title + 1) }).length === 1);
   assert.deepStrictEqual(tileProblems({ slot: 'prayer', subtitle: 'x'.repeat(TILE_LIMITS.subtitle) }), []);
   assert.ok(tileProblems({ slot: 'prayer', subtitle: 'x'.repeat(TILE_LIMITS.subtitle + 1) }).length === 1);
 });
@@ -93,16 +99,39 @@ await t('Pillar, the app and the database all mean the same four boxes', () => {
   const sql = fs.readFileSync(path.join(PILLAR, 'supabase/app-home-tiles.sql'), 'utf8');
   const inSql = /slot in \(([^)]*)\)/.exec(sql)[1].split(',').map((s) => s.trim().replace(/'/g, ''));
   assert.deepStrictEqual(inSql.sort(), [...mine].sort(), `the database: ${inSql}`);
-  // and the words Pillar shows as the app's are the words the app actually uses
-  const comp = fs.readFileSync(path.join(APP, 'components/HomeTiles.js'), 'utf8');
-  for (const s of SLOTS) {
-    if (s.slot === 'post') continue;                 // its line names whichever account is primary
-    assert.ok(comp.includes(`title: '${s.title}'`), `${s.slot} title: ${s.title}`);
-    assert.ok(comp.includes(s.subtitle.replace(/’/g, "'")), `${s.slot} line: ${s.subtitle}`);
+  // and the words Pillar shows as the app's are the words the app actually uses: the round buttons'
+  // (components/HomeShortcuts.js) and the latest-post card's (components/TimelyCard.js)
+  const buttons = fs.readFileSync(path.join(APP, 'components/HomeShortcuts.js'), 'utf8');
+  for (const s of SLOTS.filter((x) => x.button)) {
+    assert.ok(new RegExp(`${s.slot}:\\s+\\{ word: '${s.title}'`).test(buttons), `${s.slot} word: ${s.title}`);
   }
+  const card = fs.readFileSync(path.join(APP, 'components/TimelyCard.js'), 'utf8');
+  const post = SLOTS.find((x) => x.slot === 'post');
+  assert.ok(card.includes(`'${post.title}'`), `the latest post's title: ${post.title}`);
+  assert.ok(!SLOTS.filter((x) => x.button).some((x) => x.subtitle), 'a round button has no line under it');
   // the database won't take more than Pillar's own limits
   assert.ok(sql.includes(`between 1 and ${TILE_LIMITS.title}`), 'the title limit matches');
   assert.ok(sql.includes(`<= ${TILE_LIMITS.subtitle}`), 'the subtitle limit matches');
+});
+
+await t('Pillar\u2019s phone draws Home as phones now show it: round buttons, then one card', () => {
+  const page = fs.readFileSync(path.join(PILLAR, 'src/pages/app/HomePage.jsx'), 'utf8');
+  assert.ok(page.includes("{ key: 'boxes', label: 'Shortcuts' }"), 'the tab is named for what it edits');
+  // (the redesign, 2026-09-23: the phone is drawn with the app's own pieces from css/phone.css, so the
+  // round buttons are .ax-pa-shortcuts — HomeShortcuts.js at its true size — not the old
+  // .ax-phone-shortcuts sketch; still round buttons, never the four boxes)
+  assert.ok(page.includes('className="ax-pa-shortcuts"') && !page.includes('className="ax-phone-boxes"'), 'round buttons, not four boxes');
+  // the app's own rule (BethesdaApp components/TimelyCard.js pickTimely): the plate card for members,
+  // else the first other card for them, else the latest post
+  assert.ok(/const dinner = as === 'signed_in' \? forThem\.find\(\(r\) => formOf\(r\)\.kind === 'dinner'\) : null;/.test(page));
+  assert.ok(/const onPhones = dinner \|\| other;/.test(page));
+  const app = fs.readFileSync(path.join(APP, 'components/homeCardsData.js'), 'utf8');
+  assert.ok(/if \(dinner && signedIn && dinnerOpen\) return dinner;/.test(app), 'and the app does the same');
+  // then the next five under Announcements, the office's own kinds only — as the app's shelfCards does
+  assert.ok(/const announced = forThem\.filter\(\(r\) => r !== onPhones && \['image', 'video', 'text'\]\.includes\(formOf\(r\)\.kind\)\)\.slice\(0, 5\);/.test(page));
+  assert.ok(/export const SHELF_MAX = 5;/.test(app));
+  // and every card the office writes can say more, for when it's tapped
+  assert.ok(page.includes("label={f.kind === 'text' ? 'Paragraph' : 'More words'}"));
 });
 
 console.log('\n── featured events ──');

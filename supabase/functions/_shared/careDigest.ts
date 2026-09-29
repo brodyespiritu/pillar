@@ -69,14 +69,6 @@ export function wherePlace(m: any) {
     .filter(Boolean).join(', ');
 }
 
-/* "texted in by Pastor Tim" / "by Pastor Tim" — who put this on the record. */
-export function byWhom(name: unknown) {
-  const n = clean(name);
-  if (!n) return '';
-  const texted = n.match(/^(.*?)\s*\(text\)$/i);
-  return texted ? `texted in by ${texted[1]}` : `by ${n}`;
-}
-
 /* The newest thing written about someone: their latest log, else the profile note. */
 function latestNote(m: any) {
   const logs = [...(m?.contact_logs || [])]
@@ -104,14 +96,16 @@ export function renderAdded(m: any) {
   return rest ? `${sentence(head)} ${rest}` : head;
 }
 
-/* "- Mary Smith (Piedmont Columbus, Rm 412; Phone Call; by Pastor Tim): Going home Friday." */
+/*
+ * "- Mary Smith (Piedmont Columbus, Rm 412): Going home Friday."
+ *
+ * Where to find them, when that is a hospital bed — but not how the update came
+ * in or who logged it. "(Text Message; by …)" read as clutter in every line, and
+ * the office asked for it gone; the care record still keeps both.
+ */
 export function renderUpdate(u: any) {
-  const ctx = [
-    clean(u.where),
-    u.type && u.type !== 'Update/Visit' ? clean(u.type) : '',
-    byWhom(u.by),
-  ].filter(Boolean);
-  return `- ${clean(u.name)}${ctx.length ? ` (${ctx.join('; ')})` : ''}: ${clean(u.notes)}`;
+  const where = clean(u.where);
+  return `- ${clean(u.name)}${where ? ` (${where})` : ''}: ${clean(u.notes)}`;
 }
 
 /*

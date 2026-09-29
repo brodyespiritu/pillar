@@ -1,0 +1,676 @@
+/* ═══ Pillar → App: the shared rules ═══
+ *
+ * Pillar's own blue theme (styles/global.css), with room to breathe: a pale page, white panels,
+ * blue for the one filled button, the switches and what's picked, green for "on", red for the live
+ * stream and for trouble. The phone previews keep the member app's own colours — they show what a
+ * member sees (./phone.css, .ax-phone-app; its fonts come from layout.jsx useAppFonts()).
+ *
+ * The redesign (2026-09-23, Pillar-backups/redesign/DESIGN.md): the frame gives its room to the work
+ * — a sidebar that folds to a rail, one compact row of page head — and every page is the same
+ * workspace (layout.jsx): list · editor · phone side by side, the height of the window, each pane
+ * scrolling on its own (horizontal first). Breakpoints are container queries, so they follow the
+ * room the sidebar leaves, not the window, and their numbers reproduce the approved mockup at its
+ * own 1440 × 900 (the end of this file).
+ *
+ * Loaded by ../appx.css after phone.css and BEFORE each page's own css/<page>.css, so a page rule
+ * with the same selector as one here wins on order alone.
+ */
+.ax {
+  --ax-canvas: var(--bg);
+  --ax-card: var(--surface);
+  --ax-card-hover: var(--surface-2);
+  --ax-raised: var(--surface);
+  --ax-field: var(--bg);
+  --ax-ink: var(--text);
+  --ax-ink-2: var(--text-2);
+  --ax-ink-3: var(--text-3);
+  --ax-faint: #A9BACB;
+  --ax-line: var(--border);
+  --ax-line-2: #D3DEEC;
+  --ax-pill: var(--accent);
+  --ax-pill-press: var(--accent-hover);
+  --ax-pill-text: #FFFFFF;
+  --ax-pick: var(--accent-soft);
+  --ax-on: var(--green);
+  --ax-on-soft: var(--green-soft);
+  --ax-accent: var(--accent);
+  --ax-live: var(--red);
+  --ax-danger: var(--red);
+  --ax-danger-soft: var(--red-soft);
+  --ax-focus: rgba(0, 107, 255, 0.16);
+  --ax-radius: 18px;
+  color: var(--ax-ink);
+  font-size: 15px;
+}
+
+/* ── frame: the app's pages down the left, from the very top; Pillar's bar beside them ── */
+.ax-wrap {
+  --ax-side-w: 232px;
+  display: grid; height: 100vh; height: 100dvh; overflow: hidden; background: var(--ax-canvas);
+  grid-template-columns: var(--ax-side-w) minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+}
+/* folded to a rail of icons — its foot button or the [ key (AppShell), remembered per browser */
+.ax-wrap.rail { --ax-side-w: 72px; }
+.ax-top { grid-column: 2; grid-row: 1; min-width: 0; }
+.ax-side {
+  grid-column: 1; grid-row: 1 / 3; display: flex; flex-direction: column; gap: 4px; min-width: 0;
+  padding: 20px 14px 16px; background: var(--surface); border-right: 1px solid var(--ax-line);
+  overflow-x: hidden; overflow-y: auto;
+}
+.ax-side-title { padding: 0 14px 14px; font-size: 11.5px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--ax-ink-3); white-space: nowrap; }
+.ax-side-mark {
+  display: none; place-items: center; flex: none; width: 36px; height: 36px; margin-bottom: 14px; border-radius: 10px;
+  background: var(--ax-pick); color: var(--ax-accent); font-size: 12px; font-weight: 800; letter-spacing: 0.3px;
+}
+.ax-nav { display: flex; flex-direction: column; gap: 4px; }
+.ax-nav a {
+  position: relative; display: flex; align-items: center; gap: 12px; height: 46px; padding: 0 14px; border-radius: 12px;
+  font-size: 14.5px; font-weight: 600; color: var(--ax-ink-2); text-decoration: none; white-space: nowrap;
+  transition: background 0.12s, color 0.12s;
+}
+.ax-nav a svg { flex-shrink: 0; color: var(--ax-ink-3); }
+.ax-nav a:hover { background: var(--ax-card-hover); color: var(--ax-ink); }
+.ax-nav a.active { background: var(--ax-pill); color: var(--ax-pill-text); }
+.ax-nav a.active svg { color: var(--ax-pill-text); }
+.ax-nav a:focus-visible { outline: none; box-shadow: 0 0 0 4px var(--ax-focus); }
+.ax-nav-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.ax-nav-live {
+  margin-left: auto; padding: 3px 9px; border-radius: 999px; background: var(--ax-live); color: #fff;
+  font-size: 10.5px; font-weight: 800; letter-spacing: 1.2px;
+}
+/* LIVE on the rail and the phone strip: a red dot on the icon */
+.ax-nav-dot {
+  display: none; position: absolute; top: 8px; right: 8px; width: 10px; height: 10px; border-radius: 50%;
+  background: var(--ax-live); box-shadow: 0 0 0 2px var(--surface);
+}
+.ax-side-foot { margin-top: auto; padding-top: 14px; display: flex; flex-direction: column; gap: 12px; }
+.ax-side-status { position: relative; display: flex; gap: 10px; align-items: flex-start; padding: 0 14px; font-size: 12.5px; line-height: 1.45; color: var(--ax-ink-3); }
+.ax-side-status .ax-dot { margin-top: 4px; }
+.ax-rail-toggle {
+  display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 12px; border-radius: 12px;
+  border: 1px solid var(--ax-line); background: var(--surface); color: var(--ax-ink-2);
+  font-size: 13.5px; font-weight: 600; white-space: nowrap; transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.ax-rail-toggle svg { flex-shrink: 0; }
+.ax-rail-toggle:hover { background: var(--ax-card-hover); color: var(--ax-ink); border-color: var(--ax-line-2); }
+.ax-rail-toggle:focus-visible { outline: none; box-shadow: 0 0 0 4px var(--ax-focus); }
+/* the rail: icons only, 48px targets (Fitts), each named on hover (title) and to screen readers */
+.ax-wrap.rail .ax-side { padding: 18px 11px 16px; align-items: center; }   /* 72 − 22 − the 1px rule = 49: room for a 48 target */
+.ax-wrap.rail .ax-side-title, .ax-wrap.rail .ax-nav-label, .ax-wrap.rail .ax-nav-live,
+.ax-wrap.rail .ax-rail-toggle-word { display: none; }
+.ax-wrap.rail .ax-side-mark { display: grid; }
+.ax-wrap.rail .ax-nav a { width: 48px; height: 48px; padding: 0; justify-content: center; border-radius: 14px; }
+.ax-wrap.rail .ax-nav-dot { display: block; }
+.ax-wrap.rail .ax-side-foot { align-items: center; }
+.ax-wrap.rail .ax-side-status { padding: 0; justify-content: center; }
+.ax-wrap.rail .ax-side-status .ax-dot { margin: 0; width: 10px; height: 10px; }
+.ax-wrap.rail .ax-side-status-text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.ax-wrap.rail .ax-rail-toggle { width: 44px; padding: 0; justify-content: center; }
+
+/* only the page scrolls, and never sideways (a closed preview drawer waits just off its right edge) */
+.ax-main { grid-column: 2; grid-row: 2; min-width: 0; min-height: 0; overflow-x: hidden; overflow-y: auto; }
+/* every page: centred in the room beside the sidebar, up to 1840px, with the approved mockup's own
+   gutters (16 22 18 — at 1440 with the full sidebar that leaves the workspace 1164, room for all
+   three panes; AppShell PAGE_GUTTER) */
+.ax-page { container: page / inline-size; max-width: 1840px; margin: 0 auto; padding: 16px 22px 18px; }
+/* `fill` (AppShell): the page is exactly the window's height and only its panes scroll; on a window
+   too short for that (under 560px of page) the page scrolls as a whole instead of squeezing */
+.ax-page.fill { display: flex; flex-direction: column; height: 100%; min-height: 560px; }
+.ax-page.fill > * { flex-shrink: 0; }
+.ax-page.fill > .ax-work { flex: 1 1 0; min-height: 0; }
+.ax-page.fill > .ax-alert { margin-bottom: 14px; }
+
+/* the head: ONE row — the title and one line on what the page is for on the left, the page's own
+   tabs on the right (the old centred 38px title over big tabs cost ~230px of height on every page) */
+.ax-head { display: flex; align-items: center; flex-wrap: wrap; gap: 12px 24px; min-height: 56px; margin-bottom: 14px; }
+.ax-head-text { flex: 1 1 260px; min-width: 0; }
+.ax-title { font-size: 26px; font-weight: 800; line-height: 1.15; letter-spacing: -0.7px; color: var(--ax-ink); }
+.ax-sub { margin-top: 3px; font-size: 14px; line-height: 1.4; color: var(--ax-ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ax-head-tabs { flex: 0 1 auto; display: flex; min-width: 0; max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+.ax-head-tabs::-webkit-scrollbar { display: none; }
+.ax-head-tabs .ax-seg { flex-wrap: nowrap; }
+.ax-head-actions { flex: 0 0 auto; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+/* (on a page narrower than 760px the tabs take a line of their own — the breakpoints at the end) */
+
+/* phones: the pages as a strip under Pillar's bar, scrolling sideways, its edges faded to say
+   there's more (overflow affordance) — shown only at ≤ 767px (the sidebar hides there) */
+.ax-strip-wrap { display: none; margin: 0 -16px 12px; }
+.ax-strip-cap { padding: 0 16px 8px; font-size: 11px; font-weight: 700; letter-spacing: 1.4px; text-transform: uppercase; color: var(--ax-ink-3); }
+.ax-strip {
+  display: flex; gap: 6px; padding: 0 16px 2px; overflow-x: auto; scrollbar-width: none; scroll-padding-inline: 16px;
+  -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 16px, #000 calc(100% - 32px), transparent 100%);
+  mask-image: linear-gradient(90deg, transparent 0, #000 16px, #000 calc(100% - 32px), transparent 100%);
+}
+.ax-strip::-webkit-scrollbar { display: none; }
+.ax-strip a {
+  position: relative; flex-shrink: 0; display: inline-flex; align-items: center; gap: 7px; height: 44px; padding: 0 16px;
+  border-radius: 999px; border: 1px solid var(--ax-line); background: var(--surface); color: var(--ax-ink-2);
+  font-size: 14px; font-weight: 600; text-decoration: none; white-space: nowrap;
+}
+.ax-strip a svg { flex-shrink: 0; color: var(--ax-ink-3); }
+.ax-strip a.active { background: var(--ax-pill); border-color: var(--ax-pill); color: var(--ax-pill-text); }
+.ax-strip a.active svg { color: var(--ax-pill-text); }
+.ax-strip a:focus-visible { outline: none; box-shadow: 0 0 0 4px var(--ax-focus); }
+.ax-strip .ax-nav-dot { display: block; top: 5px; right: 5px; }
+
+/* (the pre-workspace three columns — .ax-split and its panels — are gone: every page is the workspace
+   below, the integration of 2026-09-23) */
+.ax-list-hint { margin: 0 8px; }
+
+/* ── buttons: one filled look (one per view — Von Restorff), one outline, one quiet; 44 tall ── */
+.ax-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px; flex-shrink: 0;
+  height: 44px; padding: 0 20px; border-radius: 12px; border: 1.5px solid var(--ax-line-2);
+  background: var(--surface); color: var(--ax-ink); font-size: 14.5px; font-weight: 700; white-space: nowrap;
+  transition: background 0.12s, border-color 0.12s, color 0.12s, opacity 0.12s;
+}
+.ax-btn:hover { border-color: var(--ax-ink-3); }
+.ax-btn.primary { background: var(--ax-pill); border-color: var(--ax-pill); color: var(--ax-pill-text); }
+.ax-btn.primary:hover { background: var(--ax-pill-press); border-color: var(--ax-pill-press); }
+.ax-btn.quiet { border-color: transparent; background: transparent; padding: 0 14px; color: var(--ax-ink-2); }
+.ax-btn.quiet:hover { background: var(--ax-card-hover); border-color: transparent; color: var(--ax-ink); }
+.ax-btn.danger { border-color: transparent; background: transparent; padding: 0 14px; color: var(--ax-danger); }
+.ax-btn.danger:hover { background: var(--ax-danger-soft); border-color: transparent; }
+.ax-btn.sm { height: 44px; padding: 0 15px; font-size: 14px; }
+.ax-btn.block { width: 100%; }
+.ax-btn.fit { align-self: flex-start; }
+.ax-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.ax-btn:focus-visible { outline: none; box-shadow: 0 0 0 4px var(--ax-focus); }
+.ax-iconbtn {
+  width: 44px; height: 44px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+  background: transparent; color: var(--ax-ink-3); flex-shrink: 0;
+}
+.ax-iconbtn:hover { background: var(--ax-card-hover); color: var(--ax-ink); }
+.ax-iconbtn.danger:hover { background: var(--ax-danger-soft); color: var(--ax-danger); }
+.ax-iconbtn:disabled { opacity: 0.3; cursor: default; }
+.ax-iconbtn:focus-visible { outline: none; box-shadow: 0 0 0 4px var(--ax-focus); }
+
+/* ── the list ── */
+.ax-list { display: flex; flex-direction: column; gap: 2px; }
+.ax-row {
+  position: relative; display: flex; align-items: center; gap: 12px; width: 100%; min-height: 60px;
+  padding: 8px 10px; border-radius: 14px; border: 1.5px solid transparent; background: transparent;
+  text-align: left; color: var(--ax-ink); cursor: pointer; transition: background 0.12s, border-color 0.12s, opacity 0.12s;
+}
+.ax-row:hover { background: var(--ax-card-hover); }
+.ax-row.on { background: var(--ax-pick); border-color: var(--ax-accent); }
+.ax-row:focus-visible { outline: none; box-shadow: 0 0 0 4px var(--ax-focus); }
+.ax-row.dragging { opacity: 0.35; }
+.ax-row.drop-above::before, .ax-row.drop-below::after {
+  content: ''; position: absolute; left: 14px; right: 14px; height: 3px; border-radius: 3px; background: var(--ax-pill);
+}
+.ax-row.drop-above::before { top: -5px; }
+.ax-row.drop-below::after { bottom: -5px; }
+.ax-grip { display: flex; margin: 0 -6px 0 -4px; color: var(--ax-faint); cursor: grab; }
+/* dragging to reorder (RowList): no text selection while a row moves, and on a touch screen the
+   handle drags instead of scrolling the page */
+.ax-grip { touch-action: none; }
+.ax-list.sorting { user-select: none; -webkit-user-select: none; cursor: grabbing; }
+.ax-list.sorting .ax-row { cursor: grabbing; }
+.ax-row:hover .ax-grip { color: var(--ax-ink-3); }
+.ax-thumb {
+  width: 42px; height: 42px; flex-shrink: 0; border-radius: 11px; display: flex; align-items: center; justify-content: center;
+  background: var(--surface-2) center / cover no-repeat; color: var(--ax-accent);
+}
+.ax-thumb.tall { width: 36px; height: 48px; border-radius: 10px; }
+.ax-row-main { display: block; flex: 1; min-width: 0; }
+.ax-row-title { display: block; font-size: 14.5px; font-weight: 700; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ax-row-title.muted { color: var(--ax-ink-3); font-weight: 600; }
+.ax-row-sub { display: block; margin-top: 2px; font-size: 12.5px; color: var(--ax-ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ax-row-flag { color: var(--ax-danger); font-weight: 700; }
+
+/* ── on / off ── */
+.ax-toggle { position: relative; display: inline-flex; align-items: center; gap: 12px; font-size: 15px; font-weight: 600; color: var(--ax-ink); cursor: pointer; user-select: none; }
+.ax-toggle input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.ax-toggle-track {
+  position: relative; flex-shrink: 0; width: 50px; height: 30px; border-radius: 999px; background: var(--ax-line-2); transition: background 0.15s;
+}
+.ax-toggle-track::after {
+  content: ''; position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; border-radius: 50%;
+  background: #fff; box-shadow: 0 1px 3px rgba(23, 19, 16, 0.25); transition: transform 0.15s;
+}
+.ax-toggle input:checked + .ax-toggle-track { background: var(--ax-pill); }
+.ax-toggle input:checked + .ax-toggle-track::after { transform: translateX(20px); }
+.ax-toggle input:focus-visible + .ax-toggle-track { box-shadow: 0 0 0 4px var(--ax-focus); }
+.ax-toggle input:disabled + .ax-toggle-track { opacity: 0.4; }
+.ax-toggle.small .ax-toggle-track { width: 42px; height: 26px; }
+.ax-toggle.small .ax-toggle-track::after { width: 20px; height: 20px; }
+.ax-toggle.small input:checked + .ax-toggle-track::after { transform: translateX(16px); }
+.ax-toggle.live input:checked + .ax-toggle-track { background: var(--ax-live); }
+/* "members can see it" is green when on (Von Restorff: on = green, everywhere): a list row's switch,
+   and any switch wrapped in .ax-sw-on (an editor head's main switch) */
+.ax-row .ax-toggle input:checked + .ax-toggle-track,
+.ax-sw-on .ax-toggle input:checked + .ax-toggle-track { background: var(--ax-on); }
+.ax-toggle-label small { display: block; margin-top: 2px; font-size: 13px; font-weight: 500; color: var(--ax-ink-3); }
+/* nothing under 44 to tap (Fitts): an unlabelled switch — a list row's — is only its 30px track, so
+   its hit area reaches 44 tall (a labelled one is usually taller already) */
+.ax-toggle::after { content: ''; position: absolute; left: 0; right: 0; top: 50%; height: max(100%, 44px); transform: translateY(-50%); }
+.ax-toggle.small::after { left: -1px; right: -1px; }
+
+.ax-dot { width: 9px; height: 9px; flex-shrink: 0; border-radius: 50%; background: var(--ax-line-2); }
+.ax-dot.on { background: var(--ax-on); }
+.ax-dot.live { background: var(--ax-live); box-shadow: 0 0 0 5px rgba(211, 47, 47, 0.16); animation: ax-pulse 1.6s ease-in-out infinite; }
+@keyframes ax-pulse { 50% { box-shadow: 0 0 0 9px rgba(211, 47, 47, 0.06); } }
+
+/* ── fields ── */
+.ax-form { display: flex; flex-direction: column; gap: 20px; }
+.ax-field { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.ax-label { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; font-size: 13.5px; font-weight: 700; color: var(--ax-ink); }
+.ax-count { font-size: 12.5px; font-weight: 600; color: var(--ax-faint); font-variant-numeric: tabular-nums; }
+.ax-count.near { color: #B45309; }
+.ax-input, .ax-textarea, .ax-select {
+  width: 100%; min-height: 48px; padding: 11px 15px; border-radius: 12px; border: 1.5px solid var(--ax-line);
+  background: var(--ax-field); color: var(--ax-ink); font-size: 16px; line-height: 1.45;
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+.ax-input:hover, .ax-textarea:hover, .ax-select:hover { border-color: var(--ax-line-2); }
+.ax-input:focus, .ax-textarea:focus, .ax-select:focus { border-color: var(--ax-accent); background: var(--surface); box-shadow: 0 0 0 4px var(--ax-focus); }
+.ax-input::placeholder, .ax-textarea::placeholder { color: var(--ax-faint); }
+.ax-input:disabled { opacity: 0.55; }
+.ax-input.title { font-size: 20px; font-weight: 700; letter-spacing: -0.3px; min-height: 54px; }
+.ax-textarea { min-height: 112px; resize: vertical; }
+.ax-select { padding-right: 48px; cursor: pointer; background-position: right 16px center !important; }
+.ax-hint { font-size: 13.5px; line-height: 1.55; color: var(--ax-ink-3); }
+.ax-hint a, .ax-link { color: var(--ax-accent); font-weight: 700; text-decoration: none; }
+.ax-hint.bad { color: var(--ax-danger); }
+.ax-hint a:hover, .ax-link:hover { text-decoration: underline; }
+/* Fields sit side by side only while there is room for them. Fixed column counts squeezed three
+   inputs into a 380px editor, which read as squished (user, 2026-09-22); auto-fit drops them to two
+   and then to one on its own, and nothing ever gets narrower than a field you can read. */
+.ax-row2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px; }
+.ax-inline { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.ax-inline.wide { gap: 16px; }
+.ax-inline.end { justify-content: flex-end; }
+.ax-dot.big { width: 14px; height: 14px; }
+
+/* choices: a segmented control. The picked one is white with blue words rather than filled blue, so
+   the page's one filled button (New …) stays the one that stands out (Von Restorff). 40 to see in a
+   48 track, and 48 to hit: each button's ::after reaches through the track's padding (Fitts). */
+.ax-seg { display: inline-flex; flex-wrap: wrap; gap: 2px; padding: 4px; border-radius: 14px; background: var(--surface-2); }
+.ax-seg button {
+  position: relative;
+  height: 40px; padding: 0 16px; border-radius: 10px; background: transparent; color: var(--ax-ink-2);
+  font-size: 14px; font-weight: 600; white-space: nowrap; transition: background 0.12s, color 0.12s, box-shadow 0.12s;
+}
+.ax-seg button:hover { color: var(--ax-ink); background: rgba(255, 255, 255, 0.6); }
+.ax-seg button.on { background: var(--surface); color: var(--ax-accent); box-shadow: 0 1px 2px rgba(11, 53, 88, 0.12), 0 1px 1px rgba(11, 53, 88, 0.04); }
+.ax-seg button:focus-visible { outline: none; box-shadow: 0 0 0 4px var(--ax-focus); }
+.ax-seg.big button { height: 44px; padding: 0 20px; font-size: 15px; }
+.ax-seg button::after { content: ''; position: absolute; inset: -4px -1px; }
+
+/* small pills: tags, suggestions */
+.ax-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.ax-chip {
+  position: relative;
+  display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 14px; border-radius: 999px;
+  border: 1.5px solid var(--ax-line); background: var(--ax-raised); color: var(--ax-ink-2); font-size: 13.5px; font-weight: 600;
+}
+.ax-chip:hover { border-color: var(--ax-line-2); color: var(--ax-ink); }
+.ax-chip::after { content: ''; position: absolute; inset: -5px -2px; }   /* 34 to see, 44 to hit */
+.ax-chip.on { background: var(--ax-pill); border-color: var(--ax-pill); color: var(--ax-pill-text); }
+
+/* ── the editor ── */
+.ax-save { display: inline-flex; align-items: center; gap: 8px; min-height: 24px; font-size: 13.5px; font-weight: 600; color: var(--ax-ink-3); }
+.ax-save .ax-dot { width: 8px; height: 8px; }
+.ax-save.saved .ax-dot { background: var(--ax-on); }
+.ax-save.error { color: var(--ax-danger); }
+.ax-save.error .ax-dot { background: var(--ax-danger); }
+.ax-save button { font-size: 13.5px; font-weight: 700; color: inherit; background: none; text-decoration: underline; text-underline-offset: 3px; padding: 0; }
+
+.ax-rows { display: flex; flex-direction: column; gap: 10px; }
+.ax-subrow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.ax-subrow > .ax-input, .ax-subrow > .ax-select { flex: 1 1 160px; width: auto; }
+
+/* ── messages ── */
+.ax-alert {
+  display: flex; align-items: flex-start; gap: 12px; margin-bottom: 16px; padding: 14px 18px; border-radius: 14px;
+  background: var(--ax-danger-soft); color: var(--ax-danger); font-size: 14.5px; font-weight: 600; line-height: 1.5;
+}
+.ax-alert button { margin-left: auto; background: none; color: inherit; font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
+.ax-note { display: flex; align-items: flex-start; gap: 12px; padding: 16px 20px; border-radius: 18px; background: var(--surface-2); color: var(--ax-ink-2); font-size: 14.5px; line-height: 1.55; }
+.ax-note svg { flex-shrink: 0; margin-top: 2px; color: var(--ax-ink-3); }
+.ax-note.spaced { margin-bottom: 20px; align-items: center; }
+.ax-note-main { flex: 1; min-width: 0; }
+.ax-empty { padding: 44px 20px; text-align: center; font-size: 15px; line-height: 1.6; color: var(--ax-ink-3); }
+.ax-empty strong { display: block; margin-bottom: 6px; font-size: 18px; color: var(--ax-ink); }
+.ax-loading { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 56px 20px; font-size: 15px; color: var(--ax-ink-2); }
+.ax-spinner { width: 18px; height: 18px; flex-shrink: 0; border-radius: 50%; border: 2.5px solid var(--ax-line-2); border-top-color: var(--ax-accent); animation: ax-spin 0.7s linear infinite; }
+.ax-btn.primary .ax-spinner { border-color: rgba(255, 255, 255, 0.3); border-top-color: #fff; }
+@keyframes ax-spin { to { transform: rotate(360deg); } }
+/* Undo: bottom-left of the work area (beside the sidebar), clear of MobileNav's button bottom-right */
+.ax-toast {
+  position: fixed; left: calc(var(--ax-side-w, 0px) + 24px); bottom: 24px; z-index: 60;
+  max-width: min(560px, calc(100vw - var(--ax-side-w, 0px) - 48px));
+  display: flex; align-items: center; gap: 14px; padding: 8px 8px 8px 22px; border-radius: 999px;
+  background: var(--text); color: #fff; font-size: 14.5px; font-weight: 600; box-shadow: 0 16px 40px rgba(11, 53, 88, 0.3);
+}
+.ax-toast button { flex-shrink: 0; color: #fff; background: rgba(255, 255, 255, 0.16); border-radius: 999px; height: 44px; padding: 0 18px; font-weight: 700; }
+
+/* ── pictures and videos ── */
+.ax-drop {
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap; padding: 16px; border-radius: 16px;
+  border: 1.5px dashed var(--ax-line-2); background: var(--ax-field); transition: border-color 0.12s, background 0.12s;
+}
+.ax-drop.over { border-color: var(--ax-accent); background: var(--ax-pick); }
+.ax-drop-preview { width: 132px; height: 88px; flex-shrink: 0; border-radius: 14px; background: var(--surface-2) center / cover no-repeat; display: flex; align-items: center; justify-content: center; color: var(--ax-ink-3); }
+.ax-drop-preview.tall { width: 72px; height: 96px; }
+.ax-drop-text { flex: 1 1 160px; min-width: 0; font-size: 14px; line-height: 1.5; color: var(--ax-ink-3); }
+.ax-drop-text strong { display: block; color: var(--ax-ink); font-size: 15px; }
+.ax-video { display: block; width: 100%; max-height: 260px; border-radius: 18px; background: #000; }
+.ax-upload { display: flex; flex-direction: column; gap: 12px; padding: 18px; border-radius: 16px; background: var(--ax-field); border: 1.5px solid var(--ax-line); }
+.ax-upload-top { display: flex; justify-content: space-between; gap: 14px; font-size: 14.5px; font-weight: 700; }
+.ax-upload-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ax-upload-pct { flex-shrink: 0; color: var(--ax-ink-3); font-variant-numeric: tabular-nums; }
+.ax-upload-foot { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
+.ax-progress { position: relative; height: 8px; border-radius: 999px; background: var(--ax-line); overflow: hidden; }
+.ax-progress > span { position: absolute; top: 0; bottom: 0; left: 0; width: 0; border-radius: inherit; background: var(--ax-pill); transition: width 0.25s ease; }
+.ax-progress.busy > span { width: 35%; animation: ax-indeterminate 1.4s ease-in-out infinite; }
+@keyframes ax-indeterminate { from { transform: translateX(-100%); } to { transform: translateX(290%); } }
+
+/* the words under a phone preview (every phone itself is layout.jsx PhoneFrame, drawn by ./phone.css) */
+.ax-phone-cap { font-size: 13px; line-height: 1.5; color: var(--ax-ink-3); text-align: center; max-width: 300px; }
+
+/* (the layout's breakpoints are at the end of this file: container queries, then phones) */
+@media (prefers-reduced-motion: reduce) {
+  .ax-progress.busy > span { animation: none; width: 100%; opacity: 0.45; }
+  .ax-dot.live { animation: none; }
+}
+
+/* ── Watch: Featured star, series items, the picker ─────────────────────────── */
+/* the star beside a row: on = it sits right below the big card on Media */
+.ax-star {
+  position: relative; display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  width: 30px; height: 30px; margin-right: -4px; border-radius: 10px; border: none; background: transparent;
+  color: var(--ax-faint); cursor: pointer; transition: background 0.12s, color 0.12s;
+}
+.ax-star:hover:not(:disabled) { background: var(--ax-card-hover); color: var(--ax-ink-3); }
+.ax-star.on { color: #E8A317; }
+.ax-star:disabled { opacity: 0.35; cursor: default; }
+.ax-star:focus-visible { outline: none; box-shadow: 0 0 0 4px var(--ax-focus); }
+.ax-star::after { content: ''; position: absolute; inset: -7px; }   /* 30 to see, 44 to hit */
+
+.ax-num {
+  flex-shrink: 0; width: 24px; text-align: center; font-size: 13px; font-weight: 700; color: var(--ax-ink-3);
+  font-variant-numeric: tabular-nums;
+}
+.ax-row-btns { display: flex; gap: 4px; flex-shrink: 0; }
+
+/* everything on Watch that isn't in this series yet */
+.ax-picker { margin-top: 10px; max-height: 320px; overflow-y: auto; }
+.ax-row.pickable { border: 1.5px solid transparent; }
+.ax-row.pickable:hover { background: var(--ax-card-hover); border-color: var(--ax-line); }
+/* a mark inside a pickable row, not a target: the whole 60px row is what's clicked */
+.ax-add {
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  width: 30px; height: 30px; border-radius: 10px; background: var(--ax-pick); color: var(--ax-accent);
+}
+
+/* ── the sermon a sheet of notes goes with (Watch → Notes) ─────────────────── */
+.ax-picked {
+  display: flex; align-items: center; gap: 14px; padding: 12px 14px; border-radius: 20px;
+  border: 1.5px solid var(--ax-line); background: var(--ax-field);
+}
+.ax-row.pickable:disabled { opacity: 0.45; cursor: default; background: transparent; border-color: transparent; }
+
+/* ═══ The workspace (layout.jsx) ═══════════════════════════════════════════════════════════════
+ * list · editor · phone, side by side, the height of the window, each pane scrolling on its own
+ * (horizontal first). Every page uses the same three, so learning one teaches them all (Jakob's
+ * law). Density: panes 24 in, fields 20 apart (8 inside), inputs 48 (a title 54), rows 60, buttons
+ * 44 — nothing smaller than 44 to tap.
+ */
+.ax-grow { flex: 1 1 auto; }
+.ax-work { container: work / inline-size; position: relative; display: flex; gap: 14px; min-width: 0; min-height: 0; }
+.ax-pane {
+  display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden;
+  background: var(--surface); border: 1px solid var(--ax-line); border-radius: var(--ax-radius); box-shadow: var(--shadow);
+}
+.ax-pane-head { flex: none; display: flex; flex-direction: column; gap: 10px; padding: 14px 14px 12px; border-bottom: 1px solid var(--ax-line); background: var(--surface); }
+.ax-pane-bar { flex-direction: row; align-items: center; justify-content: space-between; gap: 10px; min-height: 52px; padding: 10px 16px; }
+.ax-pane-label { font-size: 11.5px; font-weight: 800; letter-spacing: 1.2px; text-transform: uppercase; color: var(--ax-ink-3); white-space: nowrap; }
+.ax-pane-right { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.ax-pane-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 24px; }
+.ax-pane-foot { flex: none; padding: 10px 14px; border-top: 1px solid var(--ax-line); }
+.ax-pane-count { padding: 0 2px; font-size: 12.5px; font-weight: 600; color: var(--ax-ink-3); }
+.ax-pane-empty { flex: 1 1 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 40px 24px; text-align: center; font-size: 15px; line-height: 1.6; color: var(--ax-ink-3); }
+.ax-pane-empty strong { font-size: 17px; color: var(--ax-ink); }
+
+/* the list: New on top (the page's one filled button), then search and filters; the rows scroll.
+   300 at the mockup's 1164 workspace, 268 at its tablet's 908, never over 360 */
+.ax-list-pane { flex: 0 0 clamp(268px, 25.8%, 360px); }
+.ax-list-pane-body { padding: 8px; }
+.ax-new-hint { margin: -2px 2px 0; font-size: 12.5px; }
+.ax-search {
+  display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 12px; border-radius: 12px;
+  border: 1.5px solid var(--ax-line); background: var(--ax-field); color: var(--ax-ink-3); cursor: text;
+  transition: border-color 0.12s, box-shadow 0.12s, background 0.12s;
+}
+.ax-search:hover { border-color: var(--ax-line-2); }
+.ax-search:focus-within { border-color: var(--ax-accent); background: var(--surface); box-shadow: 0 0 0 4px var(--ax-focus); }
+.ax-search svg { flex-shrink: 0; }
+.ax-search-input { flex: 1; min-width: 0; height: 100%; border: 0; background: transparent; color: var(--ax-ink); font-size: 15px; -webkit-appearance: none; appearance: none; }
+.ax-search-input::placeholder { color: var(--ax-faint); }
+/* no browser decorations: the box looks the same everywhere, and its own × (below) clears it */
+.ax-search-input::-webkit-search-decoration,
+.ax-search-input::-webkit-search-cancel-button,
+.ax-search-input::-webkit-search-results-button,
+.ax-search-input::-webkit-search-results-decoration { -webkit-appearance: none; appearance: none; display: none; }
+.ax-search-clear {
+  position: relative; flex-shrink: 0; display: grid; place-items: center; width: 30px; height: 30px; margin-right: -5px;
+  border-radius: 50%; background: transparent; color: var(--ax-ink-3); cursor: pointer; transition: background 0.12s, color 0.12s;
+}
+.ax-search-clear::after { content: ''; position: absolute; inset: -7px; }   /* 30 to see, 44 to hit */
+.ax-search-clear:hover { background: var(--ax-card-hover); color: var(--ax-ink); }
+.ax-search-clear:focus-visible { outline: none; box-shadow: 0 0 0 4px var(--ax-focus); }
+.ax-search-key, .ax-hotkeys kbd {
+  flex-shrink: 0; padding: 1px 6px; border-radius: 6px; border: 1px solid var(--ax-line-2); border-bottom-width: 2px;
+  background: var(--surface); color: var(--ax-ink-2); font-family: inherit; font-size: 11px; font-weight: 700; line-height: 1.45;
+}
+.ax-filters { display: flex; flex-wrap: wrap; gap: 6px; }
+/* 36 to see, 44 to hit (the ::after reaches into the gaps) */
+.ax-filter {
+  position: relative; display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 12px; border-radius: 999px;
+  border: 1px solid var(--ax-line); background: var(--surface); color: var(--ax-ink-2); font-size: 13px; font-weight: 600; white-space: nowrap;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+.ax-filter::after { content: ''; position: absolute; inset: -4px -3px; }
+.ax-filter:hover { border-color: var(--ax-line-2); color: var(--ax-ink); }
+.ax-filter.on { background: var(--ax-pick); border-color: var(--ax-accent); color: var(--ax-accent); }
+.ax-filter:focus-visible { outline: none; box-shadow: 0 0 0 4px var(--ax-focus); }
+.ax-filter-n { font-size: 12px; font-weight: 700; opacity: 0.7; font-variant-numeric: tabular-nums; }
+.ax-hotkeys { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; font-size: 12px; color: var(--ax-ink-3); }
+.ax-hotkey { display: inline-flex; align-items: center; gap: 6px; }
+
+/* the editor: a head that stays put while the fields scroll (Fitts: the switches, the save state and
+   Delete beside what they change, never at the foot of a long form) */
+.ax-editor-pane { container: editor / inline-size; position: relative; flex: 1 1 0; }
+.ax-editor-pane-head { flex-direction: row; align-items: center; flex-wrap: wrap; gap: 10px; min-height: 60px; padding: 8px 16px; }
+.ax-editor-status { display: flex; align-items: center; min-width: 0; }
+.ax-editor-actions { display: flex; align-items: center; gap: 8px; }
+.ax-editor-switches { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+/* a switch in the head is a chip: the whole chip is the target, tinted while it's on */
+.ax-editor-switches .ax-toggle {
+  min-height: 44px; padding: 6px 14px 6px 8px; gap: 9px; border-radius: 12px; border: 1px solid var(--ax-line);
+  background: var(--surface); font-size: 13.5px; transition: background 0.12s, border-color 0.12s;
+}
+.ax-editor-switches .ax-toggle:hover { border-color: var(--ax-line-2); }
+.ax-editor-switches .ax-toggle:has(input:checked) { background: var(--ax-pick); border-color: var(--ax-pick); }
+.ax-editor-switches .ax-sw-on .ax-toggle:has(input:checked) { background: var(--ax-on-soft); border-color: var(--ax-on-soft); }
+.ax-editor-switches .ax-toggle-track { width: 40px; height: 24px; }
+.ax-editor-switches .ax-toggle-track::after { width: 18px; height: 18px; }
+.ax-editor-switches .ax-toggle input:checked + .ax-toggle-track::after { transform: translateX(16px); }
+.ax-editor-switches .ax-toggle-label small { margin-top: 0; font-size: 11.5px; }
+.ax-sw-on { display: contents; }
+.ax-editor-pane-body { padding: 20px 22px; }
+.ax-back { display: none; }
+.ax-editor-pane.is-empty > .ax-editor-pane-head { display: none; }   /* only Back is in it: narrow screens */
+.ax-preview-toggle { display: none; }
+.ax-preview-toggle.on { background: var(--ax-pill); border-color: var(--ax-pill); color: var(--ax-pill-text); }
+/* an icon button for a head (Duplicate, Delete, Close): 44 square, a 12 corner */
+.ax-headbtn {
+  display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 44px; height: 44px;
+  border-radius: 12px; border: 1px solid var(--ax-line); background: var(--surface); color: var(--ax-ink-2);
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.ax-headbtn:hover:not(:disabled) { background: var(--ax-card-hover); color: var(--ax-ink); border-color: var(--ax-line-2); }
+.ax-headbtn.danger:hover:not(:disabled) { background: var(--ax-danger-soft); color: var(--ax-danger); border-color: var(--ax-danger-soft); }
+.ax-headbtn:disabled { opacity: 0.35; cursor: not-allowed; }
+.ax-headbtn:focus-visible { outline: none; box-shadow: 0 0 0 4px var(--ax-focus); }
+
+/* the phone: its own column, its own scroll (300 at the mockup's 1164, up to 380 on a wide screen) */
+.ax-preview-pane { flex: 0 0 clamp(300px, 22%, 380px); }
+.ax-preview-head { flex-direction: row; align-items: center; gap: 10px; min-height: 52px; padding: 8px 10px 8px 16px; }
+.ax-preview-note { margin-left: auto; font-size: 12px; color: var(--ax-ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ax-preview-close { display: none; margin-left: auto; }
+.ax-preview-note + .ax-preview-close { margin-left: 4px; }
+.ax-preview-body { display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 12px 16px 20px; }
+.ax-preview-body > .ax-phone-cap, .ax-preview-body > .ax-hint { max-width: 320px; text-align: center; }
+.ax-drawer-scrim { display: none; }
+
+/* two columns once the editor has the room (≥ 520 — layout.jsx COLS; the mockup's editor is 536):
+   words on one side, media on the other (law of proximity); one column below */
+.ax-cols { display: grid; grid-template-columns: minmax(0, 1fr); gap: 28px; }
+.ax-col-a, .ax-col-b { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+.ax-col-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; min-height: 22px; }
+.ax-col-title { font-size: 11.5px; font-weight: 800; letter-spacing: 1.2px; text-transform: uppercase; color: var(--ax-ink-3); }
+.ax-col-right { font-size: 12px; color: var(--ax-ink-3); }
+.ax-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--ax-field-min, 220px)), 1fr)); gap: 20px 16px; }
+.ax-fields > * { min-width: 0; }
+.ax-span { grid-column: 1 / -1; min-width: 0; }
+
+/* a titled group of fields (common region); `collapsible` folds the rarely used away (Hick) */
+.ax-section { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.ax-section + .ax-section { padding-top: 20px; border-top: 1px solid var(--ax-line); }
+.ax-section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 24px; }
+.ax-section-title { font-size: 15px; font-weight: 800; letter-spacing: -0.2px; color: var(--ax-ink); }
+.ax-section-right { margin-left: auto; font-size: 13px; color: var(--ax-ink-3); }
+.ax-section-body { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+details.ax-section > summary { min-height: 44px; list-style: none; cursor: pointer; border-radius: 12px; }
+details.ax-section > summary::-webkit-details-marker { display: none; }
+details.ax-section > summary:focus-visible { outline: none; box-shadow: 0 0 0 4px var(--ax-focus); }
+details.ax-section:not([open]) { gap: 0; }
+.ax-section-caret { display: flex; color: var(--ax-ink-3); transition: transform 0.15s; }
+details.ax-section[open] .ax-section-caret { transform: rotate(180deg); }
+
+/* a panel over the editor, from the right: make a sermon inside its series, a card inside its group */
+.ax-subpanel-layer { position: absolute; inset: 0; z-index: 15; display: flex; justify-content: flex-end; }
+.ax-subpanel-scrim { position: absolute; inset: 0; background: rgba(11, 53, 88, 0.18); animation: ax-fade 0.18s ease-out; }
+.ax-subpanel {
+  container: sub / inline-size; position: relative; display: flex; flex-direction: column; width: min(100%, 720px); height: 100%;
+  background: var(--surface); border-left: 1px solid var(--ax-line); box-shadow: -14px 0 30px rgba(11, 53, 88, 0.12);
+  animation: ax-slide-in 0.22s cubic-bezier(0.32, 0.72, 0, 1);
+}
+.ax-subpanel-head { flex: none; display: flex; align-items: center; flex-wrap: wrap; gap: 10px 12px; min-height: 60px; padding: 8px 16px; border-bottom: 1px solid var(--ax-line); }
+.ax-subpanel-titles { min-width: 0; }
+.ax-subpanel-title { font-size: 16px; font-weight: 800; letter-spacing: -0.2px; color: var(--ax-ink); }
+.ax-subpanel-sub { margin-top: 2px; font-size: 13px; line-height: 1.4; color: var(--ax-ink-2); }
+.ax-subpanel-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 18px; }
+@keyframes ax-fade { from { opacity: 0; } }
+@keyframes ax-slide-in { from { transform: translateX(40px); opacity: 0; } }
+
+/* ── breakpoints: container queries on the page and the workspace (they follow the room the sidebar
+   leaves, not the window) ── */
+
+@container page (max-width: 759px) {
+  /* the head's tabs: a line of their own, the full width, scrolling sideways if they must */
+  .ax-head-tabs { flex: 1 1 100%; }
+  .ax-row2 { grid-template-columns: 1fr; }
+}
+
+/* the workspace — numbers that reproduce the approved mockup at its own 1440 × 900 (full sidebar:
+   a 1164px workspace = list 300 · editor 536, two columns · phone 300; layout.jsx WIDE / NARROW /
+   COLS, AppShell RAIL_BELOW):
+     ≥ 1140   list | editor | phone
+     760–1139 `hasPreview`: the phone is a drawer from the right, opened by the editor's Preview
+              button (Escape, its ×, or a click beside it close it). Without `hasPreview` the phone
+              keeps its column (Notifications' form and phone side by side down to 760)
+     < 760    one pane at a time; a phone that isn't a drawer stacks under the editor */
+@container work (max-width: 1139px) {
+  .ax-work.has-preview > .ax-preview-pane {
+    position: absolute; top: 0; right: 0; bottom: 0; z-index: 20; width: min(330px, 92%);
+    border-radius: var(--ax-radius); box-shadow: -14px 0 30px rgba(11, 53, 88, 0.14);
+    transform: translateX(calc(100% + 24px)); visibility: hidden;
+    transition: transform 0.24s cubic-bezier(0.32, 0.72, 0, 1), visibility 0s linear 0.24s;
+  }
+  .ax-work.has-preview > .ax-preview-pane.open { transform: none; visibility: visible; transition: transform 0.24s cubic-bezier(0.32, 0.72, 0, 1); }
+  .ax-work.has-preview > .ax-drawer-scrim { display: block; position: absolute; inset: 0; z-index: 19; border-radius: var(--ax-radius); background: rgba(11, 53, 88, 0.08); }
+  .ax-work.has-preview .ax-preview-toggle { display: inline-flex; }
+  .ax-work.has-preview > .ax-preview-pane .ax-preview-close { display: inline-flex; }
+}
+/* < 760: one pane at a time — the list, or (the editor opened: `detail`) the editor with Back */
+@container work (max-width: 759px) {
+  .ax-work > .ax-list-pane { flex: 1 1 auto; }
+  .ax-work:not(.detail) > .ax-list-pane ~ .ax-editor-pane { display: none; }
+  .ax-work.detail > .ax-list-pane { display: none; }
+  .ax-work.has-preview > .ax-preview-pane { width: 100%; }
+  .ax-back { display: inline-flex; }
+  .ax-editor-pane.is-empty > .ax-editor-pane-head { display: flex; }
+  .ax-editor-pane-body, .ax-subpanel-body { padding: 20px 16px; }
+  /* no drawer: the panes stack (the phone under the editor) at their own heights and the workspace
+     scrolls as one; each pane's head stays in view while its pane scrolls past */
+  .ax-work:not(.has-preview) > .ax-pane { flex: none; overflow: visible; }
+  .ax-work:not(.has-preview) > .ax-pane > .ax-pane-body { flex: none; overflow: visible; }
+  .ax-work:not(.has-preview) > .ax-pane > .ax-pane-head {
+    position: sticky; top: 0; z-index: 2; border-radius: var(--ax-radius) var(--ax-radius) 0 0;
+  }
+  /* with a list, the phone waits with the editor: the list alone, then the editor and its phone */
+  .ax-work:not(.has-preview):not(.detail) > .ax-list-pane ~ .ax-preview-pane { display: none; }
+}
+/* …and the workspace itself turns to a column for that. A container query can't style its own
+   container, so this asks the page — whose content box IS the workspace's width (the workspace
+   fills it), so it changes at the same 760 */
+@container page (max-width: 759px) {
+  .ax-work:not(.has-preview) { flex-direction: column; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; }
+}
+/* the editor's two columns (≥ 520), and inside the narrower sub-panel one (unless it's wide itself) */
+@container editor (min-width: 520px) {
+  .ax-cols { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0; }
+  .ax-cols > .ax-col-a { padding-right: 26px; }
+  .ax-cols > .ax-col-b { padding-left: 26px; border-left: 1px solid var(--ax-line); }
+  .ax-subpanel .ax-cols { grid-template-columns: minmax(0, 1fr); gap: 28px; }
+  .ax-subpanel .ax-cols > .ax-col-a { padding-right: 0; }
+  .ax-subpanel .ax-cols > .ax-col-b { padding-left: 0; border-left: 0; }
+}
+@container sub (min-width: 820px) {
+  .ax-subpanel .ax-cols { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0; }
+  .ax-subpanel .ax-cols > .ax-col-a { padding-right: 26px; }
+  .ax-subpanel .ax-cols > .ax-col-b { padding-left: 26px; border-left: 1px solid var(--ax-line); }
+}
+
+/* touch screens have no keyboard shortcuts to show */
+@media (hover: none) {
+  .ax-hotkeys, .ax-search-key { display: none; }
+  .ax-pane-foot:has(> .ax-hotkeys:only-child) { display: none; }
+}
+
+/* ── phones (≤ 767px — where Pillar's MobileNav takes over) ── */
+@media (max-width: 767px) {
+  .ax-wrap { grid-template-columns: minmax(0, 1fr); }
+  .ax-top { grid-column: 1; }
+  .ax-side { display: none; }
+  .ax-main { grid-column: 1; }
+  .ax-page { padding: 12px 16px calc(104px + var(--pillar-safe-bottom, env(safe-area-inset-bottom, 0px))); }
+  .ax-strip-wrap { display: block; }
+  .ax-title { font-size: 24px; }
+  .ax-search-input { font-size: 16px; }   /* under 16px iOS zooms the page in on focus */
+  /* a workspace still fills the screen: the list, or the thing picked, scrolls in its own pane, and
+     the drawer and the sub-panel cover just that pane (no page scroll to lose them in) */
+  .ax-page.fill { min-height: 480px; padding-bottom: 12px; }
+  /* something opened: the editor has the whole screen, as the app's own pages do — the page head and
+     the strip step aside and Back brings them again */
+  .ax-page:has(> .ax-work.detail) > .ax-head,
+  .ax-page:has(> .ax-work.detail) > .ax-strip-wrap { display: none; }
+  /* room under the last row for MobileNav's round button */
+  .ax-pane-body, .ax-subpanel-body { padding-bottom: calc(96px + var(--pillar-safe-bottom, env(safe-area-inset-bottom, 0px))); }
+  .ax-list-pane-body { padding-bottom: calc(88px + var(--pillar-safe-bottom, env(safe-area-inset-bottom, 0px))); }
+  /* a pane's foot doesn't scroll, so its words keep clear of that button's corner (62 + 20 from the
+     screen's edge, less the page's own 16 — and a few to spare) */
+  .ax-pane-foot { padding-right: 76px; }
+  /* stacked panes (no drawer): only the phone, at the foot, needs that room */
+  .ax-work:not(.has-preview) > .ax-pane:has(~ .ax-preview-pane) > .ax-pane-body { padding-bottom: 20px; }
+  .ax-toast { left: 16px; bottom: calc(24px + var(--pillar-safe-bottom, env(safe-area-inset-bottom, 0px))); max-width: calc(100vw - 112px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ax-subpanel, .ax-subpanel-scrim { animation: none; }
+  .ax-work.has-preview > .ax-preview-pane, .ax-work.has-preview > .ax-preview-pane.open { transition: none; }
+}

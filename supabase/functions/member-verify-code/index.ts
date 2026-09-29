@@ -4,6 +4,7 @@
 //
 // POST { identifier, mode, code }            the code from the text or email
 // POST { identifier, mode, ticket, choice }  "Which one is you?" when a family shares a contact
+// POST { identifier, mode: 'email', test: true }   the church's test account, straight in, no code
 //   → 200 { status: 'signed_in', token_hash, grant, expires_in }
 //         the app calls supabase.auth.verifyOtp({ token_hash, type: 'email' }) and then
 //         rpc('member_bind_session', { p_grant: grant })
@@ -50,6 +51,7 @@ Deno.serve(async (req) => {
   const channel = contact.kind === 'phone' ? 'sms' : 'email';
 
   try {
+    if (body?.test === true) return await testLogin(started, admin, contact, contactId, ipId);
     if (body?.ticket != null) return await choose(started, admin, contact, contactId, ipId, String(body.ticket), Number(body.choice));
     return await verify(started, admin, keys.code, cfg, contact, contactId, ipId, String(body?.code ?? ''));
   } catch (e) {
@@ -148,6 +150,41 @@ async function choose(started: number, admin: Admin, contact: Contact, contactId
   }
   const minted = await mint(admin, memberId, contact, t.code_created_at);
   await logEvent(admin, { event: 'signed_in', channel, contactId, ipId, memberId, outcome: 'chosen' });
+  return json({ status: 'signed_in', ...minted, expires_in: GRANT_TTL_SECONDS });
+}
+
+// ── TESTING · the church's test account ───────────────────────────────────────
+// A tester the church has no record of signs in with the test address and is let straight in (user,
+// 2026-09-22: "When a nonmember types in tester@bethesda.rsvp, immediately log them in instead of
+// sending a verification").
+//
+// It works for ONE address: whatever MEMBER_TEST_LOGIN_EMAIL is set to. Unset the secret and this is
+// an ordinary wrong code, so the door is shut without deploying anything. Anyone who knows that
+// address is that record — and sees everything it can see — so it must never be a real member's.
+async function testLogin(started: number, admin: Admin, contact: Contact, contactId: string, ipId: string): Promise<Response> {
+  const allowed = env.testLoginEmail;
+  if (!allowed || contact.kind !== 'email' || contact.norm.toLowerCase() !== allowed) {
+    await logEvent(admin, { event: 'test_login_refused', channel: 'email', contactId, ipId });
+    return floor(started, FAIL_FLOOR_MS, invalidCode());
+  }
+  const refused = await rateHit(admin, [
+    { bucket: 'test-ip-10m', key: ipId,  limit: 20,  window_seconds: 600 },
+    { bucket: 'test-all-1d', key: 'all', limit: 300, window_seconds: 86400 },
+  ]);
+  if (refused) {
+    return floor(started, FAIL_FLOOR_MS, json({
+      error_code: 'too_many_attempts', error: 'Too many tries from this network. Please wait a few minutes.',
+    }, 429));
+  }
+  const since = new Date().toISOString();
+  const candidates = await loadCandidates(admin, contact, since);
+  // one record only: a shared address would mean choosing, and there is no code to prove who asked
+  if (candidates.length !== 1) {
+    await logEvent(admin, { event: 'test_login_no_member', channel: 'email', contactId, ipId, outcome: String(candidates.length) });
+    return json({ status: 'no_member' });
+  }
+  const minted = await mint(admin, candidates[0].member_id, contact, since);
+  await logEvent(admin, { event: 'signed_in', channel: 'email', contactId, ipId, memberId: candidates[0].member_id, outcome: 'test' });
   return json({ status: 'signed_in', ...minted, expires_in: GRANT_TTL_SECONDS });
 }
 

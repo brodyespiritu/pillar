@@ -14,6 +14,8 @@ import { useIsMobile } from '../../lib/useIsMobile';
 import HomeMobile from './HomeMobile';
 // TESTING — delete this line and AppReports.jsx/.css when the app's test kit goes
 import AppReports from './AppReports';
+import MemberRequests from './MemberRequests';
+import PrayerRequests from './PrayerRequests';
 import './HomePage.css';
 
 export default function HomePage() {
@@ -148,6 +150,12 @@ export default function HomePage() {
             <div className="hero-cards">
               {featured.map(m => <RoleCard key={m.key} module={m} pillLabel="Featured" />)}
             </div>
+
+            {/* what members asked for from their profile in the app — only when something is waiting */}
+            <MemberRequests />
+
+            {/* prayer requests sent from the app (user, 2026-09-22) — the same, only while one waits */}
+            <PrayerRequests />
           </div>
         </section>
 

@@ -80,6 +80,15 @@ export function SmsCostLine({ meter, people, compact = false }) {
           {meter.costly.join(' ')} makes every segment hold 70 characters instead of 160. Without it: {money(meter.costIfPlain)}.
         </p>
       )}
+      {meter.fixedCount > 0 && (
+        <p className="smc-warn fixed">
+          <span className="smc-swatch fixed" />
+          {meter.fixed.join(' ')} {meter.fixedCount === 1 ? 'goes' : 'go'} out as plain punctuation
+          {meter.typedSegments > meter.segments
+            ? `, keeping this at ${money(meter.cost)} instead of ${money(meter.costAsTyped)}.`
+            : ', at no extra cost.'}
+        </p>
+      )}
     </div>
   );
 }

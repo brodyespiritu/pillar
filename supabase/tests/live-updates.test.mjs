@@ -52,8 +52,9 @@ await db.exec(`
   create table public.locations (id serial primary key, name text);
   create table public.church_groups (id uuid primary key default gen_random_uuid(), name text);
   create table public.group_posts (id uuid primary key default gen_random_uuid(), group_id uuid, title text);
+  create table public.church_members (id uuid primary key default gen_random_uuid(), name text, directory_hidden boolean not null default false);
   do $$ declare t text; begin
-    foreach t in array array['events', 'locations', 'church_groups', 'group_posts'] loop
+    foreach t in array array['events', 'locations', 'church_groups', 'group_posts', 'church_members'] loop
       execute format('alter table public.%I enable row level security', t);
       execute format('create policy "public read" on public.%I for select to anon, authenticated using (true)', t);
       execute format('create policy "staff write" on public.%I for all to authenticated
@@ -92,7 +93,7 @@ ok('and applies a second time without complaint', !err, err);
 
 const parts = (await db.query(`select part from public.app_refresh order by part`)).rows.map((x) => x.part);
 ok('a row for each kind of content the app shows',
-  JSON.stringify(parts) === JSON.stringify(['announcements', 'calendar', 'groups', 'home', 'live', 'media', 'sermons']),
+  JSON.stringify(parts) === JSON.stringify(['announcements', 'calendar', 'directory', 'groups', 'home', 'live', 'media', 'popup', 'replies', 'sermons']),   // replies, popup: TESTING
   JSON.stringify(parts));
 
 const pub = await db.query(`select tablename from pg_publication_tables where pubname = 'supabase_realtime'`);
@@ -101,9 +102,9 @@ ok('phones can listen to it (it is in the realtime publication)', pub.rows.some(
 
 console.log('\n── who may read, who may say something changed ──');
 let r = await as('anon', null, `select part, at from public.app_refresh`);
-ok('a signed-out phone reads it', !r.error && r.rows.length === 7, r.error);
+ok('a signed-out phone reads it', !r.error && r.rows.length === 10, r.error);
 r = await as('authenticated', MEMBER, `select part from public.app_refresh`);
-ok('a signed-in member reads it', !r.error && r.rows.length === 7, r.error);
+ok('a signed-in member reads it', !r.error && r.rows.length === 10, r.error);
 
 r = await as('anon', null, `update public.app_refresh set at = now() where part = 'home' returning part`);
 ok('a signed-out phone cannot bump anything', !!r.error || r.rows.length === 0, JSON.stringify(r));
@@ -132,7 +133,7 @@ ok('bumping twice is fine', !b.r.error && JSON.stringify(b.moved) === '["sermons
 r = await as('authenticated', STAFF, `select public.app_touch('everything')`);
 ok('an unknown kind is refused', !!r.error, JSON.stringify(r));
 r = await as('authenticated', STAFF, `select count(*)::int as n from public.app_refresh`);
-ok('…and adds no row', r.rows?.[0]?.n === 7, JSON.stringify(r));
+ok('…and adds no row', r.rows?.[0]?.n === 10, JSON.stringify(r));
 
 console.log('\n── Pillar\'s tables say so themselves ──');
 b = await bumped(() => as('authenticated', STAFF, `insert into public.events (title) values ('Revival') returning id`));
@@ -147,6 +148,17 @@ b = await bumped(() => as('authenticated', STAFF, `insert into public.church_gro
 ok('a group bumps groups', !b.r.error && JSON.stringify(b.moved) === '["groups"]', JSON.stringify(b));
 b = await bumped(() => as('authenticated', STAFF, `insert into public.group_posts (title) values ('Dinner out') returning id`));
 ok('a group card bumps groups', !b.r.error && JSON.stringify(b.moved) === '["groups"]', JSON.stringify(b));
+// the member list (user, 2026-09-29: "Make sure the directory automatically updates to the member list on pillar")
+b = await bumped(() => as('authenticated', STAFF, `insert into public.church_members (name) values ('Ruth Adams') returning id`));
+ok('a member added in Pillar bumps the directory', !b.r.error && JSON.stringify(b.moved) === '["directory"]', JSON.stringify(b));
+b = await bumped(() => as('authenticated', STAFF, `update public.church_members set name = 'Ruth A. Adams' returning id`));
+ok('an edited one does too (a name, a phone, a photo, "Include on Directory")', !b.r.error && JSON.stringify(b.moved) === '["directory"]', JSON.stringify(b));
+b = await bumped(() => db.query(`update public.church_members set directory_hidden = true`));
+ok('a member taking themselves out (the app’s own functions write as the owner) bumps it too', JSON.stringify(b.moved) === '["directory"]', JSON.stringify(b));
+b = await bumped(() => as('authenticated', STAFF, `delete from public.church_members returning id`));
+ok('…and a removed one', !b.r.error && JSON.stringify(b.moved) === '["directory"]', JSON.stringify(b));
+b = await bumped(() => as('authenticated', MEMBER, `insert into public.church_members (name) values ('Not mine to add') returning id`));
+ok('a member-list write the rules refuse bumps nothing', !!b.r.error && b.moved.length === 0, JSON.stringify(b));
 b = await bumped(() => db.query(`truncate public.locations`));
 ok('even emptying a table bumps its kind', JSON.stringify(b.moved) === '["calendar"]', JSON.stringify(b));
 
@@ -166,6 +178,9 @@ await db.exec(`
 await as('authenticated', STAFF, `insert into public.events (title) select 'Week ' || g from generate_series(1, 12) g`);
 const n = (await db.query(`select count(*)::int as n from public._bumps where part = 'calendar'`)).rows[0].n;
 ok('a dozen events in one save are one bump, not twelve', n === 1, `bumps: ${n}`);
+await as('authenticated', STAFF, `insert into public.church_members (name) select 'Member ' || g from generate_series(1, 300) g`);
+const nm = (await db.query(`select count(*)::int as n from public._bumps where part = 'directory'`)).rows[0].n;
+ok('an import of 300 members is one bump, not 300', nm === 1, `bumps: ${nm}`);
 await db.exec(`drop trigger _count on public.app_refresh; drop function public._count_bump(); drop table public._bumps;`);
 
 console.log('\n── a lost signal never costs the change ──');

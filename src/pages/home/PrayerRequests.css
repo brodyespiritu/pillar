@@ -1,0 +1,66 @@
+/* Prayer requests from the app, on Home. The member requests' card, in Pillar's own blue. */
+
+.pr {
+  width: 100%; max-width: 720px; margin: 28px auto 0; text-align: left;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 20px;
+  box-shadow: 0 12px 32px rgba(11, 53, 88, 0.1);
+  padding: 18px 18px 12px;
+}
+.pr-head { display: flex; align-items: center; gap: 10px; padding: 0 6px 12px; }
+.pr-mark {
+  display: flex; align-items: center; justify-content: center; width: 26px; height: 26px;
+  border-radius: 9px; background: rgba(0, 107, 255, 0.1); color: var(--accent); flex-shrink: 0;
+}
+.pr-count { font-size: 14px; font-weight: 700; color: var(--text-2); }
+.pr-list { display: flex; flex-direction: column; gap: 2px; }
+.pr-row { display: flex; align-items: center; gap: 4px; border-radius: 12px; }
+.pr-row:hover { background: var(--surface-2); }
+.pr-open {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; padding: 10px 8px;
+  background: none; border: none; cursor: pointer; text-align: left;
+}
+.pr-open:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(0, 107, 255, 0.18); border-radius: 12px; }
+.pr-main { display: block; flex: 1; min-width: 0; }
+.pr-words {
+  display: block; font-size: 14px; line-height: 1.35; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.pr-who { display: block; margin-top: 2px; font-size: 12.5px; color: var(--text-3); }
+.pr-x {
+  flex-shrink: 0; width: 30px; height: 30px; border-radius: 9px; border: none; background: transparent;
+  color: var(--text-3); cursor: pointer; display: flex; align-items: center; justify-content: center;
+}
+.pr-x:hover { background: var(--surface-2); color: var(--text); }
+.pr-x:disabled { opacity: 0.4; cursor: default; }
+.pr-more { padding: 8px 8px 2px; font-size: 12.5px; color: var(--text-3); }
+.pr-err { padding: 8px; font-size: 12.5px; color: var(--red); }
+
+/* the whole request */
+.pr-scrim {
+  position: fixed; inset: 0; z-index: 200; display: flex; align-items: center; justify-content: center;
+  padding: 24px; background: rgba(8, 20, 34, 0.45);
+}
+.pr-card {
+  width: 100%; max-width: 520px; max-height: 84vh; overflow-y: auto; text-align: left;
+  background: var(--surface); border-radius: 24px; padding: 22px 24px 20px;
+  box-shadow: 0 24px 60px rgba(8, 20, 34, 0.3);
+}
+.pr-card-head { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 14px; }
+.pr-tag {
+  display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 11.5px; font-weight: 800;
+  letter-spacing: 0.4px; text-transform: uppercase; background: rgba(0, 107, 255, 0.1); color: var(--accent);
+}
+.pr-name { margin: 8px 0 2px; font-size: 20px; font-weight: 800; color: var(--text); }
+.pr-when { margin: 0; font-size: 13px; color: var(--text-3); }
+.pr-said { margin: 0 0 18px; font-size: 17px; line-height: 1.5; color: var(--text); white-space: pre-wrap; }
+.pr-facts { margin: 0 0 18px; display: flex; flex-direction: column; gap: 8px; }
+.pr-fact { display: flex; gap: 12px; font-size: 14px; }
+.pr-fact dt { min-width: 92px; color: var(--text-3); }
+.pr-fact dd { margin: 0; color: var(--text); font-weight: 600; }
+.pr-card-foot { display: flex; justify-content: flex-end; gap: 10px; }
+.pr-keep, .pr-done {
+  border-radius: 12px; padding: 10px 16px; font-size: 14px; font-weight: 700; cursor: pointer;
+}
+.pr-keep { background: var(--surface-2); border: 1px solid var(--border); color: var(--text-2); }
+.pr-done { background: var(--accent); border: 1px solid var(--accent); color: #fff; }
+.pr-done:disabled { opacity: 0.5; cursor: default; }

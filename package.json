@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:fixtures": "vite --mode fixtures --port 1422",
     "build": "vite build",
     "preview": "vite preview",
     "tauri": "tauri"

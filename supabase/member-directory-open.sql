@@ -4,7 +4,7 @@
 --  then has to opt out of sharing that information.")
 --
 --  Every member on the church's list shows signed-in members their phone, email, photo, home
---  address and birthday (month and day, never the year) — whether or not they use the app — until
+--  address and birthday (month and day, and their age) — whether or not they use the app — until
 --  they turn a detail off: themselves in My Profile, or through the office (Pillar's "Include on
 --  Directory" takes someone out altogether). Children, inactive, prospect and denied records still
 --  never show.
@@ -12,6 +12,11 @@
 --  Some members had turned sharing off under the old opt-in rules, and nothing tells them apart
 --  from members who were never asked. The church chose to share everything once and ask every
 --  member to look over their directory settings on their next sign-in.
+--
+--  Ages (added the same day, user: "For birthday, add how old they are"): the directory sends the
+--  year of birth too, apart from the month and day and only with them, so the app can say how old
+--  someone is and put a party hat on their picture on the day. And a "Birthdays Today" list at the
+--  top of the directory (member_birthdays). Re-run this file to add them.
 --
 --  Church staff (added the same day): a staff position on a member's record, shown in the app as a
 --  "Church Staff" banner on their profile — filled in once from Pillar's staff accounts, then kept in
@@ -193,14 +198,16 @@ end $$;
 -- The church directory: signed-in members only. Everyone on the church's list is in it by default
 -- (user, 2026-09-15) — every eligible adult record the office hasn't marked "not in directory" —
 -- unless the member took themselves out (directory_hidden, from My Profile or by deleting their app
--- account). And everything shows — email, phone, photo, home address and birthday (month and day,
--- never the year) — whether or not they use the app, until they turn a detail off (opt-out, user
--- 2026-09-21). Photos are fetched one at a time (often stored inline). Church staff carry their
--- position (staff_title), which the app shows as a "Church Staff" banner.
+-- account). And everything shows — email, phone, photo, home address and birthday — whether or not
+-- they use the app, until they turn a detail off (opt-out, user 2026-09-21). A birthday comes as month
+-- and day, with the year apart (birth_year) so the app can say how old they are (user, 2026-09-21:
+-- "For birthday, add how old they are"); both go, or neither, with the member's birthday switch.
+-- Photos are fetched one at a time (often stored inline). Church staff carry their position
+-- (staff_title), which the app shows as a "Church Staff" banner.
 drop function if exists public.member_directory(text, int, int);
 create function public.member_directory(p_query text default null, p_limit int default 50, p_offset int default 0)
 returns table (id uuid, name text, email text, phone text, has_photo boolean, address text, birthday text,
-               staff_title text)
+               staff_title text, birth_year int)
 language sql stable security definer set search_path = ''
 as $$
   select m.id, btrim(m.name),
@@ -210,7 +217,8 @@ as $$
          case when m.share_address then nullif(btrim(m.address), '') end,
          case when m.share_birthday then to_char(m.birthday, 'MM-DD') end,
          -- the church's own record of who is on staff, not a detail a member shares
-         nullif(btrim(m.staff_title), '')
+         nullif(btrim(m.staff_title), ''),
+         case when m.share_birthday then extract(year from m.birthday)::int end
     from public.church_members m
    where (select public.app_caller_member_id()) is not null
      and not m.directory_hidden
@@ -222,6 +230,38 @@ as $$
    order by lower(btrim(m.name)), m.id
    limit least(greatest(coalesce(p_limit, 50), 1), 100)
   offset greatest(coalesce(p_offset, 0), 0)
+$$;
+
+-- Birthdays today (user, 2026-09-21: "When user pulls up directory, before the category A should be
+-- 'Birthdays Today'"): everyone in the directory whose shared birthday falls on the day the phone asks
+-- about, in the directory's own shape, whichever page of it they're on. The phone asks for its own
+-- today — and on 28 February in a year without a 29th, the 29th as well — so one or two days a call,
+-- never the calendar. Only what the directory already shows: the same members, the same switches.
+create or replace function public.member_birthdays(p_days text[])
+returns table (id uuid, name text, email text, phone text, has_photo boolean, address text, birthday text,
+               staff_title text, birth_year int)
+language sql stable security definer set search_path = ''
+as $$
+  select m.id, btrim(m.name),
+         case when m.share_email then nullif(btrim(m.email), '') end,
+         case when m.share_phone then nullif(btrim(m.phone), '') end,
+         (m.share_photo and nullif(m.photo_url, '') is not null),
+         case when m.share_address then nullif(btrim(m.address), '') end,
+         to_char(m.birthday, 'MM-DD'),
+         nullif(btrim(m.staff_title), ''),
+         extract(year from m.birthday)::int
+    from public.church_members m
+   where (select public.app_caller_member_id()) is not null
+     and coalesce(array_length(p_days, 1), 0) between 1 and 2
+     and not m.directory_hidden
+     and m.include_directory is not false
+     and nullif(btrim(m.name), '') is not null
+     and public.app_member_is_eligible(m)
+     and m.share_birthday
+     and m.birthday is not null
+     and to_char(m.birthday, 'MM-DD') = any (p_days)
+   order by lower(btrim(m.name)), m.id
+   limit 100
 $$;
 
 create or replace function public.member_directory_photo(p_member_id uuid)
@@ -237,10 +277,10 @@ $$;
 
 revoke all on function public.member_me(),
   public.member_update_me(text, boolean, boolean, boolean, boolean, boolean, boolean, boolean),
-  public.member_directory(text, int, int), public.member_directory_photo(uuid) from public, anon;
+  public.member_directory(text, int, int), public.member_birthdays(text[]), public.member_directory_photo(uuid) from public, anon;
 grant execute on function public.member_me(),
   public.member_update_me(text, boolean, boolean, boolean, boolean, boolean, boolean, boolean),
-  public.member_directory(text, int, int), public.member_directory_photo(uuid) to authenticated;
+  public.member_directory(text, int, int), public.member_birthdays(text[]), public.member_directory_photo(uuid) to authenticated;
 
 select count(*) as members,
        count(*) filter (where share_address)        as sharing_address,

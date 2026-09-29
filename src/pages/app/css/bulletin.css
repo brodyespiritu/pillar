@@ -1,0 +1,178 @@
+/* ═══ Pillar → App → Bulletin ═══
+ *
+ * Bulletin's own styles (BulletinPage.jsx, SlidesView.jsx): announcements and slides, the many-files drop, and the Digital Bulletin phone (BethesdaApp screens/BulletinScreen.js).
+ *
+ * Pulled in by the @import lines at the top of ../appx.css, so the page needs no JS import (and its
+ * tests no new stubs). Everything here keeps the ax- prefix. The shared workspace, panes and fields
+ * live in ./base.css; the member app's own look for phone previews in ./phone.css (.ax-phone-app).
+ * base.css loads BEFORE this file, so a rule here with the same selector as a shared one wins on
+ * order alone (write the same selector, or add a class — never !important).
+ */
+
+/* ── Pillar's side (its own blue theme) ─────────────────────────────────────────────────────── */
+
+/* a slide's thumbnail in the list is the slide's own shape, 16:9, with its place in the order on it
+   (grip · picture · caption · switch fit a 268px list; a number column beside them didn't) */
+.ax-bl-thumb { position: relative; width: 64px; height: 36px; border-radius: 8px; color: var(--ax-ink-3); }
+.ax-bl-num {
+  position: absolute; left: 3px; bottom: 3px; width: auto; min-width: 17px; height: 17px; padding: 0 4px;
+  border-radius: 6px; background: rgba(11, 53, 88, 0.78); color: #FFFFFF; font-size: 11px; line-height: 17px;
+}
+.ax-bl-dropzone .ax-row { gap: 10px; }
+
+/* the Slides list pane takes dropped pictures anywhere on it, head and all — the biggest target on
+   the page (Fitts). The ring is an outline so the head's own white can't paint over it */
+.ax-bl-dropzone { display: flex; flex-direction: column; gap: 8px; min-height: 100%; }
+.ax-bl-dropzone > .ax-list-hint { margin-top: 4px; }
+.ax-list-pane.ax-bl-list.over { outline: 2px solid var(--ax-accent); outline-offset: -2px; }
+.ax-bl-list.over .ax-list-pane-body { background: var(--ax-pick); transition: background 0.12s; }
+
+/* a field past its counter: amber like the counter (.ax-count.near) — a warning, nothing is cut */
+.ax-hint.ax-bl-long { color: #B45309; }
+/* "See the slides" in the slides' alert on the Announcements tab: beside the words, not pushed right
+   like the alert's own Dismiss */
+.ax-alert .ax-bl-alert-go { margin-left: 4px; }
+
+/* the card at the top of the list: drop or choose many; then the count; then "show them all" */
+.ax-bl-drop {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 10px 12px; padding: 12px;
+  border-radius: 14px; border: 1.5px dashed var(--ax-line-2); background: var(--ax-field);
+  transition: border-color 0.12s, background 0.12s;
+}
+.ax-bl-drop.over { border-color: var(--ax-accent); background: var(--surface); }
+.ax-bl-drop.busy { border-style: solid; border-color: var(--ax-line); background: var(--surface); }
+.ax-bl-drop.done { border-style: solid; border-color: var(--ax-on-soft); background: var(--ax-on-soft); }
+.ax-bl-drop-icon {
+  flex: none; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 12px;
+  background: var(--ax-pick); color: var(--ax-accent);
+}
+.ax-bl-drop.done .ax-bl-drop-icon { background: var(--surface); color: var(--ax-on); }
+.ax-bl-drop-text { flex: 1 1 150px; min-width: 0; font-size: 13px; line-height: 1.45; color: var(--ax-ink-3); }
+.ax-bl-drop-text strong { display: block; margin-bottom: 1px; font-size: 14px; line-height: 1.35; color: var(--ax-ink); }
+.ax-bl-drop > .ax-btn { flex: 1 1 100%; }
+.ax-bl-drop > .ax-progress { flex: 1 1 100%; }
+.ax-bl-drop-btns { flex: 1 1 100%; display: flex; align-items: center; gap: 6px; }
+.ax-bl-drop-btns > .ax-btn { flex: 1 1 auto; min-width: 0; }
+/* no slides at all: the editor's empty state is the drop, big and centred */
+.ax-bl-bigdrop { display: flex; justify-content: center; width: 100%; }
+.ax-bl-drop.big {
+  flex-direction: column; justify-content: center; gap: 14px; width: min(100%, 460px);
+  padding: 36px 28px; text-align: center;
+}
+.ax-bl-drop.big .ax-bl-drop-icon { width: 56px; height: 56px; border-radius: 16px; }
+.ax-bl-drop.big .ax-bl-drop-text { flex: none; font-size: 14px; }
+.ax-bl-drop.big .ax-bl-drop-text strong { margin-bottom: 4px; font-size: 17px; }
+.ax-bl-drop.big > .ax-btn, .ax-bl-drop.big > .ax-progress { flex: none; width: 100%; }
+.ax-bl-drop.big > .ax-btn { width: auto; }
+
+/* the slide in its editor: the picture as big as the column, in the slide's own 16:9 */
+.ax-bl-shot .ax-drop { flex-direction: column; align-items: stretch; }
+.ax-bl-shot .ax-drop-preview { width: 100%; height: auto; aspect-ratio: 16 / 9; }
+.ax-bl-shot .ax-drop-text { flex: none; }
+
+/* ── the phone: the member app's Digital Bulletin ───────────────────────────────────────────────
+ * BethesdaApp screens/BulletinScreen.js, LIGHT look. Every number is the app's own StyleSheet value
+ * in points (1px = 1pt), scaled as one piece by the PhoneFrame — never sized "to look right" here.
+ * Where the app gives no lineHeight, line-height is `normal` (the font's own, as React Native uses).
+ * The screen and the folds are flex columns so margins ADD the way React Native's do (plain CSS
+ * would collapse the plate's 12 below and the folds' 20 above into 20). */
+.ax-bl-screen { display: flex; flex-direction: column; }
+
+/* the nameplate — s.plate, s.plateKicker, s.plateDate: the dark panel, 24 under the title */
+.ax-bl-plate { margin: 24px 20px 12px; padding: 20px; border-radius: 20px; background: var(--ax-app-panel); }
+.ax-bl-plate-kicker { margin-bottom: 10px; font-size: 11.5px; font-weight: 700; line-height: normal; letter-spacing: 1.6px; color: rgba(255, 255, 255, 0.72); }
+.ax-bl-plate-date { font-size: 25px; font-weight: 700; line-height: 31px; letter-spacing: -0.5px; color: #FFFFFF; }
+
+/* s.loading: the app's small ActivityIndicator, 48 under the plate, until its announcements and its
+   calendar arrive — iOS's own: eight rounded spokes (BulletinPage ActivityIndicator draws them, each
+   a step lighter) turning in eight steps, in text3 */
+.ax-bl-loading { display: flex; justify-content: center; padding-top: 48px; }
+.ax-bl-activity {
+  display: block; width: 20px; height: 20px; color: var(--ax-app-text3);
+  stroke: currentColor; stroke-width: 2.5; stroke-linecap: round;
+  animation: ax-bl-activity 1s steps(8, end) infinite;
+}
+@keyframes ax-bl-activity { to { transform: rotate(360deg); } }
+
+/* the folds — s.folds, s.fold, s.foldHead, s.disc, s.foldTitle, s.foldCount, s.foldBody: cream
+   boxes, 20 corners, 18 in, 12 apart, a 36 white disc with an 18 Feather icon, a 20 chevron */
+.ax-bl-folds { display: flex; flex-direction: column; margin-top: 20px; padding: 0 20px; }
+.ax-bl-fold { margin-bottom: 12px; padding: 18px; border-radius: 20px; background: var(--ax-app-card); }
+.ax-bl-fold-head { display: flex; align-items: center; gap: 14px; }
+.ax-bl-disc {
+  flex: none; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 18px;
+  background: var(--ax-app-bg); color: var(--ax-app-text);
+}
+.ax-bl-fold-words { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; }
+.ax-bl-fold-title { font-size: 17.5px; font-weight: 700; line-height: normal; letter-spacing: -0.35px; color: var(--ax-app-text); }
+.ax-bl-fold-count { margin-top: 3px; font-size: 12.5px; font-weight: 400; line-height: normal; color: var(--ax-app-text2); }
+.ax-bl-chev { color: var(--ax-app-text2); }
+.ax-bl-fold-body { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--ax-app-line); }
+
+/* an announcement — ListNotice: s.lNotice, s.noticeHead (always there, 10 under it), s.tag in the
+   darker orange, s.noticeWhen, s.lNoticeTitle 19/25, s.noticeBody 15.5/24 */
+.ax-bl-notice { padding: 16px 0 18px; border-top: 1px solid var(--ax-app-line); }
+.ax-bl-notice:first-child { padding-top: 0; border-top: 0; }
+.ax-bl-notice-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.ax-bl-tag { font-size: 10.5px; font-weight: 700; line-height: normal; letter-spacing: 1.4px; color: var(--ax-app-orange-d); }
+.ax-bl-when { font-size: 12.5px; font-weight: 600; line-height: normal; color: var(--ax-app-text3); }
+.ax-bl-notice-title { font-size: 19px; font-weight: 600; line-height: 25px; letter-spacing: -0.3px; color: var(--ax-app-text); overflow-wrap: anywhere; }
+.ax-bl-notice-title.blank { color: var(--ax-app-text3); }
+.ax-bl-notice-body {
+  margin-top: 10px; font-size: 15.5px; font-weight: 400; line-height: 24px; color: var(--ax-app-text2);
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
+/* s.empty: what a fold with nothing in it says */
+.ax-bl-empty { font-size: 15px; font-weight: 400; line-height: 23px; color: var(--ax-app-text3); }
+
+/* the slides row — s.slideRow, s.slide, s.slideShot, s.slideCap: 240 × 135 pictures with 14 corners,
+   12 apart, scrolling sideways, a two-line caption 8 under. The scroll box is the fold body's own
+   content box, as the app's horizontal ScrollView is (paddingRight 4, nothing else), so the second
+   slide peeks in by the app's 65pt and a scrolled slide is clipped at the fold's 18pt padding — the
+   picked and focused outlines are drawn INSIDE the picture below, so nothing needs room outside it */
+.ax-bl-slides {
+  position: relative; display: flex; gap: 12px; padding: 0 4px 0 0;
+  overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; scrollbar-width: none;
+}
+.ax-bl-slides::-webkit-scrollbar { display: none; }
+.ax-bl-slide { flex: none; width: 240px; }
+.ax-bl-slide-shot {
+  position: relative; width: 240px; height: 135px; border-radius: 14px;
+  background: var(--ax-app-card) center / cover no-repeat;
+}
+.ax-bl-slide-cap {
+  margin-top: 8px; font-size: 13px; font-weight: 400; line-height: 18px; color: var(--ax-app-text2);
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+
+/* Email me · AirPrint — s.take, s.takeBox, s.mailDisc, s.mailTitle, s.mailSub: the Bible page's pair
+   of cream boxes, at least 132 tall, the disc at the top and the words at the foot */
+.ax-bl-take { display: flex; gap: 12px; margin-top: 12px; padding: 0 20px; }
+.ax-bl-take-box {
+  flex: 1 1 0; min-width: 0; min-height: 132px; display: flex; flex-direction: column; justify-content: space-between;
+  padding: 16px; border-radius: 20px; background: var(--ax-app-card);
+}
+.ax-bl-take-disc {
+  display: grid; place-items: center; width: 40px; height: 40px; border-radius: 20px;
+  background: var(--ax-app-bg); color: var(--ax-app-text);
+}
+.ax-bl-take-title { margin-top: 18px; font-size: 16.5px; font-weight: 700; line-height: normal; letter-spacing: -0.3px; color: var(--ax-app-text); }
+.ax-bl-take-sub {
+  margin-top: 4px; font-size: 12.5px; font-weight: 400; line-height: 17px; color: var(--ax-app-text2);
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+
+/* Pillar's own marks inside the phone: the "not in the Bulletin" flag sits in the notice's head row
+   (it was an inline style — the old white badge), and what can be clicked says so to the keyboard */
+.ax-bl-notice-head .ax-pa-flag { position: static; }
+.ax-bl-fold-head[role="button"] { border-radius: 12px; transition: opacity 0.12s; }
+/* the app's own pressed look (opacity 0.6) as Pillar's hover — the fold opens that tab */
+.ax-bl-fold-head[role="button"]:hover { opacity: 0.6; }
+.ax-bl-fold-head[role="button"]:focus-visible,
+.ax-bl-notice[role="button"]:focus-visible { outline: 3px solid var(--accent, #006BFF); outline-offset: 3px; }
+/* a slide's marks sit inside its picture: the row scrolls, and anything outside would be cut off */
+.ax-bl-slide-shot.ax-pa-picked { outline-offset: -3px; }
+.ax-bl-slide[role="button"]:focus-visible .ax-bl-slide-shot { outline: 3px solid var(--accent, #006BFF); outline-offset: -3px; }
+.ax-bl-slide[role="button"]:focus-visible { outline: none; }
+.ax-bl-notice[role="button"]:focus-visible { outline-offset: 6px; }
+.ax-bl-slide[role="button"]:hover .ax-bl-slide-shot { opacity: 0.9; }

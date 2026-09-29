@@ -7,6 +7,13 @@
 // A sheet can go with one sermon: picked from the Sermons list (its title, speaker, date and video
 // fill in), or started from the sermon itself (?for=<sermon id>). One sheet per sermon. A project
 // that hasn't run sermon-notes-for-a-sermon.sql yet still lists and saves its notes.
+//
+// Redesign (2026-09-23, DESIGN.md §4): the notes' state moved up into WatchPage (useNotes), so a tab
+// switch neither reloads them nor forgets the sheet that was open. The view now takes `notes` from
+// that hook, so these checks render a small Host that does what WatchPage does (useNotes + the page's
+// Undo toast) — the behaviour checked is unchanged. The list is the workspace's ListPane now
+// (section.ax-pane.ax-list-pane, not .ax-panel.tight), and like every list on Watch the first sheet
+// opens by itself when the list arrives (one rule for every list).
 const path = require('path'); const fs = require('fs'); const Module = require('module'); const assert = require('assert');
 const DEPS = path.join(__dirname, 'node_modules');   // React, the renderer and Babel, pinned in ./package.json
 const PILLAR = path.resolve(__dirname, '..');
@@ -98,8 +105,17 @@ stub('../../lib/videoUpload', { uploadVideo: async () => ({}), videoStill: async
 const LIB = path.join(PILLAR, 'src/lib/sermonSheets.js');
 STUBS['../../lib/sermonSheets'] = xform(LIB, 'sermonSheets.cjs');
 const lib = require(STUBS['../../lib/sermonSheets']);
+STUBS['../../lib/youtube'] = xform(path.join(PILLAR, 'src/lib/youtube.js'), 'youtube.cjs');
 STUBS['./kit'] = xform(path.join(PILLAR, 'src/pages/app/kit.jsx'), 'kit.cjs');
-const NotesView = require(xform(path.join(PILLAR, 'src/pages/app/NotesView.jsx'), 'NotesView.cjs')).default;
+STUBS['./layout'] = xform(path.join(PILLAR, 'src/pages/app/layout.jsx'), 'layout.cjs');
+const kit = require(STUBS['./kit']);
+const NotesMod = require(xform(path.join(PILLAR, 'src/pages/app/NotesView.jsx'), 'NotesView.cjs'));
+// what WatchPage does: the notes' state (useNotes) and the page's Undo toast, handed to the view
+function Host({ sermons, mod = NotesMod }) {
+  const [toast, undo] = kit.useUndo();
+  const notes = mod.useNotes(undo);
+  return React.createElement(React.Fragment, null, React.createElement(mod.default, { notes, sermons }), toast);
+}
 
 let ok = 0;
 const t = async (name, fn) => { await fn(); ok++; console.log('  ✓', name); };
@@ -114,7 +130,7 @@ const SERMONS = [
 async function page(sermons = SERMONS, query = '') {
   firstSearch = query;
   let r;
-  await act(async () => { r = TR.create(React.createElement(NotesView, { sermons })); });
+  await act(async () => { r = TR.create(React.createElement(Host, { sermons })); });
   await act(async () => { await wait(20); });
   const root = r.root;
   const ui = {
@@ -124,7 +140,7 @@ async function page(sermons = SERMONS, query = '') {
     body: () => root.find((x) => x.type === 'textarea'),
     inputs: () => root.findAll((x) => x.type === 'input' && /^ax-input/.test(x.props.className || '') && x.props.type !== 'search'),
     save: () => textOf(root.find((x) => x.type === 'span' && /^ax-save/.test(x.props.className || ''))),
-    rows: () => root.find((x) => x.props.className === 'ax-panel tight').findAll((x) => /^ax-row-title/.test(x.props.className || '')).map(textOf),
+    rows: () => root.find((x) => x.type === 'section' && x.props.className === 'ax-pane ax-list-pane').findAll((x) => /^ax-row-title/.test(x.props.className || '')).map(textOf),
     choices: () => root.findAll((x) => x.type === 'button' && /pickable/.test(x.props.className || '')),
     picked: () => { const p = root.findAll((x) => x.props.className === 'ax-picked'); return p.length ? textOf(p[0]) : null; },
     type: (node, value) => act(async () => { node.props.onChange({ target: { value } }); }),
@@ -215,7 +231,7 @@ async function page(sermons = SERMONS, query = '') {
     // the sermons arrive after the notes: it waits for them rather than dropping the request
     ui = await page([], 'tab=notes&for=s2');
     assert.strictEqual(search.now.get('for'), 's2');
-    await act(async () => { ui.r.update(React.createElement(NotesView, { sermons: SERMONS })); });
+    await act(async () => { ui.r.update(React.createElement(Host, { sermons: SERMONS })); });
     await act(async () => { await wait(20); });
     assert.strictEqual(ui.title().props.value, 'Walking by Faith');
     assert.strictEqual(search.now.get('for'), null);
@@ -235,18 +251,20 @@ async function page(sermons = SERMONS, query = '') {
     db.column = false; db.rows = [{ id: 'old', title: 'A', body: 'God is ___.', published: true, sort: 0 }]; db.calls = [];
     STUBS['../../lib/sermonSheets'] = xform(LIB, 'sermonSheets.old.cjs');   // a fresh copy: it learns the database again
     const oldLib = require(STUBS['../../lib/sermonSheets']);
-    const Old = require(xform(path.join(PILLAR, 'src/pages/app/NotesView.jsx'), 'NotesView.old.cjs')).default;
+    const Old = require(xform(path.join(PILLAR, 'src/pages/app/NotesView.jsx'), 'NotesView.old.cjs'));
     firstSearch = '';
     let r;
-    await act(async () => { r = TR.create(React.createElement(Old, { sermons: SERMONS })); });
+    await act(async () => { r = TR.create(React.createElement(Host, { sermons: SERMONS, mod: Old })); });
     await act(async () => { await wait(20); });
     assert.strictEqual(oldLib.sermonLinkReady(), false);
     assert.ok(db.calls[0].columns.includes('sermon_id') && !db.calls[1].columns.includes('sermon_id'), 'asked once with it, then without');
+    // the first sheet opens by itself now (every list on Watch picks its first row), and it says
+    // what to run; a new sheet says the same
     const note = r.root.findAll((x) => x.props.className === 'ax-note').map(textOf).join('');
+    assert.match(note, /sermon-notes-for-a-sermon\.sql/, 'the sheet that opened by itself says what to run');
     const btn = r.root.find((x) => x.type === 'button' && textOf(x).trim() === 'New notes');
-    await act(async () => { btn.props.onClick(); });
+    await act(async () => { await btn.props.onClick(); });
     assert.match(r.root.findAll((x) => x.props.className === 'ax-note').map(textOf).join(''), /sermon-notes-for-a-sermon\.sql/);
-    assert.strictEqual(note, '', 'nothing to say until a sheet is open');
     await act(async () => { r.root.find((x) => x.props.className === 'ax-input title').props.onChange({ target: { value: 'New' } }); });
     await act(async () => { r.root.find((x) => x.type === 'textarea').props.onChange({ target: { value: 'Be ___.' } }); });
     await act(async () => { await wait(900); });

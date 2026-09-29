@@ -22,6 +22,9 @@ export const env = {
   telnyxFrom:  Deno.env.get('TELNYX_CODE_FROM_NUMBER') || Deno.env.get('TELNYX_FROM_NUMBER'),
   resendKey:   Deno.env.get('RESEND_API_KEY'),
   codeFrom:    Deno.env.get('MEMBER_CODE_FROM'),
+  // TESTING — the one address that signs in without a code (member-verify-code). Unset it and that
+  // door is shut. Never point it at a real member's address.
+  testLoginEmail: (Deno.env.get('MEMBER_TEST_LOGIN_EMAIL') ?? '').trim().toLowerCase(),
 };
 
 export const MSG = {

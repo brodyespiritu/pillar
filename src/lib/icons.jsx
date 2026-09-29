@@ -33,6 +33,7 @@ export const P = {
   check:     'M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z',
   arrowUp:   'M7 14l5-5 5 5z',
   arrowDown: 'M7 10l5 5 5-5z',
+  download:  'M5 20h14v-2H5v2zM19 9h-4V3H9v6H5l7 7 7-7z',
   sms:       'M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-2 12H6v-2h12v2zm0-3H6V9h12v2zm0-3H6V6h12v2z',
   water:     'M12 2c-5.33 4.55-8 8.48-8 11.8 0 4.98 3.8 8.2 8 8.2s8-3.22 8-8.2c0-3.32-2.67-7.25-8-11.8z',
   cross:     'M14 6V4h-4v2H8v4H6v4h2v6h4v-6h2v-4h2V6z',

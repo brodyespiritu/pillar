@@ -80,7 +80,7 @@ Deno.serve(async (req) => {
       const cm = (data as any)?.care_members;
       if (!cm || !String(data?.notes || '').trim()) return json({ ok: true, skipped: 'nothing to report' });
       care = cm;
-      alert = updateAlert(cm.full_name, data!.notes, { type: (data as any).type, by: (data as any).logged_by_name });
+      alert = updateAlert(cm.full_name, data!.notes);
     }
 
     /* Who can be reached: deacons in the directory who are also on the texting group. */

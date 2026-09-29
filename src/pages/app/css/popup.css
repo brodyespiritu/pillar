@@ -1,0 +1,134 @@
+/* ═══ Pillar → App → Notifications → Update popup (TESTING) ═══
+ *
+ * PopupPanel.jsx's own styles: the word-processor box (.ax-rt-*), what's on phones now, and the orange
+ * card in the phone (.ax-pp-*, drawn as BethesdaApp components/testkit/UpdatePopup.js draws it). Goes
+ * when the app's test kit does.
+ *
+ * Pulled in by the @import lines at the top of ../appx.css, after notifications.css (the Send row's
+ * .ax-nt-send is shared with it). Everything here keeps the ax- prefix; never !important. The page
+ * keeps Pillar's blue — the app's orange appears only inside the phone.
+ */
+
+/* ── the testing line over the form ── */
+.ax-pp-testing {
+  display: flex; align-items: center; gap: 8px; margin: 0 0 4px; padding: 10px 14px; border-radius: 12px;
+  background: var(--surface-2); color: var(--ax-ink-2); font-size: 13.5px; line-height: 1.5;
+}
+.ax-pp-testing svg { flex: none; color: var(--ax-ink-3); }
+
+/* ── the word-processor box: the toolbar on top of the words it formats (proximity) ── */
+.ax-rt {
+  display: flex; flex-direction: column; min-width: 0; border-radius: 12px; border: 1.5px solid var(--ax-line);
+  background: var(--ax-field); transition: border-color 0.12s, box-shadow 0.12s;
+}
+.ax-rt:hover { border-color: var(--ax-line-2); }
+.ax-rt:focus-within { border-color: var(--ax-accent); background: var(--surface); box-shadow: 0 0 0 4px var(--ax-focus); }
+.ax-rt-tools {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 1px; padding: 6px; border-bottom: 1px solid var(--ax-line);
+}
+/* each button a comfortable target (Fitts): 34 × 36, the picture centred — all nine on one row in a
+   half-width column (a 1440 window's), so every tool is seen at once (recognition over recall) */
+.ax-rt-btn {
+  display: inline-grid; place-items: center; width: 34px; height: 36px; border: 0; border-radius: 8px;
+  background: transparent; color: var(--ax-ink-2); font-size: 16px; line-height: 1; cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.ax-rt-btn:hover { background: var(--ax-card-hover); color: var(--ax-ink); }
+.ax-rt-btn:focus-visible { outline: 2px solid var(--ax-accent); outline-offset: 1px; }
+/* what's on where the cursor is */
+.ax-rt-btn.on { background: var(--ax-pick); color: var(--ax-accent); }
+.ax-rt-btn b, .ax-rt-btn i, .ax-rt-btn u, .ax-rt-btn s { font-family: Georgia, 'Times New Roman', serif; font-size: 17px; }
+.ax-rt-h { font-weight: 800; font-size: 16px; letter-spacing: -0.3px; }
+.ax-rt-clear { font-weight: 700; font-size: 15px; }
+.ax-rt-clear small { font-size: 10px; margin-left: 1px; }
+.ax-rt-sep { width: 1px; height: 20px; margin: 0 3px; background: var(--ax-line); }
+
+.ax-rt-area {
+  position: relative; min-height: 190px; max-height: 460px; overflow-y: auto; padding: 12px 15px;
+  color: var(--ax-ink); font-size: 16px; line-height: 1.5; outline: none; overflow-wrap: anywhere;
+}
+.ax-rt-area.empty::before {
+  content: attr(data-placeholder); position: absolute; left: 15px; top: 12px; right: 15px;
+  color: var(--ax-faint); pointer-events: none;
+}
+.ax-rt-area h3 { margin: 14px 0 4px; font-size: 18px; font-weight: 700; line-height: 1.35; letter-spacing: -0.2px; }
+.ax-rt-area > h3:first-child { margin-top: 0; }
+.ax-rt-area ul, .ax-rt-area ol { margin: 4px 0; padding-left: 26px; }
+.ax-rt-area ul { list-style: disc; }
+.ax-rt-area ol { list-style: decimal; }
+.ax-rt-area ul.ax-rt-dash { list-style: none; }
+.ax-rt-area ul.ax-rt-dash > li { position: relative; }
+.ax-rt-area ul.ax-rt-dash > li::before { content: '–'; position: absolute; left: -18px; }
+.ax-rt-area li { margin: 2px 0; }
+
+/* ── the Send row: Post (or Cancel · Post as new · Update it) at the foot of the words ── */
+.ax-pp-send .ax-btn { flex: none; }
+.ax-pp-send .ax-btn.quiet { margin-left: auto; }
+.ax-pp-send .ax-btn.quiet + .ax-btn, .ax-pp-send .ax-btn.quiet ~ .ax-btn.primary { margin-left: 0; }
+
+/* ── on phones now: the one that's up, its two buttons beside it ── */
+.ax-pp-live {
+  display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 12px; padding: 16px 18px;
+  border-radius: 16px; background: var(--ax-pick);
+}
+.ax-pp-live-dot { width: 10px; height: 10px; margin-top: 7px; border-radius: 50%; background: #16A34A; box-shadow: 0 0 0 4px rgba(22, 163, 74, 0.16); }
+.ax-pp-live-main { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.ax-pp-live-title { font-size: 16px; font-weight: 700; line-height: 1.35; color: var(--ax-ink); overflow-wrap: anywhere; }
+.ax-pp-live-sum { font-size: 14px; line-height: 1.5; color: var(--ax-ink-2); overflow-wrap: anywhere; }
+.ax-pp-live-when { font-size: 12.5px; font-weight: 600; color: var(--ax-ink-3); }
+.ax-pp-live-btns { grid-column: 2; display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.ax-pp-none { margin: 0; padding: 16px 18px; border-radius: 16px; background: var(--surface-2); }
+
+.ax-pp-earlier-head {
+  margin: 24px 0 8px; font-size: 12.5px; font-weight: 800; letter-spacing: 0.9px; text-transform: uppercase; color: var(--ax-ink-3);
+}
+.ax-pp-earlier { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; }
+.ax-pp-earlier > li {
+  display: flex; align-items: center; gap: 12px; padding: 8px 0; border-top: 1px solid var(--ax-line);
+}
+.ax-pp-earlier > li:first-child { border-top: 0; }
+.ax-pp-earlier-main { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.ax-pp-earlier-title { font-size: 14.5px; font-weight: 600; color: var(--ax-ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ax-pp-earlier-when { font-size: 12.5px; color: var(--ax-ink-3); }
+
+/* ═══ the card on the phone ═══
+ * BethesdaApp components/testkit/UpdatePopup.js, in the phone's points: the Give card (the 45% scrim,
+ * the card 32 in, corner 24, 24 in) in the test kit's orange (TestingOnly.js: #FFF0E5, a 1.5 #F7B48A
+ * edge, #A94405 words); "TESTING VIEW ONLY" with the tool; the white disc with the orange bolt; the
+ * title 22/700; the words left-aligned 16/24 (RichText.js), scrolling past 452 (852 − 400); Got it. */
+.ax-pa-scrim.ax-pp-scrim { background: rgba(0, 0, 0, 0.45); }
+.ax-pp-card {
+  display: flex; flex-direction: column; align-items: center; padding: 24px; border-radius: 24px;
+  border: 1.5px solid #F7B48A; background: #FFF0E5; text-align: center; font-family: var(--ax-app-font);
+}
+.ax-pp-label {
+  display: inline-flex; align-items: center; gap: 6px; margin-bottom: 16px; color: #A94405;
+  font-size: 12px; font-weight: 700; letter-spacing: 1.3px; text-transform: uppercase;
+}
+.ax-pp-disc {
+  display: grid; place-items: center; width: 56px; height: 56px; margin-bottom: 16px; border-radius: 28px;
+  background: #FFFFFF; color: #F2660C;
+}
+.ax-pp-title { font-size: 22px; font-weight: 700; line-height: 1.265; letter-spacing: -0.4px; color: var(--ax-app-text); overflow-wrap: anywhere; }
+.ax-pp-title.empty { color: var(--ax-app-text3); }
+.ax-pp-body {
+  align-self: stretch; max-height: 452px; margin-top: 12px; overflow-y: auto; text-align: left;
+  font-size: 16px; font-weight: 400; line-height: 24px; color: var(--ax-app-text2); overflow-wrap: anywhere;
+}
+/* spacing by what's above (RichText.js): 10 between blocks, 6 inside a list, 16 over a heading */
+.ax-pp-body > * + * { margin-top: 10px; }
+.ax-pp-body > * + .ax-pp-h { margin-top: 16px; }
+.ax-pp-bullet + .ax-pp-bullet, .ax-pp-dash + .ax-pp-dash, .ax-pp-number + .ax-pp-number { margin-top: 6px; }
+.ax-pp-body > .ax-pp-gap { height: 10px; margin-top: 0; }
+.ax-pp-p.empty { color: var(--ax-app-text3); }
+.ax-pp-h { font-size: 18px; font-weight: 700; line-height: 24px; letter-spacing: -0.2px; color: var(--ax-app-text); }
+.ax-pp-li { display: flex; align-items: flex-start; }
+.ax-pp-mark { flex: none; width: 18px; }
+.ax-pp-number > .ax-pp-mark { width: 24px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.ax-pp-li-words { flex: 1; min-width: 0; }
+.ax-pp-b { font-weight: 700; }
+.ax-pp-i { font-style: italic; }
+.ax-pp-u { text-decoration: underline; }
+.ax-pp-k { text-decoration: line-through; }
+.ax-pp-u.ax-pp-k { text-decoration: underline line-through; }
+.ax-pp-btn { margin-top: 24px; }

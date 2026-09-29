@@ -305,21 +305,6 @@ export function Seg({ value, options, onChange, big, label }) {
   );
 }
 
-/** Choices with a line under each. */
-export function Choices({ value, options, onChange, label }) {
-  return (
-    <div className="ax-choices" role="radiogroup" aria-label={label}>
-      {options.map((o) => (
-        <button key={o.key} type="button" role="radio" aria-checked={value === o.key}
-          className={`ax-choice${value === o.key ? ' on' : ''}`} onClick={() => onChange(o.key)}>
-          <strong>{o.label}</strong>
-          {o.hint ? <span>{o.hint}</span> : null}
-        </button>
-      ))}
-    </div>
-  );
-}
-
 export function Alert({ children, onClose }) {
   if (!children) return null;
   return (
@@ -341,12 +326,83 @@ export function Loading({ children = 'Loading…' }) {
  * inside; `onMove(keys)` gets the new order. Leave `onMove` out for a list that has no order.
  */
 export function RowList({ rows, picked, onPick, onMove, renderRow, empty }) {
+  // Dragging runs on pointer events — mouse, finger and pen alike — not the browser's own drag and
+  // drop, which phones and tablets don't have and which desktop browsers can drop mid-drag (the office
+  // couldn't reorder Home's cards, 2026-09-21). With a mouse any part of a row drags it; on a touch
+  // screen it's the ⋮⋮ handle, so a swipe anywhere else still scrolls. Alt + ↑/↓ from the keyboard.
   const [drag, setDrag] = useState(null);
   const [over, setOver] = useState(null);
-  if (!rows.length) return empty || null;
-
+  const press = useRef(null);     // { key, id, y, active } while a pointer is down on a row
+  const overRef = useRef(null);   // where it would land, for the pointer's last word
+  const moved = useRef(false);    // a drag just ended: the click that follows it isn't a pick
+  const finishRef = useRef(null);
+  const sortable = !!onMove;
   const keys = rows.map((r) => r._key);
   const move = (next) => { if (next.join('\n') !== keys.join('\n')) onMove(next); };
+
+  const begin = (e, key) => {
+    if (!sortable || (e.button !== undefined && e.button !== 0)) return;
+    const hit = (sel) => !!(e.target && e.target.closest && e.target.closest(sel));
+    const onGrip = hit('.ax-grip');
+    if (e.pointerType && e.pointerType !== 'mouse' && !onGrip) return;
+    if (!onGrip && hit('button, input, select, textarea, a, label')) return;   // the switch keeps its own taps
+    moved.current = false;   // a new press: whatever came before is over
+    press.current = { key, id: e.pointerId, y: e.clientY, active: false };
+    if (e.pointerType && e.pointerType !== 'mouse') {
+      // a finger is held by the row it started on; let it go, so the rows under it hear it moving
+      try { e.target.releasePointerCapture?.(e.pointerId); } catch { /* nothing held */ }
+    } else {
+      e.preventDefault?.();   // no text selection starting under the mouse
+    }
+  };
+  const hover = (e, key) => {
+    const p = press.current;
+    if (!p || (p.id !== undefined && e.pointerId !== undefined && p.id !== e.pointerId)) return;
+    if (!p.active) {
+      if (Math.abs(e.clientY - p.y) < 6) return;   // a click, so far
+      p.active = true;
+      setDrag(p.key);
+    }
+    const box = e.currentTarget.getBoundingClientRect();
+    const side = e.clientY < box.top + box.height / 2 ? 'above' : 'below';
+    const o = overRef.current;
+    if (!o || o.key !== key || o.side !== side) {
+      overRef.current = { key, side };
+      setOver({ key, side });
+    }
+  };
+  const finish = (e, commit = true) => {
+    const p = press.current;
+    if (!p || (p.id !== undefined && e && e.pointerId !== undefined && p.id !== e.pointerId)) return;
+    press.current = null;
+    const o = overRef.current;
+    overRef.current = null;
+    if (p.active) {
+      moved.current = true;   // the click that follows the drop uses this up
+      if (commit && o && o.key !== p.key) {
+        const next = keys.filter((k) => k !== p.key);
+        let at = next.indexOf(o.key);
+        if (o.side === 'below') at += 1;
+        next.splice(at, 0, p.key);
+        move(next);
+      }
+      setDrag(null);
+      setOver(null);
+    }
+  };
+  finishRef.current = finish;
+  // let go anywhere — even outside the list — and it lands where the line last showed
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const up = (e) => finishRef.current?.(e, true);
+    const cancel = (e) => finishRef.current?.(e, false);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', cancel);
+    return () => { window.removeEventListener('pointerup', up); window.removeEventListener('pointercancel', cancel); };
+  }, []);
+
+  if (!rows.length) return empty || null;
+
   const moveBy = (key, d) => {
     const i = keys.indexOf(key);
     const j = i + d;
@@ -355,50 +411,27 @@ export function RowList({ rows, picked, onPick, onMove, renderRow, empty }) {
     [next[i], next[j]] = [next[j], next[i]];
     move(next);
   };
-  const drop = () => {
-    if (drag && over && over.key !== drag) {
-      const next = keys.filter((k) => k !== drag);
-      let at = next.indexOf(over.key);
-      if (over.side === 'below') at += 1;
-      next.splice(at, 0, drag);
-      move(next);
-    }
-    setDrag(null);
-    setOver(null);
-  };
 
   return (
-    <div className="ax-list" role="listbox" aria-label="Items">
+    <div className={`ax-list${drag ? ' sorting' : ''}`} role="listbox" aria-label="Items">
       {rows.map((r) => {
         const cls = ['ax-row'];
         if (r._key === picked) cls.push('on');
         if (drag === r._key) cls.push('dragging');
         if (over && over.key === r._key && drag && drag !== r._key) cls.push(over.side === 'above' ? 'drop-above' : 'drop-below');
-        const sortable = !!onMove;
         return (
           <div key={r._key} role="option" aria-selected={r._key === picked} tabIndex={0} className={cls.join(' ')}
-            onClick={() => onPick(r._key)}
+            onClick={() => { if (moved.current) { moved.current = false; return; } onPick(r._key); }}
             onKeyDown={(e) => {
               if (e.target !== e.currentTarget) return;
               if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onPick(r._key); }
               if (sortable && e.altKey && e.key === 'ArrowUp') { e.preventDefault(); moveBy(r._key, -1); }
               if (sortable && e.altKey && e.key === 'ArrowDown') { e.preventDefault(); moveBy(r._key, 1); }
             }}
-            draggable={sortable}
-            onDragStart={sortable ? (e) => {
-              setDrag(r._key);
-              e.dataTransfer.effectAllowed = 'move';
-              try { e.dataTransfer.setData('text/plain', r._key); } catch { /* some browsers */ }
-            } : undefined}
-            onDragOver={sortable ? (e) => {
-              if (!drag) return;
-              e.preventDefault();
-              const box = e.currentTarget.getBoundingClientRect();
-              const side = e.clientY < box.top + box.height / 2 ? 'above' : 'below';
-              if (!over || over.key !== r._key || over.side !== side) setOver({ key: r._key, side });
-            } : undefined}
-            onDrop={sortable ? (e) => { e.preventDefault(); drop(); } : undefined}
-            onDragEnd={sortable ? () => { setDrag(null); setOver(null); } : undefined}
+            onPointerDown={sortable ? (e) => begin(e, r._key) : undefined}
+            onPointerMove={sortable ? (e) => hover(e, r._key) : undefined}
+            onPointerUp={sortable ? (e) => finish(e, true) : undefined}
+            onPointerCancel={sortable ? (e) => finish(e, false) : undefined}
             title={sortable ? 'Drag to reorder (or Alt + ↑ / ↓)' : undefined}>
             {sortable ? <span className="ax-grip" aria-hidden="true"><Icon d={P.grip} size={18} /></span> : null}
             {renderRow(r)}

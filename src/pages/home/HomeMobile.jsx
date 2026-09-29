@@ -4,6 +4,10 @@ import { P, Icon } from '../../lib/icons';
 import { useGlobalSearch } from '../../lib/globalSearch';
 import { parseISO } from '../../lib/calendar';
 import { tapSelect } from '../../lib/haptics';
+import MemberRequests from './MemberRequests';
+import PrayerRequests from './PrayerRequests';
+// TESTING — delete this line and the <AppReports /> below when the app's test kit goes
+import AppReports from './AppReports';
 import './HomeMobile.css';
 
 /*
@@ -128,6 +132,16 @@ export default function HomeMobile({
             </>
           )}
         </header>
+
+        {/* what members asked for from their profile in the app — only when something is waiting */}
+        <div className="hm-requests"><MemberRequests /></div>
+
+        {/* prayer requests sent from the app (user, 2026-09-22) */}
+        <div className="hm-requests"><PrayerRequests /></div>
+
+        {/* TESTING — what testers sent from the app, on the phone too (user, 2026-09-21: "make sure I
+            can see it in pillar"); delete with AppReports.jsx/.css when the app's test kit goes */}
+        <div className="hm-requests"><AppReports /></div>
 
         <div className="hm-body">
 

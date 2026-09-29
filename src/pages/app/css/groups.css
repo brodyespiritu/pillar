@@ -1,0 +1,163 @@
+/* ═══ Pillar → App → Groups ═══
+ *
+ * Groups's own styles (GroupsPage.jsx): groups and their cards (the card sub-panel inside a group) and
+ * the phone's Groups page (BethesdaApp screens/GroupsScreen.js).
+ *
+ * Pulled in by the @import lines at the top of ../appx.css, so the page needs no JS import (and its
+ * tests no new stubs). Everything here keeps the ax- prefix. The shared workspace, panes and fields
+ * live in ./base.css; the member app's own look for phone previews in ./phone.css (.ax-phone-app).
+ * base.css loads BEFORE this file, so a rule here with the same selector as a shared one wins on
+ * order alone (write the same selector, or add a class — never !important).
+ */
+
+/* ── Pillar's side (blue theme) ── */
+
+/* the list's foot: how its order works, above the keys */
+.ax-gr-drag { font-size: 12.5px; line-height: 1.45; }
+.ax-gr-drag + .ax-hotkeys { margin-top: 6px; }
+
+/* the group editor's second column: this group's cards, each an outlined row (common region), then
+   "New card for this group" and what it's waiting for */
+.ax-groups .ax-col-b .ax-list { gap: 6px; }
+.ax-groups .ax-col-b .ax-row { border-color: var(--ax-line); }
+.ax-groups .ax-col-b .ax-row.on { border-color: var(--ax-accent); }
+.ax-gr-nocards { padding: 14px 16px; border-radius: 14px; border: 1.5px dashed var(--ax-line-2); }
+.ax-gr-newcard { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.ax-gr-newcard .ax-btn { max-width: 100%; }
+.ax-gr-newcard .ax-btn:disabled { opacity: 0.55; }
+
+/* the card panel over a group: its switch and Delete first (Fitts), a rule under them */
+.ax-gr-subbar {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 10px;
+  margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid var(--ax-line);
+}
+
+/* "When it shows": the two dates each say which end they are (From / Until), not just a box */
+.ax-gr-date { gap: 6px; }
+.ax-gr-date-word { font-size: 12.5px; font-weight: 700; color: var(--ax-ink-2); }
+
+/* ── the phone: the Groups page, the member app's LIGHT look at 1pt = 1px ──
+   Every number is GroupsScreen.js's own (makeStyles, its 2026-09-23 layout "by UX laws": the short
+   photo, cream cards on the app's own palette, a colour per kind of group, blue only for "you follow
+   this" — which Pillar never draws, since only a phone knows what it follows). Where the app sets no
+   lineHeight, a line is Be Vietnam Pro's own height: 1.265 (hhea ascender 1000 + descender 265, line
+   gap 0 — the app's bundled @expo-google-fonts/be-vietnam-pro files), written as a number here, never
+   guessed. */
+
+/* HUES, the LIGHT look: each kind of group wears one of the church website's sticker colours (its
+   order is GroupsPage.jsx HUES) — a rich tint behind, a deep tone for the glyph and the words on it */
+.ax-gr-hue-gold { --ax-gr-hue-bg: #F8DE9C; --ax-gr-hue-fg: #6B4A05; }
+.ax-gr-hue-teal { --ax-gr-hue-bg: #B4DBD3; --ax-gr-hue-fg: #0E5A4F; }
+.ax-gr-hue-tangerine { --ax-gr-hue-bg: #FACBAB; --ax-gr-hue-fg: #8E3B09; }
+.ax-gr-hue-pink { --ax-gr-hue-bg: #F6C7DA; --ax-gr-hue-fg: #8E2C52; }
+.ax-gr-hue-red { --ax-gr-hue-bg: #F5BCAB; --ax-gr-hue-fg: #94290C; }
+
+/* the page (s.page: white, the dock floating over its foot); nothing on it may push it sideways —
+   the strip's outline room (below) stays inside it */
+.ax-gr-screen { position: relative; overflow-x: clip; }
+
+/* the app's own photo when the office hasn't picked one: GroupsScreen.js PHOTO,
+   BethesdaApp assets/home/community.jpg — the same file, copied here (resizeMode cover) */
+.ax-gr-photo-none { background-image: url('./img/community.jpg'); }
+/* the kicker over the photo: s.kicker sets no lineHeight */
+.ax-gr-screen .ax-pa-photohead-words .ax-pa-kicker { line-height: 1.265; }
+
+/* searchBlock: marginTop 16, the gutter (the bar itself is phone.css .ax-pa-search, 48 tall) */
+.ax-gr-search { margin-top: 16px; padding: 0 20px; }
+/* filters: paddingTop 14 (a sideways ScrollView in the app); a pill is btn.md, 18 in, gap 8 — a kind's
+   pill leads with its colour's dot (pillDot: 9, the deep tone) */
+.ax-gr-filters { padding-top: 14px; overflow-x: auto; scrollbar-width: none; }
+.ax-gr-filters::-webkit-scrollbar { display: none; }
+.ax-gr-filters .ax-pa-filter { gap: 8px; }
+.ax-gr-pill-dot { flex: none; width: 9px; height: 9px; border-radius: 5px; background: var(--ax-gr-hue-fg); }
+
+/* s.section: marginTop 26, each under a SectionHead (phone.css .ax-pa-head, 22 / 700, 14 under it) */
+.ax-gr-section { margin-top: 26px; }
+
+/* "From the groups": strip — gap 12, the gutter; the cards stretch to the tallest (RN's default). The
+   extra 12 above and 10 below (taken back by the margins) is room for Pillar's outline and flag */
+.ax-gr-strip {
+  display: flex; gap: 12px; padding: 12px 20px 10px; margin: -12px 0 -10px;
+  overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain;
+}
+.ax-gr-strip::-webkit-scrollbar { display: none; }
+/* evCard: STRIP_W 236, cream like the group cards (C.card), radius 18, padding 16, no outline */
+.ax-gr-ev {
+  position: relative; flex: none; width: 236px; padding: 16px; border-radius: 18px; background: var(--ax-app-card);
+  display: flex; flex-direction: column; align-items: stretch;
+}
+/* evTag: the chip lifts off the cream — white (ON_CARD), 11.5 / 600 text2 (evTagTxt: no lineHeight),
+   marginBottom 10; a group's own card wears its kind's colour, the words in its deep tone */
+.ax-gr-ev > .ax-pa-tag { align-self: flex-start; max-width: 100%; margin-bottom: 10px; line-height: 1.265; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ax-gr-ev > .ax-pa-tag.ax-gr-tag-hue { background: var(--ax-gr-hue-bg); color: var(--ax-gr-hue-fg); }
+/* evTitle 17 / 700 / 22 / −0.3, two lines; evBody 14 / 20 text2, marginTop 7, four lines */
+.ax-gr-ev-title {
+  font-size: 17px; font-weight: 700; line-height: 22px; letter-spacing: -0.3px; color: var(--ax-app-text);
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere;
+}
+.ax-gr-ev-body {
+  margin-top: 7px; font-size: 14px; line-height: 20px; color: var(--ax-app-text2);
+  display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere;
+}
+/* evBtn: btn.md, paddingHorizontal 16, gap 7, marginTop 14, alignSelf flex-start; arrow-up-right 15 */
+.ax-gr-ev-btn { align-self: flex-start; margin-top: 14px; padding: 0 16px; gap: 7px; }
+
+/* list: marginTop 4 under the heading, gap 12 */
+.ax-gr-list { display: flex; flex-direction: column; gap: 12px; padding: 0 20px; margin-top: 4px; }
+
+/* GroupCard: the app's own cream card (C.card), radius 20, padding 18, no outline. A column, as every
+   RN View is — so margins add up as Yoga adds them and never collapse */
+.ax-gr-card { position: relative; display: flex; flex-direction: column; padding: 18px; border-radius: 20px; background: var(--ax-app-card); }
+/* cardHead: the mark and the name read as one (row, centred, gap 12) */
+.ax-gr-card-head { display: flex; align-items: center; gap: 12px; }
+/* mark: 44, round, in its kind's colour — the tint behind, a 20 Feather glyph in the deep tone */
+.ax-gr-mark { flex: none; width: 44px; height: 44px; border-radius: 22px; display: grid; place-items: center; background: var(--ax-gr-hue-bg); color: var(--ax-gr-hue-fg); }
+.ax-gr-card-name { flex: 1 1 0; min-width: 0; }
+/* cardTitle 19 / 700 / 24 / −0.4, two lines; cardSub 13.5 / 500 / 18 text2, marginTop 2, one line */
+.ax-gr-card-title {
+  font-size: 19px; font-weight: 700; line-height: 24px; letter-spacing: -0.4px; color: var(--ax-app-text);
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere;
+}
+.ax-gr-card-sub { margin-top: 2px; font-size: 13.5px; font-weight: 500; line-height: 18px; color: var(--ax-app-text2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* cardBody: marginLeft 56 — the mark's 44 and the 12 beside it, one left edge (alignment) */
+.ax-gr-card-body { display: flex; flex-direction: column; margin-left: 56px; }
+/* facts: marginTop 12, gap 8; a fact: a 15 icon in text2 (marginTop 3), 15.5 / 22 words, two lines */
+.ax-gr-facts { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+.ax-gr-fact { display: flex; align-items: flex-start; gap: 10px; }
+.ax-gr-fact > .ax-pa-icon { margin-top: 3px; color: var(--ax-app-text2); }
+.ax-gr-fact-text {
+  flex: 1 1 0; min-width: 0; font-size: 15.5px; line-height: 22px; color: var(--ax-app-text);
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere;
+}
+/* led: row, top-aligned, gap 8, marginTop 12 — the faces side by side, never over each other (28,
+   white, 4 apart, wrapping inside 45% of the row), then every name, whole, wrapping as it needs to
+   (ledTxt 13.5 / 600 / 19 text2, 4 down) */
+.ax-gr-led { display: flex; align-items: flex-start; gap: 8px; margin-top: 12px; }
+.ax-gr-faces { flex: 0 0 auto; display: flex; flex-wrap: wrap; gap: 4px; max-width: 45%; }
+.ax-gr-face {
+  box-sizing: border-box; width: 28px; height: 28px; border-radius: 14px; overflow: hidden; display: grid; place-items: center;
+  background: #FFFFFF; color: var(--ax-app-text2); font-size: 11px; font-weight: 700; line-height: 1.265;
+}
+.ax-gr-led-text { flex: 1 1 0; min-width: 0; padding-top: 4px; font-size: 13.5px; font-weight: 600; line-height: 19px; color: var(--ax-app-text2); overflow-wrap: anywhere; }
+/* cardFoot: row, centred, space-between, gap 10, marginTop 12 — "Ask about joining" (or the room it
+   would take, footSpace) and Follow */
+.ax-gr-card-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 12px; }
+.ax-gr-foot-space { flex: 1 1 0; }
+/* nothing to say about when or where: "Ask about joining →" — btn.quiet, alignSelf flex-start, minHeight 44, flex 1 */
+.ax-pa-quiet.ax-gr-ask { flex: 1 1 0; min-width: 0; min-height: 44px; align-self: flex-start; color: var(--ax-app-text); }
+/* FollowButton, not followed: a quiet pill — 44 tall, white on the cream (ON_CARD), no outline, the
+   bell 15 and FOLLOW (btn.labelMd) in ink, 15 in, 6 between; its corner of every card (flex-start) */
+.ax-pa-btn.ax-gr-follow { align-self: flex-start; padding: 0 15px; gap: 6px; background: #FFFFFF; color: var(--ax-app-text); }
+
+/* cantFind: marginTop 26, gap 10 — "Can't find one that fits?" 15 / 600 text2, then the outline pill
+   "Message the office" (btn.md + btn.outline in C.text, 18 in, 8 between, a 16 envelope) */
+.ax-gr-cantfind { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 0 20px; margin-top: 26px; }
+.ax-gr-cantfind-text { font-size: 15px; font-weight: 600; line-height: 1.265; color: var(--ax-app-text2); }
+.ax-pa-btn.outline.ax-gr-office { padding: 0 18px; gap: 8px; border-color: var(--ax-app-text); color: var(--ax-app-text); }
+
+/* Pillar's flag on the picked piece members wouldn't see (Hidden, Draft…): above its top edge, so
+   it never covers the words */
+.ax-gr-card > .ax-pa-flag, .ax-gr-ev > .ax-pa-flag { top: -11px; left: 18px; }
+/* the phone's groups and cards open here too: a faint blue ring says so on hover */
+.ax-gr-card[role="button"]:hover, .ax-gr-ev[role="button"]:hover { box-shadow: 0 0 0 3px rgba(0, 107, 255, 0.18); }
+.ax-gr-card[role="button"]:focus-visible, .ax-gr-ev[role="button"]:focus-visible { outline: 3px solid var(--accent, #006BFF); outline-offset: 3px; }

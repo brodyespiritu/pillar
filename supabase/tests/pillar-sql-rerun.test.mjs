@@ -69,9 +69,10 @@ const BUILD = ['admin-schema.sql', 'security-hardening.sql', 'members-schema.sql
   'groups-schema.sql',
   // what the member app reads: these are public on purpose, so they must stay public-read only
   'app-home-cards.sql', 'app-live-updates.sql', 'group-posts.sql', 'app-home-tiles.sql', 'calendar-featured.sql',
-  'app-media-series.sql'];
+  'app-media-series.sql', 'app-page-headers.sql'];
 // files that lean on member-app-auth.sql's own functions, so they only apply once it has run
-const AFTER = ['app-slides-notes-saved.sql', 'sermon-notes-for-a-sermon.sql'];
+const AFTER = ['app-slides-notes-saved.sql', 'sermon-notes-for-a-sermon.sql', 'member-requests.sql', 'app-report-replies.sql',
+  'member-household-signin.sql', 'app-test-popups.sql'];
 const problems = [];
 for (const f of BUILD) {
   try { await db.exec(read(f)); } catch (e) { problems.push(`build: ${f} failed: ${e.message}`); }

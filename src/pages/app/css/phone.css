@@ -1,0 +1,323 @@
+/* ═══ The member app, inside Pillar's phone previews ═══
+ *
+ * "Make sure the phone mockups look just like the app" (user, 2026-09-23). Every preview is the
+ * member app (BethesdaApp) as a phone shows it, in the app's LIGHT look — its fonts, colours, sizes,
+ * radii and tracking — drawn at the phone's own size in points (1 CSS px = 1 pt) and scaled down as
+ * ONE piece by --ax-phone-scale on .ax-phone-frame (layout.jsx PhoneFrame). Never size a piece "to
+ * look right" in the preview: copy the app's number and let the one scale do the rest.
+ *
+ * Sources, so a change in the app can be followed here:
+ *   colours     BethesdaApp context/ThemeContext.js LIGHT, constants/site.js `site`
+ *   buttons     constants/site.js `btn` (two sizes, four looks, uppercase labels, +1.4 tracking)
+ *   fonts       Be Vietnam Pro 400/500/600/700 (--ax-app-font: headings, labels, buttons, most text)
+ *               and Geist 400/600/700 (--ax-app-font-ui, or .ax-pa-ui: the dock's words, AND nearly
+ *               every word of the player — screens/MediaPlayer.js is Geist throughout: titles, the
+ *               live cards, polls, the speed menu. The live service's own screen over the picture,
+ *               components/LiveOverlay.js — the chat, the comment row — is Be Vietnam Pro).
+ *               Loaded by layout.jsx useAppFonts() (one <link>, App pages only).
+ *               'BeVietnamPro_700Bold' in the app = Be Vietnam Pro at weight 700 here;
+ *               'Geist_600SemiBold' = Geist at 600.
+ *   dock        App.js FloatingTabBar + components/DockGlass.js (black glass in both looks)
+ *   the rest    components/SectionHead.js, PlayDisc.js, ShelfCard.js, HomeShortcuts.js, TimelyCard.js,
+ *               ProfileButton.js, BackButton.js, ProgressiveBlur.js, BottomSheet.js, UpdateNeeded.js,
+ *               screens/GroupsScreen.js + DirectoryScreen.js (the photo header), MediaPlayer.js (the
+ *               player and its live cards — Geist), LiveOverlay.js (the live screen over the picture)
+ *
+ * Only here do the app's warm colours appear; everything outside a phone stays Pillar blue. Any
+ * element with .ax-phone-app gets the tokens and fonts (PhoneFrame's screen has it already).
+ */
+
+/* ── the phone: a device drawn at 393 × 852 pt, scaled as one piece ── */
+.ax-phone-frame {
+  --ax-phone-scale: 0.62;
+  --ax-phone-w: 393px;
+  --ax-phone-bezel: 12px;
+  position: relative; flex-shrink: 0; margin-inline: auto;
+  /* as wide as it's given, never taller than the window leaves (--ax-phone-chrome: the room the
+     page's frame takes above and below a preview pane); PhoneFrame reads the width and sets the scale */
+  width: min(100%, var(--ax-phone-max-w, 380px), calc((100dvh - var(--ax-phone-chrome, 280px)) * var(--ax-phone-ratio, 0.476)));
+  min-width: min(100%, 220px);
+  aspect-ratio: var(--ax-phone-ratio, 0.476);
+}
+.ax-phone-frame.fixed { width: calc((var(--ax-phone-w) + 2 * var(--ax-phone-bezel)) * var(--ax-phone-scale)); min-width: 0; }
+.ax-phone-device {
+  position: absolute; top: 0; left: 0;
+  width: calc(var(--ax-phone-w) + 2 * var(--ax-phone-bezel));
+  height: calc(var(--ax-phone-h, 852px) + 2 * var(--ax-phone-bezel));
+  padding: var(--ax-phone-bezel); border-radius: 67px; background: #111113;
+  box-shadow: inset 0 0 0 2px #2C2C30, 0 30px 60px rgba(11, 53, 88, 0.18), 0 8px 18px rgba(11, 53, 88, 0.10);
+  transform: scale(var(--ax-phone-scale)); transform-origin: 0 0;
+}
+.ax-phone-screen { position: relative; width: 100%; height: 100%; border-radius: 55px; overflow: hidden; isolation: isolate; }
+.ax-phone-scroll {
+  position: absolute; inset: 0; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain;
+  scrollbar-width: none;
+}
+.ax-phone-scroll::-webkit-scrollbar { display: none; }
+/* PhoneFrame `overlay`: over the whole screen (a sheet, a popup), under the status bar */
+.ax-phone-overlay { position: absolute; inset: 0; z-index: 48; display: flex; flex-direction: column; }
+
+/* ── the app's tokens (ThemeContext.js LIGHT + site.js) ── */
+.ax-phone-app {
+  --ax-app-bg: #FFFFFF;
+  --ax-app-card: #F6F4F0;          /* thumbnails, chips, the cream band */
+  --ax-app-raised: #FFFFFF;        /* a card that sits ON the page */
+  --ax-app-boot: #F6F7F6;
+  --ax-app-text: #1A1511;
+  --ax-app-text2: #6B6055;
+  --ax-app-text3: #7A6E62;
+  --ax-app-line: #E9E5DF;
+  --ax-app-sheet-line: #E9E5DF;
+  --ax-app-pill: #171310;          /* filled buttons */
+  --ax-app-pill-text: #FFFFFF;
+  --ax-app-pill-press: #241E19;
+  --ax-app-panel: #171310;
+  --ax-app-panel-text: #FFFFFF;
+  --ax-app-on-photo: #FFFFFF;
+  --ax-app-scrim: rgba(0, 0, 0, 0.45);
+  --ax-app-dark: #171310;
+  --ax-app-dark2: #241E19;
+  --ax-app-ink: #1A1511;
+  --ax-app-ink2: #6B6055;
+  --ax-app-ink3: #7A6E62;
+  --ax-app-tint: #F6F4F0;
+  --ax-app-orange: #E8641A;
+  --ax-app-orange-d: #C6520F;
+  --ax-app-orange-dd: #AE470C;
+  --ax-app-on-dark: rgba(255, 255, 255, 0.62);
+  --ax-app-gutter: 20px;           /* GUTTER */
+  --ax-app-top: 59px;              /* the status bar (safe area) */
+  --ax-app-bottom: 34px;           /* the home bar (safe area) */
+  --ax-app-dock: 72px;             /* DOCK_H */
+  --ax-app-font: 'Be Vietnam Pro', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --ax-app-font-ui: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: var(--ax-app-bg); color: var(--ax-app-text);
+  font-family: var(--ax-app-font); font-size: 17px; font-weight: 400; line-height: 1.3; letter-spacing: 0;
+  text-align: left; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
+}
+.ax-phone-app [role="button"] { cursor: pointer; }
+/* Geist: the dock's words, and the player's and its live cards' (MediaPlayer.js) */
+.ax-pa-ui { font-family: var(--ax-app-font-ui); }
+.ax-pa-icon { flex: none; display: block; }
+
+/* ── the phone's own chrome: status bar, profile / back buttons, home bar ── */
+.ax-pa-status {
+  position: absolute; top: 0; left: 0; right: 0; z-index: 50; height: 59px; pointer-events: none;
+  display: grid; grid-template-columns: 1fr 125px 1fr; align-items: center; padding-bottom: 1px;
+  font-family: -apple-system, 'SF Pro Text', system-ui, sans-serif; font-size: 17px; font-weight: 600; letter-spacing: -0.3px;
+}
+.ax-pa-status.dark { color: #000; }
+.ax-pa-status.light { color: #fff; }
+.ax-pa-time { justify-self: center; padding-left: 8px; }
+.ax-pa-island { width: 125px; height: 37px; border-radius: 19px; background: #000; }
+.ax-pa-sys { justify-self: center; display: flex; align-items: center; gap: 6px; padding-right: 6px; }
+.ax-pa-sys svg { fill: currentColor; }
+.ax-pa-homebar {
+  position: absolute; left: 50%; bottom: 8px; z-index: 50; width: 139px; height: 5px; margin-left: -69.5px;
+  border-radius: 3px; background: #000; pointer-events: none;
+}
+/* the app's black glass (components/DockGlass.js): near-black, a bright rim, a highlight from the top */
+.ax-pa-glass {
+  background-color: rgba(12, 10, 8, 0.9);
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.16) 0%, rgba(255, 255, 255, 0.04) 40%, rgba(255, 255, 255, 0) 100%);
+  -webkit-backdrop-filter: blur(22px) saturate(150%); backdrop-filter: blur(22px) saturate(150%);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+/* ProfileButton.js / BackButton.js: 44pt glass discs, 6pt under the status bar, 20pt in */
+.ax-pa-glassbtn {
+  position: absolute; top: 65px; z-index: 40; width: 44px; height: 44px; border-radius: 50%;
+  display: grid; place-items: center; color: #fff; box-shadow: 0 8px 20px rgba(0, 0, 0, 0.18);
+}
+.ax-pa-profile { right: 20px; }
+.ax-pa-back { left: 20px; }
+.ax-pa-back .ax-pa-icon { margin-left: -2px; }
+
+/* ── the dock (App.js FloatingTabBar): a 72pt pill of Home · Watch · Bible · Give and a round More ── */
+.ax-pa-dockbar { position: absolute; left: 20px; right: 20px; bottom: 34px; height: 72px; z-index: 45; pointer-events: none; }
+.ax-pa-dock {
+  position: absolute; top: 0; bottom: 0; left: 0; right: 80px; border-radius: 36px;
+  display: flex; align-items: center; padding: 0 10px; box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+}
+.ax-pa-dock-tab {
+  position: relative; flex: 1 1 0; min-width: 0; height: 48px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; color: #fff;
+}
+/* the page you're on: a glass bubble behind it (48 tall, 4 in from its neighbours) and a dot for its word */
+.ax-pa-dock-tab.on::before {
+  content: ''; position: absolute; top: 0; bottom: 0; left: 4px; right: 4px; border-radius: 24px;
+  background: rgba(255, 255, 255, 0.16); border: 1px solid rgba(255, 255, 255, 0.32);
+}
+.ax-pa-dock-tab .ax-pa-icon { position: relative; }
+.ax-pa-dock-word { position: relative; font-family: var(--ax-app-font-ui); font-size: 11.5px; font-weight: 600; line-height: 15px; color: #fff; white-space: nowrap; }
+.ax-pa-dock-dot { position: relative; height: 14px; display: flex; align-items: center; justify-content: center; }
+.ax-pa-dock-dot i { width: 5px; height: 5px; border-radius: 50%; background: #fff; }
+.ax-pa-dock-more {
+  position: absolute; top: 0; right: 0; width: 72px; height: 72px; border-radius: 50%;
+  display: grid; place-items: center; color: #fff; box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+}
+.ax-pa-dock-more .ax-pa-icon { position: relative; }
+.ax-pa-dock-more.on::before {
+  content: ''; position: absolute; inset: 4px; border-radius: 50%;
+  background: rgba(255, 255, 255, 0.16); border: 1px solid rgba(255, 255, 255, 0.32);
+}
+
+/* ── page layout ── */
+.ax-pa-screen { min-height: 100%; background: var(--ax-app-bg); }
+.ax-pa-gutter { padding-left: 20px; padding-right: 20px; }
+/* under the glass Back: 59 + 6 + 44 + 12 (Bulletin, Calendar, All messages) */
+.ax-pa-top-back { padding-top: 121px; }
+/* room for the dock at the foot of a scrolling page: insets.bottom 34 + DOCK_CLEARANCE 118 */
+.ax-pa-dock-space { padding-bottom: 152px; }
+
+/* ── words ── */
+/* every page's title (Be Vietnam Pro 600 38, SermonsScreen / BulletinScreen / CalendarScreen …) */
+.ax-pa-title { font-family: var(--ax-app-font); font-size: 38px; font-weight: 600; line-height: 47.5px; letter-spacing: -0.95px; color: var(--ax-app-text); }
+.ax-pa-title.on-photo { color: #fff; }
+/* the small uppercase line over a title or a card ("FIND YOUR PEOPLE") */
+.ax-pa-kicker { font-size: 11px; font-weight: 700; line-height: 1.2; letter-spacing: 1.6px; text-transform: uppercase; color: var(--ax-app-text2); }
+.ax-pa-kicker.on-photo { color: rgba(255, 255, 255, 0.8); }
+/* SectionHead.js: a heading and its "See all →", one size and one place on every Home section */
+.ax-pa-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+/* (neither sets a lineHeight in the app: Be Vietnam Pro's own, 1.265 — hhea 1000 / −265 / 0) */
+.ax-pa-heading { flex-shrink: 1; min-width: 0; margin-right: 12px; font-size: 22px; font-weight: 700; line-height: 1.265; letter-spacing: -0.4px; color: var(--ax-app-text); }
+.ax-pa-seeall { flex-shrink: 0; display: inline-flex; align-items: center; gap: 6px; padding: 6px 0; font-size: 15px; font-weight: 600; line-height: 1.265; color: var(--ax-app-text); white-space: nowrap; }
+.ax-pa-seeall::after, .ax-pa-quiet::after {
+  content: ''; flex: none; width: 16px; height: 16px; background: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cline x1='5' y1='12' x2='19' y2='12'/%3E%3Cpolyline points='12 5 19 12 12 19'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cline x1='5' y1='12' x2='19' y2='12'/%3E%3Cpolyline points='12 5 19 12 12 19'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+
+/* ── buttons (site.js btn): md 44 / lg 56 tall, fully round, uppercase with +1.4 tracking ── */
+.ax-pa-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px; flex: none; max-width: 100%;
+  height: 44px; padding: 0 20px; border-radius: 800px; border: 0 solid transparent;
+  background: var(--ax-app-pill); color: var(--ax-app-pill-text);
+  font-family: var(--ax-app-font); font-size: 12.5px; font-weight: 700; line-height: 1; letter-spacing: 1.4px;
+  text-transform: uppercase; white-space: nowrap;
+}
+.ax-pa-btn.lg { height: 56px; padding: 0 26px; gap: 10px; font-size: 13px; }
+.ax-pa-btn.filled { background: var(--ax-app-pill); color: var(--ax-app-pill-text); }
+.ax-pa-btn.outline { background: transparent; border: 1.5px solid var(--ax-app-dark); color: var(--ax-app-dark); }
+.ax-pa-btn.on-dark { background: #FFFFFF; color: #171310; }
+.ax-pa-btn.on-dark-outline { background: transparent; border: 1px solid rgba(255, 255, 255, 0.7); color: #FFFFFF; }
+.ax-pa-btn.block { display: flex; width: 100%; }
+.ax-pa-btn > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* "Full calendar →": going somewhere rather than doing something */
+.ax-pa-quiet { display: inline-flex; align-items: center; gap: 7px; padding: 8px 0; font-size: 14px; font-weight: 700; letter-spacing: -0.2px; color: var(--ax-app-ink); }
+/* the round dark "go" disc at the end of a card (TimelyCard.js) */
+.ax-pa-go { flex: none; width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; background: var(--ax-app-pill); color: var(--ax-app-pill-text); }
+
+/* ── the play disc (PlayDisc.js): white, 44pt, a black filled play, bottom-right 18/18 on big cards ── */
+.ax-pa-play {
+  display: inline-grid; place-items: center; flex: none; width: 44px; height: 44px; border-radius: 50%;
+  background: #FFFFFF; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.22);
+}
+.ax-pa-play::before {
+  content: ''; width: 25px; height: 25px; background: #000;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 -960 960 960'%3E%3Cpath d='M311.87-268.46v-423.08q0-19.63 13.67-32.57 13.68-12.93 31.83-12.93 5.72 0 12.05 1.62 6.34 1.62 12.06 5.09l333.17 211.79q10.2 6.71 15.42 17.03 5.21 10.31 5.21 21.51 0 11.2-5.21 21.51-5.22 10.32-15.42 17.03L381.48-229.67q-5.72 3.47-12.06 5.09-6.33 1.62-12.05 1.62-18.15 0-31.83-12.93-13.67-12.94-13.67-32.57Z'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 -960 960 960'%3E%3Cpath d='M311.87-268.46v-423.08q0-19.63 13.67-32.57 13.68-12.93 31.83-12.93 5.72 0 12.05 1.62 6.34 1.62 12.06 5.09l333.17 211.79q10.2 6.71 15.42 17.03 5.21 10.31 5.21 21.51 0 11.2-5.21 21.51-5.22 10.32-15.42 17.03L381.48-229.67q-5.72 3.47-12.06 5.09-6.33 1.62-12.05 1.62-18.15 0-31.83-12.93-13.67-12.94-13.67-32.57Z'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+.ax-pa-play.corner { position: absolute; right: 18px; bottom: 18px; z-index: 3; }
+
+/* ── pictures ── */
+/* any picture box: the image is the one inline style (background-image) */
+.ax-pa-pic { position: relative; overflow: hidden; background: var(--ax-app-card) center / cover no-repeat; }
+/* ShelfCard.js's stand-ins when there is no picture (expo LinearGradient runs top to bottom) */
+.ax-pa-fallback-0 { background-image: linear-gradient(180deg, #1C0A30, #5B1E8C); }
+.ax-pa-fallback-1 { background-image: linear-gradient(180deg, #0B2530, #1E6B8C); }
+.ax-pa-fallback-2 { background-image: linear-gradient(180deg, #301A0A, #8C4E1E); }
+.ax-pa-fallback-3 { background-image: linear-gradient(180deg, #0A301A, #1E8C4E); }
+/* Home's latest-sermon scrim: clear, then dark under the words */
+.ax-pa-scrim-foot { position: absolute; inset: 0; z-index: 2; pointer-events: none;
+  background: linear-gradient(180deg, rgba(8, 11, 16, 0) 0%, rgba(8, 11, 16, 0) 34%, rgba(8, 11, 16, 0.62) 62%, rgba(8, 11, 16, 0.92) 100%); }
+/* ProgressiveBlur.js: clear where it starts and softer to the foot, under a picture's gradient. The
+   app's blurs are iOS's dark material (tint "systemUltraThinMaterialDark"), which darkens as it
+   blurs, so each layer carries a faint dark wash under the same mask (the stronger one more) */
+.ax-pa-blur { position: absolute; left: 0; right: 0; bottom: 0; z-index: 1; height: 50%; pointer-events: none; }
+.ax-pa-blur::before, .ax-pa-blur::after { content: ''; position: absolute; inset: 0; }
+.ax-pa-blur::before {
+  background-color: rgba(20, 20, 24, 0.06);
+  -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px);
+  -webkit-mask-image: linear-gradient(180deg, transparent 0%, #000 55%); mask-image: linear-gradient(180deg, transparent 0%, #000 55%);
+}
+.ax-pa-blur::after {
+  background-color: rgba(20, 20, 24, 0.18);
+  -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+  -webkit-mask-image: linear-gradient(180deg, transparent 40%, #000 100%); mask-image: linear-gradient(180deg, transparent 40%, #000 100%);
+}
+/* the photo header of Groups (.ax-pa-photohead) and the Directory (+ .dir): PHOTO_H 150 under the
+   status bar (59 + 150 = 209 — "the photo, short, so the first group shows without scrolling", the
+   app's 2026-09-23 change; the Directory wears the same one), a blur over its lower 55%, the dark
+   gradient, then the kicker and title in white at its foot (Home's hero is its own thing — see
+   HomeScreen.js). The words stop short of the profile button so a long title wraps where the phone
+   wraps it:
+     Groups     paddingRight PAD + useProfileButtonClearance() = 20 + (20 + 44 + 10) = 94, bottom 20,
+                kicker 11 / +1.6, 6 over the title (GroupsScreen.js s.head, s.kicker)
+     Directory  paddingRight PAD + max(0, clearance − PAD) = 74, bottom 20, kicker 11.5 / +1.8, 8 over
+                the title (DirectoryScreen.js s.photoHead, s.kicker) */
+.ax-pa-photohead { position: relative; height: 209px; overflow: hidden; background: var(--ax-app-dark) center / cover no-repeat; }
+.ax-pa-photohead > .ax-pa-blur { height: 55%; }
+.ax-pa-photohead::after {
+  content: ''; position: absolute; inset: 0; z-index: 2; pointer-events: none;
+  background: linear-gradient(180deg, rgba(8, 11, 16, 0.25) 0%, rgba(8, 11, 16, 0.1) 45%, rgba(8, 11, 16, 0.85) 100%);
+}
+.ax-pa-photohead-words { position: absolute; left: 0; right: 0; bottom: 0; z-index: 3; padding: 0 94px 20px 20px; }
+.ax-pa-photohead-words .ax-pa-kicker { margin-bottom: 6px; line-height: 1.265; color: rgba(255, 255, 255, 0.8); }
+.ax-pa-photohead-words .ax-pa-title { color: #fff; }
+.ax-pa-photohead.dir .ax-pa-photohead-words { padding: 0 74px 20px 20px; }
+.ax-pa-photohead.dir .ax-pa-kicker { font-size: 11.5px; letter-spacing: 1.8px; }
+.ax-pa-photohead.dir .ax-pa-photohead-words .ax-pa-kicker { margin-bottom: 8px; }
+
+/* ── the one card every Watch row uses (ShelfCard.js): 220 wide, 16:9, corner 14, two lines under ── */
+.ax-pa-shelf { flex: none; width: 220px; }
+.ax-pa-shelf-pic { position: relative; width: 220px; height: 124px; margin-bottom: 9px; border-radius: 14px; overflow: hidden; background: var(--ax-app-card) center / cover no-repeat; }
+.ax-pa-shelf-corner { position: absolute; right: 8px; bottom: 8px; z-index: 4; padding: 3px 7px; border-radius: 6px; background: rgba(0, 0, 0, 0.65); color: #fff; font-size: 12px; font-weight: 700; line-height: 15px; }
+.ax-pa-shelf-title { margin-bottom: 3px; font-size: 14px; font-weight: 700; line-height: 18px; color: var(--ax-app-text); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.ax-pa-shelf-meta { font-size: 12.5px; font-weight: 400; line-height: 16px; color: var(--ax-app-text3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ── Home's round shortcuts (HomeShortcuts.js): a 58pt disc and its word, four across the gutter ── */
+.ax-pa-shortcuts { display: flex; justify-content: space-between; padding: 0 20px; }
+.ax-pa-shortcut { flex: 1 1 0; max-width: 74px; min-width: 0; display: flex; flex-direction: column; align-items: center; }
+.ax-pa-shortcut-disc { width: 58px; height: 58px; border-radius: 50%; display: grid; place-items: center; background: var(--ax-app-card); color: var(--ax-app-text); }
+.ax-pa-shortcut-word { max-width: 100%; margin-top: 9px; font-size: 13.5px; font-weight: 600; line-height: 17px; color: var(--ax-app-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ── fields and pills ── */
+/* the search bars under a page photo (Groups, the Directory): 48 tall since the app's 2026-09-23
+   change (58 → 48, 18 in — GroupsScreen.js / DirectoryScreen.js s.search), fully round, a 1.5 ink-3
+   outline, the magnifier first */
+.ax-pa-search {
+  display: flex; align-items: center; gap: 12px; height: 48px; padding: 0 18px; border-radius: 800px;
+  background: var(--ax-app-bg); border: 1.5px solid var(--ax-app-text3); color: var(--ax-app-text3);
+  font-size: 16px; font-weight: 400; white-space: nowrap; overflow: hidden;
+}
+.ax-pa-search::before {
+  content: ''; flex: none; width: 18px; height: 18px; background: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cline x1='21' y1='21' x2='16.65' y2='16.65'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cline x1='21' y1='21' x2='16.65' y2='16.65'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+/* filter pills under a search (Groups): btn.md, 18 in, cream when off, the dark pill when chosen */
+.ax-pa-filters { display: flex; gap: 8px; padding: 0 20px; overflow: hidden; }
+.ax-pa-filter {
+  display: inline-flex; align-items: center; justify-content: center; flex: none; height: 44px; padding: 0 18px;
+  border-radius: 800px; background: var(--ax-app-card); color: var(--ax-app-text);
+  font-size: 12.5px; font-weight: 700; line-height: 1; letter-spacing: 1.4px; text-transform: uppercase; white-space: nowrap;
+}
+.ax-pa-filter.on { background: var(--ax-app-pill); color: var(--ax-app-pill-text); }
+/* a label lifted off a tinted card (a group's name on its card) */
+.ax-pa-tag { align-self: flex-start; display: inline-block; padding: 5px 11px; border-radius: 800px; background: var(--ax-app-raised); color: var(--ax-app-text2); font-size: 11.5px; font-weight: 600; line-height: 15px; }
+
+/* ── over the page: sheets and the centred card (BottomSheet.js, UpdateNeeded.js) ── */
+.ax-pa-scrim { position: absolute; inset: 0; z-index: 30; display: flex; flex-direction: column; background: var(--ax-app-scrim); }
+.ax-pa-scrim.strong { justify-content: center; padding: 0 32px; background: rgba(0, 0, 0, 0.62); }
+.ax-pa-sheet { margin-top: auto; overflow: hidden; background: var(--ax-app-bg); border-radius: 28px 28px 0 0; }
+.ax-pa-grab { display: flex; justify-content: center; padding: 10px 0 4px; }
+.ax-pa-grab::before { content: ''; width: 38px; height: 4px; border-radius: 2px; background: var(--ax-app-sheet-line); }
+.ax-pa-popup { display: flex; flex-direction: column; align-items: center; padding: 24px; border-radius: 24px; background: var(--ax-app-bg); text-align: center; }
+
+/* ── Pillar's own marks inside a phone (not the app's): what's picked, what isn't on phones yet ── */
+.ax-pa-picked { outline: 3px solid var(--accent, #006BFF); outline-offset: 3px; }
+.ax-pa-flag {
+  position: absolute; top: 10px; left: 10px; z-index: 6; padding: 4px 10px; border-radius: 999px;
+  background: var(--accent, #006BFF); color: #fff; font-family: 'Inter', -apple-system, sans-serif;
+  font-size: 10.5px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; white-space: nowrap;
+}

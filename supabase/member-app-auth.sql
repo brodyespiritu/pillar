@@ -912,11 +912,24 @@ begin
      and m.auth_user_id = v_uid
      and ms.minted_at > coalesce(m.app_not_before, '-infinity'::timestamptz)
      and public.app_member_is_eligible(m)
-     -- the contact that signed them in still leads to this record (household split, blocklist, ban…)
-     and exists (select 1 from public.app_login_candidates(
-                   case when ms.channel = 'email' then m.email end,
-                   case when ms.channel = 'sms' then m.phone end, null) c
-                  where c.member_id = m.id)
+     -- the contact that signed them in still leads to this record (household split, blocklist, ban…):
+     -- their own — or, for an adult with nothing of their own, their family's address, on a record
+     -- in their household whose contacts haven't changed since the code was sent
+     -- (member-household-signin.sql; this looked only at their own, so those sign-ins never held)
+     and (exists (select 1 from public.app_login_candidates(
+                    case when ms.channel = 'email' then m.email end,
+                    case when ms.channel = 'sms' then m.phone end, null) c
+                   where c.member_id = m.id)
+          or exists (select 1
+                       from public.church_members f
+                      where nullif(btrim(m.family_id), '') is not null
+                        and btrim(f.family_id) = btrim(m.family_id)
+                        and f.id <> m.id
+                        and coalesce(f.app_not_before, '-infinity'::timestamptz) < ms.minted_at
+                        and exists (select 1 from public.app_login_candidates(
+                                      case when ms.channel = 'email' then f.email end,
+                                      case when ms.channel = 'sms' then f.phone end, null) c
+                                     where c.member_id = m.id)))
      and s.user_id = v_uid
      and (s.not_after is null or s.not_after > now())
      and u.email = m.app_login_email
@@ -1035,14 +1048,16 @@ end $$;
 -- The church directory: signed-in members only. Everyone on the church's list is in it by default
 -- (user, 2026-09-15) — every eligible adult record the office hasn't marked "not in directory" —
 -- unless the member took themselves out (directory_hidden, from My Profile or by deleting their app
--- account). And everything shows — email, phone, photo, home address and birthday (month and day,
--- never the year) — whether or not they use the app, until they turn a detail off (opt-out, user
--- 2026-09-21). Photos are fetched one at a time (often stored inline). Church staff carry their
--- position (staff_title), which the app shows as a "Church Staff" banner.
+-- account). And everything shows — email, phone, photo, home address and birthday — whether or not
+-- they use the app, until they turn a detail off (opt-out, user 2026-09-21). A birthday comes as month
+-- and day, with the year apart (birth_year) so the app can say how old they are (user, 2026-09-21:
+-- "For birthday, add how old they are"); both go, or neither, with the member's birthday switch.
+-- Photos are fetched one at a time (often stored inline). Church staff carry their position
+-- (staff_title), which the app shows as a "Church Staff" banner.
 drop function if exists public.member_directory(text, int, int);
 create function public.member_directory(p_query text default null, p_limit int default 50, p_offset int default 0)
 returns table (id uuid, name text, email text, phone text, has_photo boolean, address text, birthday text,
-               staff_title text)
+               staff_title text, birth_year int)
 language sql stable security definer set search_path = ''
 as $$
   select m.id, btrim(m.name),
@@ -1052,7 +1067,8 @@ as $$
          case when m.share_address then nullif(btrim(m.address), '') end,
          case when m.share_birthday then to_char(m.birthday, 'MM-DD') end,
          -- the church's own record of who is on staff, not a detail a member shares
-         nullif(btrim(m.staff_title), '')
+         nullif(btrim(m.staff_title), ''),
+         case when m.share_birthday then extract(year from m.birthday)::int end
     from public.church_members m
    where (select public.app_caller_member_id()) is not null
      and not m.directory_hidden
@@ -1064,6 +1080,38 @@ as $$
    order by lower(btrim(m.name)), m.id
    limit least(greatest(coalesce(p_limit, 50), 1), 100)
   offset greatest(coalesce(p_offset, 0), 0)
+$$;
+
+-- Birthdays today (user, 2026-09-21: "When user pulls up directory, before the category A should be
+-- 'Birthdays Today'"): everyone in the directory whose shared birthday falls on the day the phone asks
+-- about, in the directory's own shape, whichever page of it they're on. The phone asks for its own
+-- today — and on 28 February in a year without a 29th, the 29th as well — so one or two days a call,
+-- never the calendar. Only what the directory already shows: the same members, the same switches.
+create or replace function public.member_birthdays(p_days text[])
+returns table (id uuid, name text, email text, phone text, has_photo boolean, address text, birthday text,
+               staff_title text, birth_year int)
+language sql stable security definer set search_path = ''
+as $$
+  select m.id, btrim(m.name),
+         case when m.share_email then nullif(btrim(m.email), '') end,
+         case when m.share_phone then nullif(btrim(m.phone), '') end,
+         (m.share_photo and nullif(m.photo_url, '') is not null),
+         case when m.share_address then nullif(btrim(m.address), '') end,
+         to_char(m.birthday, 'MM-DD'),
+         nullif(btrim(m.staff_title), ''),
+         extract(year from m.birthday)::int
+    from public.church_members m
+   where (select public.app_caller_member_id()) is not null
+     and coalesce(array_length(p_days, 1), 0) between 1 and 2
+     and not m.directory_hidden
+     and m.include_directory is not false
+     and nullif(btrim(m.name), '') is not null
+     and public.app_member_is_eligible(m)
+     and m.share_birthday
+     and m.birthday is not null
+     and to_char(m.birthday, 'MM-DD') = any (p_days)
+   order by lower(btrim(m.name)), m.id
+   limit 100
 $$;
 
 create or replace function public.member_directory_photo(p_member_id uuid)
@@ -1203,12 +1251,12 @@ grant execute on function
 
 revoke all on function public.member_me(), public.member_bind_session(text),
   public.member_update_me(text, boolean, boolean, boolean, boolean, boolean, boolean, boolean),
-  public.member_directory(text, int, int), public.member_directory_photo(uuid), public.member_directory_family(uuid),
-  public.member_family() from public, anon;
+  public.member_directory(text, int, int), public.member_birthdays(text[]), public.member_directory_photo(uuid),
+  public.member_directory_family(uuid), public.member_family() from public, anon;
 grant execute on function public.member_me(), public.member_bind_session(text),
   public.member_update_me(text, boolean, boolean, boolean, boolean, boolean, boolean, boolean),
-  public.member_directory(text, int, int), public.member_directory_photo(uuid), public.member_directory_family(uuid),
-  public.member_family() to authenticated;
+  public.member_directory(text, int, int), public.member_birthdays(text[]), public.member_directory_photo(uuid),
+  public.member_directory_family(uuid), public.member_family() to authenticated;
 
 revoke all on function public.app_member_revoke_login(uuid), public.app_rate_clear(text) from public, anon;
 grant execute on function public.app_member_revoke_login(uuid), public.app_rate_clear(text) to authenticated, service_role;

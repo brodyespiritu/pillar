@@ -1,0 +1,290 @@
+/* ═══ Pillar → App → Watch ═══
+ *
+ * Watch's own styles (WatchPage.jsx, NotesView.jsx, mediaLayout.js): sermons, series (a new sermon made inside its series), videos, resources and notes, and the Watch phone (BethesdaApp screens/SermonsScreen.js, components/ShelfCard.js, PlayDisc.js, SermonCard.js, screens/AllMessagesScreen.js).
+ *
+ * Pulled in by the @import lines at the top of ../appx.css, so the page needs no JS import (and its
+ * tests no new stubs). Everything here keeps the ax- prefix. The shared workspace, panes and fields
+ * live in ./base.css; the member app's own look for phone previews in ./phone.css (.ax-phone-app).
+ * base.css loads BEFORE this file, so a rule here with the same selector as a shared one wins on
+ * order alone (write the same selector, or add a class — never !important).
+ *
+ * Two halves: Pillar's own blue UI for the editors (.ax-watch-*), then the member app as a phone
+ * draws it (.ax-wp-* the Watch tab and All messages, .ax-wn-* the sermon-notes page) — those numbers
+ * are the app's own points (1 CSS px = 1 pt inside .ax-phone-app; PhoneFrame scales the whole phone
+ * by one factor), copied from the source file named beside each block, never sized by eye.
+ */
+
+/* ─────────────────────────────── Pillar's side ─────────────────────────────── */
+
+/* the lists' rows carry a picture, a star and a switch: a little less gap, so the title keeps its room */
+.ax-watch > .ax-list-pane .ax-row { gap: 10px; }
+/* the outline is the thing on Notes: room between its lines to read it back */
+.ax-watch-notes .ax-col-b .ax-textarea { line-height: 1.7; }
+
+/* "In series": the Series rows a sermon is in, each one opens that series (recognition over recall) */
+.ax-watch-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.ax-watch-chip {
+  position: relative; display: inline-flex; align-items: center; gap: 7px; max-width: 100%; height: 36px; padding: 0 13px;
+  border-radius: 999px; border: 1px solid var(--ax-pick); background: var(--ax-pick); color: var(--ax-accent);
+  font-size: 13.5px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer;
+  transition: border-color 0.12s, background 0.12s;
+}
+.ax-watch-chip::after { content: ''; position: absolute; inset: -4px -3px; }   /* 36 to see, 44 to hit */
+.ax-watch-chip:hover { border-color: var(--ax-accent); }
+.ax-watch-chip:focus-visible { outline: none; box-shadow: 0 0 0 4px var(--ax-focus); }
+.ax-watch-chip svg { flex-shrink: 0; }
+
+/* The editor's head. A sermon's holds four switches and Delete: they stay IN the head (Fitts's law —
+   the placement switches the office uses most are never a menu away) and wrap to a second row of it
+   when the editor is narrow, as the approved mockups draw it:
+     · Main (a laptop's 536px editor): the switches flow on after the save state, one row wrapping into
+       the next — so they are the head's own items here (display: contents), not a box that would drop
+       whole onto a row of its own and push Delete onto a third. A wrapped row sits at the right, under
+       the switches it continues (law of proximity), the save state alone on the left.
+     · PhoneEditor (< 760: one pane): Back, the save state, Preview and Delete on the first row, the
+       switches a full row of their own under them.
+   Only a tablet's drawer width folds Featured, Suggested and Delete under ⋯ More (the approved Tablet
+   mockup — WatchPage useHeadRoom). */
+.ax-watch .ax-editor-pane:not(.is-empty) > .ax-editor-pane-head { justify-content: flex-end; }
+.ax-watch .ax-editor-pane-head > .ax-editor-switches { display: contents; }
+@container work (max-width: 759px) {
+  .ax-watch .ax-editor-pane-head > .ax-editor-switches { display: flex; order: 1; flex: 1 1 100%; }
+  /* …and Preview is its phone icon alone, a 44 square beside Delete, as PhoneEditor draws it — with its
+     word the first row didn't fit a 390pt phone and Delete fell to a row by itself. The word stays
+     in the button (its name for screen readers) and in its tooltip */
+  .ax-watch .ax-editor-pane-head > .ax-preview-toggle { width: 44px; padding: 0; gap: 0; font-size: 0; }
+}
+
+/* ⋯ More, on a tablet-wide head (the Tablet mockup) */
+.ax-watch-more { position: relative; display: flex; }
+.ax-headbtn.on { background: var(--ax-pick); border-color: var(--ax-pick); color: var(--ax-accent); }
+.ax-watch-menu {
+  position: absolute; top: calc(100% + 8px); right: 0; z-index: 30; width: 320px; max-width: calc(100vw - 32px);
+  display: flex; flex-direction: column; gap: 14px; padding: 16px; border-radius: 16px;
+  border: 1px solid var(--ax-line); background: var(--surface); box-shadow: 0 18px 40px rgba(11, 53, 88, 0.16);
+  animation: ax-fade 0.14s ease-out;
+}
+.ax-watch-menu hr { margin: 0; border: 0; border-top: 1px solid var(--ax-line); }
+.ax-watch-menu .ax-btn.danger { justify-content: flex-start; }
+
+/* the switches under a sub-panel's fields (a sermon or video opened over its series), and what their
+   "In the app" has to say, right above them (WatchPage usePanelLive) */
+.ax-watch-switches { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 18px 28px; }
+.ax-watch-sub .ax-section-body > .ax-alert { margin-bottom: 0; }
+.ax-watch-sub .ax-subpanel-body > .ax-section { margin-top: 26px; padding-top: 22px; border-top: 1px solid var(--ax-line); }
+.ax-watch-sub .ax-section-right { max-width: 60%; text-align: right; }
+
+/* a series' contents: its order, 16:9 thumbs like the app's cards, and its two ways to add */
+.ax-watch-items .ax-list { gap: 4px; }
+.ax-watch-items .ax-row { gap: 10px; padding: 6px 8px 6px 10px; border-color: var(--ax-line); }
+.ax-watch-items .ax-row.on { border-color: var(--ax-accent); }
+.ax-watch-items .ax-thumb { width: 56px; height: 34px; border-radius: 8px; }
+.ax-watch-items .ax-num { width: 20px; }
+.ax-watch-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.ax-watch-actions .ax-btn { flex: 0 1 auto; }
+.ax-watch-listhint { margin: 10px 8px 4px; font-size: 12.5px; }
+
+/* Add from Watch: the search and the kind, then the lists */
+.ax-watch-find { display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; }
+.ax-watch-sub .ax-subpanel-body > .ax-watch-find + .ax-section,
+.ax-watch-sub .ax-subpanel-body > .ax-watch-find + .ax-loading + .ax-section { margin-top: 0; padding-top: 0; border-top: 0; }
+
+/* the resource the app's saved order leaves out */
+.ax-watch-order { flex-wrap: wrap; }
+.ax-watch-order .ax-btn { margin-left: auto; }
+
+/* where the picked thing is on a phone, under the phone */
+.ax-watch-place strong { color: var(--ax-ink); font-weight: 700; }
+
+/* ─────────────────────────────── the Watch tab, as a phone draws it ───────────────────────────────
+ * BethesdaApp screens/SermonsScreen.js (makeStyles LIGHT). Every number is the app's own, in points. */
+
+.ax-wp { padding-bottom: 134px; }   /* insets.bottom 34 + DOCK 100: the last row clears the dock */
+
+/* featTop: the big card on a blur of its own picture, a white wash, fading into the page */
+.ax-wp-top { position: relative; overflow: hidden; padding: 65px 20px 20px; background: var(--ax-app-card); }
+.ax-wp-top-pic {
+  position: absolute; inset: -48px; background: center / cover no-repeat;
+  filter: blur(36px) saturate(1.15);   /* <BlurView intensity={70} tint="light"> */
+}
+.ax-wp-top-pic::after { content: ''; position: absolute; inset: 0; background: rgba(255, 255, 255, 0.3); }   /* the light tint */
+.ax-wp-top-wash { position: absolute; inset: 0; background: rgba(255, 255, 255, 0.35); }
+.ax-wp-top-fade {
+  position: absolute; left: 0; right: 0; bottom: 0; height: 140px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.72) 40%, rgba(255, 255, 255, 0.94) 75%, #FFFFFF 100%);
+}
+/* the title's line (HEADER_H 48, 18 under it), clear of the profile button: 74 − GUTTER 20 */
+.ax-wp-header { position: relative; display: flex; align-items: flex-start; justify-content: space-between; height: 48px; margin: 0 54px 18px 0; }
+.ax-wp-search { display: grid; place-items: center; width: 40px; height: 40px; color: var(--ax-app-text2); }
+
+/* featCard: W − 2 × 20 wide, H × 0.62 − 56 tall (852 → 472), corner 24 */
+.ax-wp-big {
+  position: relative; display: flex; flex-direction: column; justify-content: flex-end; height: 472px;
+  border-radius: 24px; overflow: hidden; background: var(--ax-app-card); box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
+}
+.ax-wp-fill { position: absolute; inset: 0; background: center / cover no-repeat; }
+.ax-wp-big-shade {
+  position: absolute; inset: 0; z-index: 2;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0) 30%, rgba(0, 0, 0, 0.3) 55%, rgba(0, 0, 0, 0.8) 78%, rgba(0, 0, 0, 0.95) 100%);
+}
+.ax-wp-big-words { position: relative; z-index: 3; padding: 18px; }   /* PLAY_INSET */
+.ax-wp-big-kicker { margin-bottom: 6px; font-size: 11px; font-weight: 700; line-height: normal; letter-spacing: 2px; color: rgba(255, 255, 255, 0.62); }
+.ax-wp-big-title {
+  margin-bottom: 14px; font-size: 26px; font-weight: 700; line-height: 32px; letter-spacing: -0.5px; color: #FFFFFF;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.ax-wp-big-meta { font-size: 14px; font-weight: 600; line-height: normal; color: rgba(255, 255, 255, 0.75); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ax-wp-big-actions { display: flex; align-items: flex-start; gap: 12px; margin-top: 16px; }
+.ax-wp-big-btns { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; gap: 10px; }
+
+/* sections: 30 apart, Featured 16 under the big card (sectionFirst) */
+.ax-wp-section { position: relative; margin-top: 30px; }
+.ax-wp-section.first { margin-top: 16px; }
+.ax-wp-section.ax-pa-picked { outline-offset: -3px; border-radius: 18px; }   /* a whole series row, inside the screen's edge */
+.ax-wp-head { padding: 0 20px; }
+.ax-wp-head.tight { margin-bottom: 4px; }   /* a series with a line under its name */
+.ax-wp-sub { margin: 0 0 14px; padding: 0 20px; font-size: 13.5px; line-height: 19px; color: var(--ax-app-text3); }
+.ax-wp-list { display: flex; flex-direction: column; gap: 14px; padding: 0 20px; }   /* customList */
+/* hRow: a row that scrolls sideways (6 above and below so an outline isn't cut off) */
+.ax-wp-hrow {
+  display: flex; gap: 14px; margin: -6px 0; padding: 6px 20px; overflow-x: auto; overflow-y: hidden;
+  scrollbar-width: none; overscroll-behavior-x: contain;
+}
+.ax-wp-hrow::-webkit-scrollbar { display: none; }
+/* an empty series in focus: the app never shows one, so this stand-in for its row is Pillar's own mark
+   (blue, Inter — like .ax-pa-flag and .ax-pa-picked), never dressed as part of the app */
+.ax-wp-emptyrow {
+  flex: 1; display: grid; place-items: center; height: 124px; border-radius: 14px; border: 1.5px dashed var(--accent, #006BFF);
+  font-family: 'Inter', -apple-system, sans-serif; font-size: 13px; font-weight: 700; color: var(--accent, #006BFF);
+}
+/* a series row's flag ("Not in the app yet") floats in the 30pt gap between rows, just above the start
+   of its heading — it adds no line of its own, so the row keeps the app's spacing (SermonsScreen.js:
+   section → SectionHead → the line under it → the row; the flag is ≈ 21pt tall, 5pt clear each side) */
+.ax-wp-section > .ax-pa-flag { top: -26px; left: 20px; }
+
+/* the Featured cards (MediaBigCard): 16:9 of the gutter's width (199), corner 18, words at the foot */
+.ax-wp-media { position: relative; flex: none; height: 199px; border-radius: 18px; overflow: hidden; background: var(--ax-app-card); }
+.ax-wp-media > .ax-pa-blur { height: 55%; }
+.ax-wp-media-shade { position: absolute; inset: 0; z-index: 2; background: linear-gradient(180deg, rgba(0, 0, 0, 0) 50%, rgba(0, 0, 0, 0.65) 100%); }
+/* the words stop short of the play disc: PLAY_INSET + PLAY_SIZE + 12 = 74 */
+.ax-wp-media-words { position: absolute; left: 0; right: 0; bottom: 0; z-index: 3; padding: 18px 74px 18px 18px; }
+.ax-wp-media-sub { margin-bottom: 4px; font-size: 11px; font-weight: 600; line-height: normal; letter-spacing: 1px; color: rgba(255, 255, 255, 0.62); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ax-wp-media-title {
+  font-size: 17px; font-weight: 700; line-height: 22px; letter-spacing: -0.3px; color: #FFFFFF;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+
+/* Resources (resCard): 168 × 224, the shelf's corner 14, the kind in a violet badge, two lines under */
+.ax-wp-res { flex: none; width: 168px; }
+.ax-wp-res-pic { position: relative; height: 224px; margin-bottom: 10px; border-radius: 14px; overflow: hidden; background: var(--ax-app-card) center / cover no-repeat; }
+.ax-wp-res-shade { position: absolute; inset: 0; z-index: 2; background: linear-gradient(180deg, rgba(0, 0, 0, 0) 50%, rgba(0, 0, 0, 0.55) 100%); }
+.ax-wp-res-badge {
+  position: absolute; right: 12px; bottom: 12px; z-index: 3; padding: 5px 10px; border-radius: 10px;
+  background: rgba(90, 70, 150, 0.9); color: #FFFFFF; font-size: 12px; font-weight: 700; line-height: normal;
+}
+.ax-wp-res-name {
+  padding: 0 2px; font-size: 13px; font-weight: 700; line-height: 18px; color: var(--ax-app-text);
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.ax-wp-res-sub { margin-top: 1px; padding: 0 2px; font-size: 11px; line-height: normal; color: var(--ax-app-text3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* All messages, the newest three (allRow): a 112 × 63 picture, a hairline between rows */
+.ax-wp-all { display: flex; align-items: center; gap: 14px; padding: 12px 0; }
+.ax-wp-all.line { border-top: 0.5px solid var(--ax-app-line); }
+.ax-wp-all-pic { flex: none; position: relative; width: 112px; height: 63px; border-radius: 10px; background: var(--ax-app-card) center / cover no-repeat; }
+.ax-wp-all-words { flex: 1; min-width: 0; }
+.ax-wp-all-title {
+  font-size: 15px; font-weight: 700; line-height: 20px; color: var(--ax-app-text);
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.ax-wp-all-meta { margin-top: 4px; font-size: 13px; line-height: normal; color: var(--ax-app-text3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ShelfCard's own stand-ins (FALLBACKS) on a shelf picture: phone.css defines .ax-pa-fallback-* BEFORE
+   .ax-pa-shelf-pic, whose `background` shorthand then wipes the gradient out — so here, one class
+   stronger (a page file can't reorder the shared one) */
+.ax-pa-shelf-pic.ax-pa-fallback-0 { background-image: linear-gradient(180deg, #1C0A30, #5B1E8C); }
+.ax-pa-shelf-pic.ax-pa-fallback-1 { background-image: linear-gradient(180deg, #0B2530, #1E6B8C); }
+.ax-pa-shelf-pic.ax-pa-fallback-2 { background-image: linear-gradient(180deg, #301A0A, #8C4E1E); }
+.ax-pa-shelf-pic.ax-pa-fallback-3 { background-image: linear-gradient(180deg, #0A301A, #1E8C4E); }
+
+/* the page's own stand-ins when there's no picture (GRADIENTS, top to bottom) */
+.ax-wp-grad-0 { background-image: linear-gradient(180deg, #1C0A30, #5B1E8C); }
+.ax-wp-grad-1 { background-image: linear-gradient(180deg, #0A1C30, #1E5B8C); }
+.ax-wp-grad-2 { background-image: linear-gradient(180deg, #300A0A, #8C1E1E); }
+.ax-wp-grad-3 { background-image: linear-gradient(180deg, #0A301C, #1E8C5B); }
+.ax-wp-grad-4 { background-image: linear-gradient(180deg, #30240A, #8C6B1E); }
+
+/* screens/AllMessagesScreen.js: under the glass Back (59 + 6 + 44 + 12 = 121), a month at a time */
+.ax-wp-page { padding: 121px 0 154px; }   /* insets.bottom 34 + 120 */
+.ax-wp-page-head { padding: 0 20px; }
+.ax-wp-page-count { margin-top: 4px; font-size: 15px; line-height: normal; color: var(--ax-app-text3); }
+.ax-wp-group { margin-top: 28px; padding: 0 20px; }
+.ax-wp-month { margin-bottom: 4px; font-size: 13px; font-weight: 700; line-height: normal; letter-spacing: 1.4px; text-transform: uppercase; color: var(--ax-app-text3); }
+.ax-wp-arow { display: flex; align-items: center; gap: 14px; padding: 12px 0; border-top: 0.5px solid var(--ax-app-line); }
+.ax-wp-arow.first { border-top: 0; }
+.ax-wp-arow-pic { flex: none; position: relative; width: 128px; height: 72px; border-radius: 10px; background-color: var(--ax-app-card); background-position: center; background-size: cover; background-repeat: no-repeat; }
+
+/* ─────────────────────────────── the sermon-notes page, as a phone draws it ───────────────────────────────
+ * BethesdaApp screens/Bible/NotesSheet.js and components/NotesMediaBar.js (LIGHT). */
+
+.ax-wn { display: flex; flex-direction: column; min-height: 100%; background: var(--ax-app-bg); }
+/* the black band: the bar (PROFILE_BTN_TOP 6 + 44 + 6 = 56, clear of the profile button) and the message */
+.ax-wn-top { background: #000000; padding-top: 59px; }
+.ax-wn-bar { display: flex; align-items: center; gap: 12px; height: 56px; padding: 0 74px 0 20px; }
+.ax-wn-back { flex: none; display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; background: rgba(255, 255, 255, 0.14); color: #FFFFFF; }
+.ax-wn-bartitle { flex: 1; min-width: 0; font-size: 15px; font-weight: 600; line-height: normal; color: rgba(255, 255, 255, 0.92); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* 16:9 of the screen's width, never over a third of its height: min(393 × 9/16, 852 × 0.34) = 221 */
+.ax-wn-video { position: relative; display: grid; place-items: center; height: 221px; background: #000000 center / cover no-repeat; }
+.ax-wn-none { display: flex; flex-direction: column; align-items: center; gap: 8px; color: rgba(255, 255, 255, 0.45); font-size: 13.5px; line-height: normal; }
+.ax-wn-none > span { color: rgba(255, 255, 255, 0.5); }
+.ax-wn-yt { display: block; }
+
+/* Sermon Notes | Journal (when the message isn't a church video file) */
+.ax-wn-tabs { display: flex; gap: 8px; padding: 12px 20px 2px; }
+.ax-wn-tab {
+  display: inline-flex; align-items: center; gap: 7px; height: 40px; padding: 0 16px; border-radius: 999px;
+  background: var(--ax-app-card); color: var(--ax-app-text); font-size: 14.5px; font-weight: 600; line-height: normal;
+}
+.ax-wn-tab.on { background: var(--ax-app-pill); color: var(--ax-app-pill-text); }
+
+/* NotesMediaBar: the church file's own controls in the white */
+.ax-wn-media { padding: 12px 20px 10px; border-bottom: 0.5px solid var(--ax-app-line); }
+.ax-wn-seek { display: flex; align-items: center; gap: 10px; }
+.ax-wn-clock { width: 64px; font-size: 12.5px; font-weight: 500; line-height: normal; color: var(--ax-app-text2); font-variant-numeric: tabular-nums; }
+.ax-wn-clock.right { text-align: right; }
+.ax-wn-track { position: relative; flex: 1; height: 4px; margin: 12px 0; border-radius: 2px; background: var(--ax-app-line); }
+.ax-wn-track i { position: absolute; top: -5px; left: -7px; width: 14px; height: 14px; border-radius: 50%; background: var(--ax-app-text); }
+.ax-wn-controls { display: flex; align-items: center; justify-content: space-between; margin-top: 6px; padding: 0 6px; }
+.ax-wn-round { position: relative; display: grid; place-items: center; width: 48px; height: 48px; border-radius: 50%; color: var(--ax-app-text); }
+.ax-wn-round.on { color: #E84A0A; }
+.ax-wn-round b { position: absolute; margin-top: 1px; font-size: 8.5px; font-weight: 700; }
+.ax-wn-playbig { display: grid; place-items: center; width: 56px; height: 56px; border-radius: 50%; background: var(--ax-app-pill); color: var(--ax-app-pill-text); }
+
+/* two points at a time: the words big (24/40), a box wherever the sheet leaves a blank */
+.ax-wn-points { flex: 1; padding: 30px 24px 24px; }
+.ax-wn-line { display: flex; flex-wrap: wrap; align-items: center; margin-bottom: 16px; }
+.ax-wn-words { font-size: 24px; font-weight: 400; line-height: 40px; letter-spacing: -0.2px; color: var(--ax-app-text); white-space: pre-wrap; }
+.ax-wn-box {
+  display: inline-flex; align-items: center; width: 132px; height: 50px; margin: 5px 4px; padding: 0 14px; border-radius: 14px;
+  background: var(--ax-app-card); border-bottom: 2.5px solid var(--ax-app-line);
+  font-size: 22px; font-weight: 600; line-height: normal; color: var(--ax-app-text3);
+}
+.ax-wn-next { margin-top: 26px; padding-top: 22px; border-top: 1px solid var(--ax-app-line); }
+.ax-wn-empty { margin-top: 10px; font-size: 15px; line-height: normal; color: var(--ax-app-text3); text-align: center; }
+
+/* ‹ Points 1–2 of N › and Save, at the foot (the dock is away on this page) */
+.ax-wn-nav { display: flex; align-items: center; gap: 12px; padding: 12px 20px 46px; background: var(--ax-app-bg); }
+.ax-wn-stepper { flex: 1; min-width: 0; display: flex; align-items: center; height: 56px; padding: 0 4px; border-radius: 28px; background: var(--ax-app-card); }
+.ax-wn-step {
+  position: relative; flex: none; display: grid; place-items: center; width: 48px; height: 48px; padding: 0; border: 0; border-radius: 24px;
+  background: transparent; color: var(--ax-app-text); cursor: pointer;
+}
+/* these two are real buttons (they page through the outline), drawn at the app's 48pt — which the
+   phone's one scale shrinks to about 35px. An invisible hit area of 44 SCREEN px around each (DESIGN §3:
+   nothing smaller than 44 to tap): 44 / scale in the phone's own points, never less than the button */
+.ax-wn-step::after { content: ''; position: absolute; inset: min(0px, calc((48px - 44px / var(--ax-phone-scale, 1)) / 2)); }
+.ax-wn-step:hover:not(:disabled) { background: var(--ax-app-line); }
+.ax-wn-step.off { opacity: 0.35; cursor: default; }
+.ax-wn-steplabel { flex: 1; min-width: 0; text-align: center; font-size: 15px; font-weight: 600; line-height: normal; color: var(--ax-app-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ax-pa-btn.ax-wn-save { padding: 0 18px; }   /* btn.lg with paddingHorizontal 18 */
+.ax-wn-save.outline { border-color: var(--ax-app-text); color: var(--ax-app-text); }

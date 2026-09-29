@@ -37,7 +37,7 @@ export const ACTIONS = [
 // the pages a button may open — exactly the app's own list (BethesdaApp utils/homeCards.js)
 export const PAGES = [
   { key: 'Bulletin',  label: 'Digital Bulletin' },
-  { key: 'Groups',    label: 'Groups and Ministries' },
+  { key: 'Groups',    label: 'Groups' },
   { key: 'Calendar',  label: 'Calendar' },
   { key: 'Directory', label: 'Directory' },
   { key: 'Bible',     label: 'Bible' },
@@ -123,7 +123,8 @@ export function cardPatch(f) {
     kicker: builtIn ? null : orNull(f.kicker),
     title: builtIn ? null : orNull(f.title),
     subtitle: builtIn ? null : orNull(f.subtitle),
-    body: f.kind === 'text' ? orNull(f.body) : null,
+    // every card the office writes may carry more words: they show when a member taps it (Announcements, 2026-09-23)
+    body: BUILT_IN.has(f.kind) ? null : orNull(f.body),
     image_url: f.kind === 'image' || f.kind === 'video' ? orNull(f.image_url) : null,
     video_url: f.kind === 'video' ? orNull(f.video_url) : null,
     buttons: builtIn ? [] : (f.buttons || []).map((b) => ({
@@ -209,3 +210,60 @@ export function liveLabel(c, today = new Date()) {
   return 'Live';
 }
 export const isLive = (c, today) => liveLabel(c, today) === 'Live';
+
+// ── What's Happening, read the way the app reads it (BethesdaApp utils/churchCalendar.js
+// fetchCalendar) — only for Pillar's Home phone, so it shows the events and the featured cards a
+// member's phone shows: the church calendar's public events that start (or are still running) between
+// today and two months out, soonest first. Before calendar-featured.sql the featured columns aren't
+// there and the database refuses the whole query, so it asks again without them, as the app does.
+const EVENT_COLUMNS = 'id,title,description,category,start_date,end_date,start_time,end_time,location';
+const localDay = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+/** The app's upcoming church events (raw rows, soonest first). A read only — nothing here writes. */
+export async function listHomeEvents(now = new Date()) {
+  const today = new Date(now); today.setHours(0, 0, 0, 0);
+  const horizon = new Date(today); horizon.setMonth(horizon.getMonth() + 2);
+  const from = localDay(today);
+  const read = (columns) => supabase.from('events').select(columns)
+    .eq('calendar', 'church').eq('is_private', false)
+    .or(`start_date.gte.${from},end_date.gte.${from}`)
+    .lte('start_date', localDay(horizon))
+    .order('start_date', { ascending: true })
+    .order('start_time', { ascending: true, nullsFirst: true })
+    .limit(500);
+  let { data, error } = await read(`${EVENT_COLUMNS},featured,image_url`);
+  if (error) ({ data, error } = await read(EVENT_COLUMNS));
+  if (error) throw error;
+  return data || [];
+}
+
+/** The rooms and their photos, as the app reads them beside the calendar (fetchCalendar's
+ *  locations?select=name,photo_url): a featured event with no picture of its own shows its room's
+ *  (BethesdaApp utils/churchCalendar.js photoFor). A read only. */
+export async function listHomeLocations() {
+  const { data, error } = await supabase.from('locations').select('name,photo_url');
+  if (error) throw error;
+  return data || [];
+}
+
+// ── The Wednesday dinner, as the app hears about it — BethesdaApp utils/dinner.js fetchDinner asks the
+// rsvp-forms function, which answers with supabase/functions/_shared/dinnerAck.ts activeDinner: a dinner
+// takes reservations for DINNER_DAYS after its invitation goes out (or its row is written), and its menu
+// is the plate card's line on Home. The same read here, so Pillar's Home phone says what members' phones
+// say. Change one and change the other. A read only.
+export const DINNER_DAYS = 14;
+
+/** { open, menu } — whether a dinner is taking reservations now, and what's on its menu. */
+export async function dinnerNow(now = Date.now()) {
+  const cutoff = new Date(now - DINNER_DAYS * 864e5).toISOString();
+  const { data, error } = await supabase.from('sms_library').select('last_sent_at,created_at,rsvp_menu')
+    .eq('message_type', 'Dinner')
+    .or(`last_sent_at.gte.${cutoff},created_at.gte.${cutoff}`)
+    .order('created_at', { ascending: false })
+    .limit(20);
+  if (error) throw error;
+  const when = (r) => Math.max(Date.parse(r.last_sent_at || '') || 0, Date.parse(r.created_at || '') || 0);
+  const dinner = (data || []).slice().sort((a, b) => when(b) - when(a))[0] || null;
+  if (!dinner) return { open: false, menu: [] };
+  return { open: true, menu: (Array.isArray(dinner.rsvp_menu) ? dinner.rsvp_menu : []).map(String).slice(0, 12) };
+}

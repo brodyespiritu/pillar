@@ -10,7 +10,7 @@ import { supabase } from './supabase';
 // A missed mark is never an error the office sees: the save itself already worked, and phones still
 // pick the change up the next time they open the page.
 
-export const APP_PARTS = ['home', 'announcements', 'calendar', 'groups', 'sermons', 'media', 'live'];
+export const APP_PARTS = ['home', 'announcements', 'calendar', 'groups', 'sermons', 'media', 'live', 'replies', 'popup', 'directory'];
 
 // which kind of content each app-server path holds
 const BY_PATH = [

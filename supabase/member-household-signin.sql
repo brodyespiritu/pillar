@@ -6,7 +6,12 @@
 --  belongs to, plus any adult on the same family_id with nothing of their own. Children are never
 --  listed, and nobody outside that one household is.
 --
---  Run in Supabase → SQL Editor, after member-app-auth.sql. Safe to re-run. The same definition is
+--  …and then STAYS signed in (2026-09-24): every call re-checks that the contact a session came
+--  through still leads to that person, and that check looked only at their own contact — empty for
+--  exactly these people — so the sign-in never held. app_caller_member_id below also accepts the
+--  family's address, on a record in their household whose contacts haven't changed since.
+--
+--  Run in Supabase → SQL Editor, after member-app-auth.sql. Safe to re-run. The same definitions are
 --  in member-app-auth.sql, so re-running that file keeps this behaviour.
 -- ============================================================
 
@@ -80,3 +85,73 @@ end $$;
 
 revoke all on function public.app_login_candidates(text, text, timestamptz) from public, anon, authenticated;
 grant execute on function public.app_login_candidates(text, text, timestamptz) to service_role;
+
+-- The one gate. Returns the caller's member id only for a session that
+--  · is an OTP session (amr: otp, optionally totp) — not password, OAuth, SSO, passkey …
+--  · was bound through a grant (member_sessions) whose code predates any change to the record,
+--    and the contact it came through still leads to this record
+--  · still exists in auth.sessions (signed-out sessions stop at once, not at token expiry)
+--  · belongs to the record's own untouched login: same random address, no phone, no other
+--    identities, not banned/deleted, not staff — and the record is still eligible
+create or replace function public.app_caller_member_id()
+returns uuid language plpgsql stable security definer set search_path = ''
+as $$
+declare
+  v_uid    uuid  := auth.uid();
+  v_claims jsonb := auth.jwt();
+  v_amr    jsonb;
+  v_sid    uuid;
+  v_id     uuid;
+begin
+  if v_uid is null or coalesce(v_claims ->> 'role', '') <> 'authenticated' then return null; end if;
+  v_amr := case when jsonb_typeof(v_claims -> 'amr') = 'array' then v_claims -> 'amr' else '[]'::jsonb end;
+  if not exists (select 1 from jsonb_array_elements(v_amr) a where jsonb_typeof(a) = 'object' and a ->> 'method' = 'otp')
+     or exists (select 1 from jsonb_array_elements(v_amr) a
+                 where jsonb_typeof(a) <> 'object' or coalesce(a ->> 'method', '') not in ('otp', 'totp')) then
+    return null;
+  end if;
+  begin v_sid := (v_claims ->> 'session_id')::uuid; exception when others then return null; end;
+  if v_sid is null then return null; end if;
+
+  select m.id into v_id
+    from public.member_sessions ms
+    join public.church_members m on m.id = ms.member_id
+    join auth.users u            on u.id = ms.auth_user_id
+    join auth.sessions s         on s.id = ms.session_id
+   where ms.session_id = v_sid
+     and ms.auth_user_id = v_uid
+     and ms.revoked_at is null
+     and m.auth_user_id = v_uid
+     and ms.minted_at > coalesce(m.app_not_before, '-infinity'::timestamptz)
+     and public.app_member_is_eligible(m)
+     -- the contact that signed them in still leads to this record (household split, blocklist, ban…):
+     -- their own — or, for an adult with nothing of their own, their family's address, on a record
+     -- in their household whose contacts haven't changed since the code was sent
+     -- (member-household-signin.sql; this looked only at their own, so those sign-ins never held)
+     and (exists (select 1 from public.app_login_candidates(
+                    case when ms.channel = 'email' then m.email end,
+                    case when ms.channel = 'sms' then m.phone end, null) c
+                   where c.member_id = m.id)
+          or exists (select 1
+                       from public.church_members f
+                      where nullif(btrim(m.family_id), '') is not null
+                        and btrim(f.family_id) = btrim(m.family_id)
+                        and f.id <> m.id
+                        and coalesce(f.app_not_before, '-infinity'::timestamptz) < ms.minted_at
+                        and exists (select 1 from public.app_login_candidates(
+                                      case when ms.channel = 'email' then f.email end,
+                                      case when ms.channel = 'sms' then f.phone end, null) c
+                                     where c.member_id = m.id)))
+     and s.user_id = v_uid
+     and (s.not_after is null or s.not_after > now())
+     and u.email = m.app_login_email
+     and u.email_confirmed_at is not null
+     and coalesce(u.phone, '') = '' and u.phone_confirmed_at is null
+     and u.raw_app_meta_data ->> 'bbc_member_id' = m.id::text
+     and u.deleted_at is null
+     and (u.banned_until is null or u.banned_until <= now())
+     and not exists (select 1 from auth.identities i where i.user_id = u.id and i.provider <> 'email')
+     and not exists (select 1 from public.staff st where st.id = v_uid);
+  return v_id;
+end $$;
+revoke all on function public.app_caller_member_id() from public, anon, authenticated;

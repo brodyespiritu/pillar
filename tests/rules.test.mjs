@@ -92,9 +92,12 @@ await t('a save writes only what the kind uses', () => {
   assert.strictEqual(dinner.starts_on, null);
   const text = cardPatch({ ...full, kind: 'text' });
   assert.strictEqual(text.body, 'b'); assert.strictEqual(text.image_url, null); assert.strictEqual(text.video_url, null);
+  // every card the office writes keeps its paragraph — a member reads it when they tap the card in
+  // Announcements (2026-09-23); only the app's own cards draw nothing of the office's
   const image = cardPatch({ ...full, kind: 'image' });
-  assert.strictEqual(image.body, null); assert.strictEqual(image.image_url, 'https://x.org/p.jpg'); assert.strictEqual(image.video_url, null);
+  assert.strictEqual(image.body, 'b'); assert.strictEqual(image.image_url, 'https://x.org/p.jpg'); assert.strictEqual(image.video_url, null);
   const video = cardPatch({ ...full, kind: 'video' });
+  assert.strictEqual(video.body, 'b');
   assert.strictEqual(video.video_url, 'https://youtu.be/x'); assert.strictEqual(video.image_url, 'https://x.org/p.jpg');
 });
 

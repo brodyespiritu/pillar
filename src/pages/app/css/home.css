@@ -1,0 +1,336 @@
+/* ═══ Pillar → App → Home ═══
+ *
+ * Home's own styles (HomePage.jsx): the Cards | Shortcuts workspace, the four shortcut slots, and the Home phone (BethesdaApp screens/HomeScreen.js, components/HomeShortcuts.js, TimelyCard.js, AnnouncementsShelf.js, ChurchEvents.js).
+ *
+ * Pulled in by the @import lines at the top of ../appx.css, so the page needs no JS import (and its
+ * tests no new stubs). Everything here keeps the ax- prefix. The shared workspace, panes and fields
+ * live in ./base.css; the member app's own look for phone previews in ./phone.css (.ax-phone-app).
+ * base.css loads BEFORE this file, so a rule here with the same selector as a shared one wins on
+ * order alone (write the same selector, or add a class — never !important).
+ *
+ * Two halves: Pillar's own (blue — the list, the editor, the four shortcut forms), then the phone,
+ * where every number is the member app's own in points (1px = 1pt, scaled as one piece by PhoneFrame).
+ */
+
+/* ════════════════════ Pillar's side ════════════════════ */
+
+/* the list: where a card is on phones reads green when phones show it (Von Restorff: on = green) */
+.ax-home .ax-row-sub.ax-home-on { color: var(--ax-on); font-weight: 600; }
+.ax-home-foot { margin-bottom: 8px; font-size: 12.5px; line-height: 1.5; }
+
+/* The editor's head — everything that changes the card, beside it (Fitts). Row 1: the save state, the
+   On phones switch, Duplicate and Delete (and Back / Preview when the screen asks for them). Row 2: the
+   kind, as five small icons with their words (Hick: a glance, not five paragraphs of cards). The save
+   state and the kind are items of the head's own row (their wrappers step aside). The save state takes
+   whatever room row 1 has left and cuts its words short (…) rather than push the switch or Delete onto
+   another line: its whole text is in its title, the reason is spelled out in the line under the head,
+   and an error wraps instead, so its Try again stays in view. The kind always has a row of its own —
+   beside a long "Not saved — …" no editor is wide enough for both (it once shared row 1 from 860px up,
+   where it pushed the switch and Delete down). */
+.ax-home .ax-editor-status:has(> .ax-home-status), .ax-home-status { display: contents; }
+.ax-home .ax-editor-pane-head > .ax-grow { display: none; }
+.ax-home-save { flex: 1 1 0; min-width: 0; display: flex; align-items: center; }
+.ax-home-save > .ax-save { display: block; min-width: 0; min-height: 0; line-height: 1.45; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.ax-home-save > .ax-save .ax-dot { display: inline-block; margin-right: 8px; vertical-align: 1px; }
+.ax-home-save > .ax-save.error { white-space: normal; }
+.ax-seg.ax-home-kind { order: 10; flex: 1 1 100%; display: flex; flex-wrap: nowrap; }
+.ax-home-kind button { flex: 1 1 0; min-width: 0; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 8px; font-size: 13.5px; }
+.ax-home-kind button svg { flex-shrink: 0; }
+.ax-home-kind-word { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* a phone-width editor: icons only — each still read out, and named on hover */
+@container editor (max-width: 519px) {
+  .ax-home-kind-word { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+}
+
+/* right under the head: the kind picked, in words — what it looks like on phones now (recognition over
+   recall; the kind picker is described by it) — then where the card stands, beside the switch that
+   changes it (Fitts) */
+.ax-home-kind-hint { margin-bottom: 12px; font-size: 13.5px; line-height: 1.5; color: var(--ax-ink-3); }
+.ax-home-kind-hint strong { font-weight: 700; color: var(--ax-ink-2); }
+.ax-home-state {
+  display: flex; align-items: flex-start; gap: 10px; margin-bottom: 22px; padding: 10px 14px; border-radius: 12px;
+  background: var(--surface-2); font-size: 13.5px; line-height: 1.5; color: var(--ax-ink-2);
+}
+.ax-home-state::before { content: ''; flex: none; width: 8px; height: 8px; margin-top: 6px; border-radius: 50%; background: var(--ax-line-2); }
+.ax-home-state.on::before { background: var(--ax-on); }
+.ax-home-state.bad { background: var(--yellow-soft); color: #92400E; }
+.ax-home-state.bad::before { background: var(--yellow); }
+
+/* a card's buttons: each one a small box — its label, what it does, and where */
+.ax-home-btnrow { display: flex; flex-direction: column; gap: 8px; padding: 10px; border-radius: 14px; border: 1px solid var(--ax-line); background: var(--surface); }
+.ax-home-btnrow-top { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.ax-home-btnrow-top > .ax-input { flex: 1 1 120px; width: auto; min-width: 0; }
+.ax-home-btnrow-top > .ax-select { flex: 1 1 150px; width: auto; min-width: 0; }
+
+/* Shortcuts: all four at once, two by two (proximity: each box is one thing on the phone) */
+.ax-home-head-note { font-size: 13.5px; font-weight: 600; color: var(--ax-ink-2); }
+.ax-home-slots { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; align-items: start; }
+@container editor (min-width: 520px) {
+  .ax-home-slots { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+.ax-home-slot {
+  display: flex; flex-direction: column; gap: 16px; min-width: 0; padding: 18px; border-radius: 16px;
+  border: 1.5px solid var(--ax-line); background: var(--surface); transition: border-color 0.15s, box-shadow 0.15s;
+}
+/* the one clicked on the phone */
+.ax-home-slot.on { border-color: var(--ax-accent); box-shadow: 0 0 0 4px var(--ax-focus); }
+.ax-home-slot-head { display: flex; align-items: flex-start; gap: 12px; }
+.ax-home-slot-icon { flex: none; width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; background: var(--ax-pick); color: var(--ax-accent); }
+.ax-home-slot-names { flex: 1 1 auto; min-width: 0; }
+.ax-home-slot-name { font-size: 16px; font-weight: 800; letter-spacing: -0.2px; color: var(--ax-ink); }
+.ax-home-slot-opens { margin-top: 2px; font-size: 12.5px; line-height: 1.45; color: var(--ax-ink-3); }
+.ax-home-slot-head .ax-save { flex: 0 1 auto; min-width: 0; max-width: 50%; margin-top: 9px; }
+.ax-home-slot-fields { display: flex; flex-direction: column; gap: 16px; min-width: 0; margin: 0; padding: 0; border: 0; }
+.ax-home-slot-foot {
+  display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px 12px;
+  margin-top: auto; padding-top: 12px; border-top: 1px solid var(--ax-line);
+}
+.ax-home-slot-foot .ax-hint { font-size: 12.5px; }
+.ax-home-slots-hint { margin-top: 16px; }
+
+/* the preview: which Home (members or visitors, with how many cards each can get now), the phone,
+   then what it shows. The phone gives up a little height for the switch and the words under it. */
+.ax-home-preview { --ax-phone-chrome: 320px; }
+.ax-home-as { width: 100%; max-width: 320px; }
+.ax-home-as .ax-seg { display: flex; flex-wrap: nowrap; width: 100%; }
+.ax-home-as .ax-seg button { flex: 1 1 0; display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 0 10px; }
+.ax-home-as-n {
+  min-width: 22px; height: 20px; padding: 0 6px; border-radius: 999px; background: var(--ax-line);
+  font-size: 11.5px; font-weight: 800; line-height: 20px; text-align: center; color: var(--ax-ink-2); font-variant-numeric: tabular-nums;
+}
+.ax-home-as .ax-seg button.on .ax-home-as-n { background: var(--ax-on-soft); color: var(--ax-on); }
+.ax-home-open { align-self: center; }
+/* the card on top can't be opened (a tap does what its first button says): the words say so instead */
+.ax-hint.ax-home-top-note { font-size: 12.5px; line-height: 1.5; }
+
+/* ════════════════════ the phone: the app's Home screen, in points ════════════════════
+ *
+ * HomeScreen.js's geometry on a 393 × 852 phone (insets 59 / 34), worked out once here:
+ *   the photo      1320 × 1980 (assets/mainhero.jpg) → 393 / (2/3)            = 589.5 tall
+ *   headline       min(52, (393 − 2·32) / 6.15) = 52;  slot = round(52 × 1.12) = 58;  tracking −0.042em = −2.184
+ *   sermon card    thumb (393 − 2·20) × 9/16 = 198.5625;  card = 16 + 8 + thumb  = 222.5625
+ *                  top = 589.5 + CARD_HANG 128 − 222.5625                     = 494.9375
+ *   hero           round(494.9375 + 222.5625 / 2)                            = 606  (the photo runs on to it)
+ *   top shade      min(589.5, 852 × 0.48)                                    = 408.96
+ *   foot           from 606 × 0.45 = 272.7, blurred and darkened to 606      = 333.3 tall
+ *   headline top   row = 59 + 6 + 44 = 109; block = 58 + 52 + 26 + buttons (members 49, visitors 49·2 + 16)
+ *                  gap = max(20, (494.9375 − 109 − block) / 2) → members 209.47, visitors 176.97
+ *   hero buttons   headline top + 58 + 52 + 26                               → members 345.47, visitors 312.97
+ *   the section    SECTION_TOP 128 + 28 − (606 − 589.5)                      = 139.5 above the shortcuts
+ */
+.ax-home-screen { position: relative; }
+/* a visitor's profile button (ProfileButton.js, signed out): the same black glass widened to a pill with
+   "Sign in" (Geist 600 14), 13 in on the left, 15 on the right; it stays put while the page scrolls */
+.ax-home-float { position: sticky; top: 0; z-index: 40; height: 0; }
+.ax-home-signin {
+  position: absolute; top: 65px; right: 20px; display: inline-flex; align-items: center; gap: 7px; height: 44px;
+  padding: 0 15px 0 13px; border-radius: 22px; color: #FFFFFF; box-shadow: 0 8px 20px rgba(0, 0, 0, 0.18);
+}
+.ax-home-signin > .ax-pa-ui { font-size: 14px; font-weight: 600; line-height: 18px; color: rgba(255, 255, 255, 0.9); white-space: nowrap; }
+
+.ax-home-hero { position: relative; height: 606px; overflow: hidden; background: #171310; }
+/* the office's Home photo (Settings → Page photos); without one, the app's own church photo (below) */
+.ax-home-hero-photo { position: absolute; inset: 0; background: #171310 center / cover no-repeat; }
+.ax-home-hero-shade {
+  position: absolute; top: 0; left: 0; right: 0; height: 408.96px; pointer-events: none;
+  background: linear-gradient(180deg, rgba(10, 14, 20, 0.46) 0%, rgba(10, 14, 20, 0.22) 29.17%, rgba(10, 14, 20, 0.06) 62.5%, rgba(10, 14, 20, 0) 100%);
+}
+.ax-pa-blur.ax-home-hero-blur { height: 333.3px; }
+.ax-home-hero-foot {
+  position: absolute; left: 0; right: 0; top: 272.7px; bottom: 0; z-index: 2; pointer-events: none;
+  background: linear-gradient(180deg, rgba(10, 14, 20, 0) 0%, rgba(10, 14, 20, 0.3) 49%, rgba(10, 14, 20, 0.58) 100%);
+}
+
+/* "Hi Brody", signed in (HomeScreen.js s.greeting): Be Vietnam Pro 600 20 on the profile button's row —
+   65 down, 44 tall — from 32 on the left to the button's clearance on the right (20 + 44 + 10), white
+   with a soft shadow; one line, cut short with … */
+.ax-home-greeting {
+  position: absolute; top: 65px; left: 32px; right: 74px; z-index: 3; height: 44px; pointer-events: none;
+  font-size: 20px; font-weight: 600; line-height: 44px; letter-spacing: -0.3px; color: #FFFFFF;
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.35); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* "Where Every / Life Matters" — the website's hero words, Be Vietnam Pro 700, the middle word on a reel */
+.ax-home-headline { position: absolute; left: 32px; right: 32px; z-index: 3; pointer-events: none; }
+.ax-home-member .ax-home-headline { top: 209.47px; }
+.ax-home-visitor .ax-home-headline { top: 176.97px; }
+.ax-home-hl {
+  font-family: var(--ax-app-font); font-size: 52px; font-weight: 700; line-height: 58px; letter-spacing: -2.184px;
+  color: #FFFFFF; white-space: nowrap;
+}
+.ax-home-line { display: flex; align-items: flex-start; height: 58px; }
+.ax-home-reel { display: block; height: 58px; overflow: hidden; padding: 0 2.6px; margin: 0 -2.6px; }
+.ax-home-reel-in { display: flex; flex-direction: column; animation: ax-home-reel 6s infinite; }
+.ax-home-reel-in > span { display: block; height: 58px; }
+.ax-home-line2 { margin-top: -6px; }
+/* WordReel: hold a word 2.4s, slide up one slot in 0.6s on (.76, 0, .24, 1); the third word is the first
+   again, so the jump back is invisible */
+@keyframes ax-home-reel {
+  0%, 40% { transform: translateY(0); animation-timing-function: cubic-bezier(0.76, 0, 0.24, 1); }
+  50%, 90% { transform: translateY(-58px); animation-timing-function: cubic-bezier(0.76, 0, 0.24, 1); }
+  100% { transform: translateY(-116px); }
+}
+
+/* the website's hero pills, stacked 16 apart: white (FIND A GROUP, or VISIT) and, for visitors, the
+   outline FIND A GROUP — btn.lg, 33 in (20 for the outline), 13 / +1.5 uppercase */
+.ax-home-herobtns { position: absolute; left: 32px; z-index: 3; display: flex; flex-direction: column; align-items: flex-start; gap: 16px; }
+.ax-home-member .ax-home-herobtns { top: 345.47px; }
+.ax-home-visitor .ax-home-herobtns { top: 312.97px; }
+.ax-pa-btn.lg.ax-home-herobtn { padding: 0 33px; font-size: 13px; line-height: 17px; letter-spacing: 1.5px; }
+.ax-pa-btn.lg.ax-home-herobtn-line { padding: 0 20px; }
+
+/* the latest sermon, straddling the photo's edge: its label, a 16:9 picture with the scrim, the title
+   clear of the play disc (18 + 44 + 12 = 74 on the right) */
+.ax-home-sermon { position: absolute; left: 0; right: 0; top: 494.94px; z-index: 4; padding: 0 20px; }
+.ax-home-sermon-label {
+  margin-bottom: 8px; font-size: 11px; font-weight: 700; line-height: 16px; letter-spacing: 1.6px; text-transform: uppercase;
+  color: #FFFFFF; text-shadow: 0 1px 10px rgba(0, 0, 0, 0.4);
+}
+.ax-pa-pic.ax-home-sermon-thumb {
+  display: flex; flex-direction: column; justify-content: flex-end; height: 198.56px; border-radius: 12px;
+  background-color: #171310; box-shadow: 0 12px 34px rgba(0, 0, 0, 0.3);
+}
+.ax-home-sermon-title {
+  position: relative; z-index: 3; padding: 13px 74px 13px 15px; font-size: 14px; font-weight: 600; line-height: 18.2px;
+  letter-spacing: -0.14px; color: #FFFFFF; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+
+/* under the photo: the shortcuts, the one card (28 below), Announcements (44), What's Happening (44) */
+.ax-home-section { position: relative; min-height: 246px; padding-top: 139.5px; background: var(--ax-app-bg); }
+.ax-home-sc:focus-visible { outline: none; }
+.ax-home-sc:focus-visible .ax-pa-shortcut-disc { outline: 3px solid var(--accent, #006BFF); outline-offset: 3px; }
+/* a long word shrinks to fit its 74pt, down to 0.8 of 13.5, before it's cut short (HomeShortcuts.js
+   adjustsFontSizeToFit, minimumFontScale 0.8) — the page measures the word and sets --ax-sc-fit */
+.ax-home-sc .ax-pa-shortcut-word { font-size: calc(13.5px * var(--ax-sc-fit, 1)); }
+
+/* TimelyCard.js: a cream row card — a 64pt picture (corner 14), the words, the dark go disc */
+.ax-home-timely {
+  position: relative; display: flex; align-items: center; gap: 14px; margin: 28px 20px 0; padding: 14px;
+  border-radius: 20px; background: var(--ax-app-card);
+}
+.ax-home-timely-thumb {
+  flex: none; width: 64px; height: 64px; border-radius: 14px; overflow: hidden; display: grid; place-items: center;
+  background: var(--ax-app-bg) center / cover no-repeat; color: var(--ax-app-text);
+}
+.ax-home-timely-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+.ax-home-timely-kicker {
+  margin-bottom: 3px; font-size: 12px; font-weight: 600; line-height: 15px; letter-spacing: 1.1px; text-transform: uppercase;
+  color: var(--ax-app-text2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ax-home-timely-title {
+  font-size: 17px; font-weight: 700; line-height: 22px; letter-spacing: -0.3px; color: var(--ax-app-text);
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.ax-home-timely-sub { margin-top: 3px; font-size: 14px; line-height: 18px; color: var(--ax-app-text2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* a word not written yet, in the preview only */
+.ax-home-blank { color: var(--ax-app-text3); }
+/* Pillar's badge over the card: why phones don't show it */
+.ax-pa-flag.ax-home-flag { top: -12px; left: 16px; }
+
+/* AnnouncementsShelf.js: a row you swipe, 275 × 182 cards (0.78 of the gutter width, 0.66 tall), 12 apart,
+   the next one peeking in from the edge */
+.ax-home-ann { margin-top: 44px; }
+/* 6 above and below so the picked card's outline isn't cut by the row's own scroll */
+.ax-home-ann-row {
+  position: relative; display: flex; gap: 12px; margin: -6px 0; padding: 6px 20px; overflow-x: auto; overflow-y: hidden;
+  scrollbar-width: none; scroll-snap-type: x mandatory; scroll-padding: 0 20px;
+}
+.ax-home-ann-row::-webkit-scrollbar { display: none; }
+.ax-home-anncard {
+  position: relative; flex: none; width: 275px; height: 182px; border-radius: 20px; overflow: hidden;
+  display: flex; flex-direction: column; justify-content: flex-end; background: #171310 center / cover no-repeat; scroll-snap-align: start;
+}
+.ax-pa-blur.ax-home-anncard-blur { height: 55%; }
+.ax-home-anncard-shade {
+  position: absolute; inset: 0; z-index: 2; pointer-events: none;
+  background: linear-gradient(180deg, rgba(8, 11, 16, 0) 0%, rgba(8, 11, 16, 0.12) 35%, rgba(8, 11, 16, 0.62) 68%, rgba(8, 11, 16, 0.9) 100%);
+}
+/* not opened yet: the brand orange, ringed in white (every card is new to a phone that hasn't opened it) */
+.ax-home-anncard-dot {
+  position: absolute; top: 14px; left: 14px; z-index: 4; box-sizing: border-box; width: 12px; height: 12px;
+  border-radius: 50%; border: 2px solid #FFFFFF; background: var(--ax-app-orange);
+}
+.ax-home-anncard-words { position: relative; z-index: 3; display: flex; flex-direction: column; min-width: 0; padding: 16px; }
+.ax-home-anncard.video .ax-home-anncard-words { padding-right: 72px; }
+.ax-home-anncard-kicker {
+  margin-bottom: 4px; font-size: 12px; font-weight: 600; line-height: 15px; letter-spacing: 1.1px; text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.78); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ax-home-anncard-title {
+  font-size: 18px; font-weight: 700; line-height: 23px; letter-spacing: -0.3px; color: #FFFFFF;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.ax-home-anncard-title.ax-home-blank { color: rgba(255, 255, 255, 0.5); }
+.ax-home-anncard-sub { margin-top: 3px; font-size: 14px; line-height: 18px; color: rgba(255, 255, 255, 0.78); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* a card with no picture is the dark card itself, the same shape (no rim in the light look) */
+.ax-home-anncard.solid { background-image: none; }
+
+/* What's Happening on its cream band (36 above, 40 + 34 + 72 below for the dock), agenda cards 10 apart */
+.ax-home-happening { margin-top: 44px; padding: 36px 20px 146px; background: var(--ax-app-card); }
+.ax-home-agenda { display: flex; flex-direction: column; gap: 10px; }
+.ax-home-agenda-row { display: flex; align-items: center; gap: 14px; padding: 12px 14px 12px 12px; border-radius: 18px; background: var(--ax-app-raised); }
+.ax-home-agenda-tile {
+  flex: none; width: 54px; height: 58px; border-radius: 14px; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; background: var(--ax-app-card);
+}
+.ax-home-agenda-tile.today { background: var(--ax-app-pill); }
+.ax-home-agenda-top { font-size: 11.5px; font-weight: 600; line-height: 15px; letter-spacing: 1px; color: var(--ax-app-text2); }
+.ax-home-agenda-day { font-size: 22px; font-weight: 700; line-height: 26px; color: var(--ax-app-text); }
+.ax-home-agenda-tile.today .ax-home-agenda-top, .ax-home-agenda-tile.today .ax-home-agenda-day { color: var(--ax-app-pill-text); }
+.ax-home-agenda-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+.ax-home-agenda-title {
+  font-size: 17px; font-weight: 700; line-height: 22px; letter-spacing: -0.3px; color: var(--ax-app-text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ax-home-agenda-meta { margin-top: 3px; font-size: 14px; line-height: 18px; color: var(--ax-app-text2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ax-home-agenda-chev { color: var(--ax-app-text3); }
+.ax-home-hap-empty { font-size: 17px; line-height: 27px; color: var(--ax-app-text2); }
+/* while the calendar is read: the iPhone's small spinner (ActivityIndicator, 20pt) in C.text2 where the
+   events will be, at the left (HomeScreen.js) — eight spokes, turning a spoke at a time */
+.ax-home-spin { display: block; align-self: flex-start; width: 20px; height: 20px; color: var(--ax-app-text2); }
+.ax-home-spin svg { display: block; animation: ax-home-spin 0.8s steps(8) infinite; }
+.ax-home-spin line { stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; }
+@keyframes ax-home-spin { to { transform: rotate(360deg); } }
+
+/* a card opened (AnnouncementSheet in BottomSheet.js): the white sheet over the scrim, 12 under the
+   status bar at most, its handle, the close circle, the kicker and 32pt title (SignInUI.js Header), the
+   picture (corner 16), the lead, the words and the two buttons — 18 + the home bar's 34 under them */
+.ax-pa-scrim.ax-home-sheetwrap { padding-top: 71px; }
+.ax-pa-sheet.ax-home-sheet { max-height: 100%; overflow-y: auto; padding-bottom: 52px; scrollbar-width: none; cursor: default; }
+.ax-home-sheet::-webkit-scrollbar { display: none; }
+.ax-home-sheet-head { padding: 4px 24px 0; }
+.ax-home-sheet-bar { display: flex; justify-content: space-between; margin: 0 -8px 16px; }
+.ax-home-sheet-spacer { width: 40px; height: 40px; }
+.ax-home-sheet-close { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; background: var(--ax-app-card); color: var(--ax-app-text); }
+.ax-home-sheet-kicker {
+  margin-bottom: 10px; font-size: 11.5px; font-weight: 700; line-height: 14px; letter-spacing: 1.6px; text-transform: uppercase;
+  color: var(--ax-app-text2);
+}
+.ax-home-sheet-title { font-size: 32px; font-weight: 700; line-height: 38px; letter-spacing: -1.1px; color: var(--ax-app-text); overflow-wrap: anywhere; }
+.ax-home-sheet-title.ax-home-blank { color: var(--ax-app-text3); }
+.ax-home-sheet-body { padding: 0 24px 8px; }
+/* the picture 16:9 across the sheet's inside, rounded as the app rounds it: Math.round(345 × 9 / 16) = 194 */
+.ax-home-sheet-pic { position: relative; height: 194px; margin-bottom: 16px; border-radius: 16px; overflow: hidden; background: var(--ax-app-line) center / cover no-repeat; }
+.ax-home-sheet-lead { margin: 0 0 10px; font-size: 17px; font-weight: 600; line-height: 24px; color: var(--ax-app-text); overflow-wrap: anywhere; }
+.ax-home-sheet-text { margin: 0 0 18px; font-size: 17px; line-height: 26px; color: var(--ax-app-text2); white-space: pre-wrap; overflow-wrap: anywhere; }
+.ax-pa-btn.lg.ax-home-sheet-btn { margin-top: 10px; font-size: 14px; letter-spacing: 1.5px; }
+/* the second button: the outline pill in the page's own ink, C.text — not the dark pill's (SignInUI.js
+   SecondaryButton: borderColor C.text, its word C.text) */
+.ax-pa-btn.outline.ax-home-sheet-btn { border-color: var(--ax-app-text); color: var(--ax-app-text); }
+
+/* ═══ the photos that come with the app, where the office gave none ═══
+   Each is the app's own file, byte for byte, in ./img: community.jpg (assets/home/community.jpg — the
+   plate card's photo, and the latest post's until the office gives it one: TimelyCard.js DINNER_PHOTO),
+   mainhero.jpg (assets/mainhero.jpg — the church: Home's photo, the sermon card's stand-in, a featured
+   event's last resort), welcome.jpg (assets/home/welcome.jpg — the welcome card: WELCOME_PHOTO), and
+   mac.jpg / lyn-class.jpg (assets/events — ChurchEvents.js's room and title photos). Every box that
+   takes one is `center / cover`, as the app's resizeMode="cover". */
+.ax-home-screen .ax-home-photo-community { background-image: url('./img/community.jpg'); }
+.ax-home-screen .ax-home-photo-hero { background-image: url('./img/mainhero.jpg'); }
+.ax-home-screen .ax-home-photo-welcome { background-image: url('./img/welcome.jpg'); }
+.ax-home-screen .ax-home-photo-mac { background-image: url('./img/mac.jpg'); }
+.ax-home-screen .ax-home-photo-lyn { background-image: url('./img/lyn-class.jpg'); }
+
+@media (prefers-reduced-motion: reduce) {
+  .ax-home-reel-in, .ax-home-spin svg { animation: none; }
+}

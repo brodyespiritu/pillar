@@ -24,6 +24,15 @@
       ],
       "port": 8083,
       "autoPort": false
+    },
+    {
+      "name": "pillar-fixtures",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev:fixtures"
+      ],
+      "port": 1422
     }
   ]
 }

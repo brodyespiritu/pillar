@@ -1,0 +1,79 @@
+/* Member requests on Home — what members asked for from their profile in the app. Pillar's own blue,
+   roomy rows, one click to open, one to approve. */
+
+.mr {
+  width: 100%; max-width: 720px; margin: 28px auto 0; text-align: left;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 20px;
+  box-shadow: 0 12px 32px rgba(11, 53, 88, 0.1);
+  padding: 18px 18px 12px;
+}
+.mr-head { display: flex; align-items: center; gap: 10px; padding: 0 6px 12px; }
+.mr-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--accent, #1D6FE0); flex-shrink: 0; }
+.mr-title { margin: 0; font-size: 17px; font-weight: 800; color: var(--text); }
+.mr-count { margin-left: auto; font-size: 13px; font-weight: 700; color: var(--text-3); }
+
+.mr-list { display: flex; flex-direction: column; gap: 2px; }
+.mr-row {
+  display: flex; align-items: center; gap: 12px; width: 100%; padding: 12px 10px;
+  border: none; border-radius: 14px; background: transparent; text-align: left; cursor: pointer;
+}
+.mr-row:hover { background: var(--surface-2); }
+.mr-row:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(0, 107, 255, 0.2); }
+.mr-tag {
+  flex-shrink: 0; padding: 3px 9px; border-radius: 999px;
+  font-size: 11px; font-weight: 800; letter-spacing: 0.6px; text-transform: uppercase;
+  background: rgba(29, 111, 224, 0.12); color: #1558B8;
+}
+.mr-tag.del { background: rgba(217, 45, 32, 0.1); color: #B42318; }
+.mr-main { flex: 1; min-width: 0; display: block; }
+.mr-name { display: block; font-size: 15px; font-weight: 700; color: var(--text); }
+.mr-sum {
+  display: block; margin-top: 2px; font-size: 13.5px; color: var(--text-2);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.mr-since { flex-shrink: 0; font-size: 12.5px; color: var(--text-3); }
+.mr-err { margin: 8px 10px 4px; font-size: 13px; color: var(--red, #B42318); }
+
+/* one request, whole */
+.mr-scrim {
+  position: fixed; inset: 0; z-index: 200; display: flex; align-items: center; justify-content: center;
+  padding: 24px; background: rgba(8, 20, 34, 0.45);
+}
+.mr-card {
+  width: 100%; max-width: 520px; max-height: 86vh; overflow-y: auto; text-align: left;
+  background: var(--surface); border-radius: 24px; padding: 24px 26px 22px;
+  box-shadow: 0 24px 60px rgba(8, 20, 34, 0.3);
+}
+.mr-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
+.mr-who { margin: 10px 0 2px; font-size: 22px; font-weight: 800; color: var(--text); }
+.mr-when { margin: 0; font-size: 13px; color: var(--text-3); }
+.mr-x {
+  width: 34px; height: 34px; border-radius: 10px; border: none; background: var(--surface-2);
+  color: var(--text-2); cursor: pointer; display: flex; align-items: center; justify-content: center;
+}
+.mr-said { margin: 0 0 18px; font-size: 16px; line-height: 1.5; color: var(--text); white-space: pre-wrap; }
+
+.mr-changes { margin: 0 0 18px; display: flex; flex-direction: column; gap: 10px; }
+.mr-change { display: grid; grid-template-columns: 80px 1fr; gap: 12px; align-items: baseline; }
+.mr-change dt { font-size: 13px; font-weight: 700; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.5px; }
+.mr-change dd { margin: 0; font-size: 16px; color: var(--text); display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
+.mr-from { color: var(--text-3); text-decoration: line-through; }
+.mr-arrow { color: var(--text-3); }
+.mr-arrow.big { font-size: 22px; align-self: center; }
+
+.mr-photos { display: flex; align-items: center; gap: 16px; margin: 0 0 18px; }
+.mr-photo { margin: 0; text-align: center; }
+.mr-photo img, .mr-photo-none {
+  width: 96px; height: 96px; border-radius: 50%; object-fit: cover; display: flex;
+  align-items: center; justify-content: center; background: var(--surface-2); color: var(--text-3); font-size: 13px;
+}
+.mr-photo figcaption { margin-top: 6px; font-size: 12.5px; color: var(--text-3); }
+
+.mr-actions { display: flex; gap: 10px; }
+.mr-btn {
+  min-height: 46px; padding: 0 22px; border-radius: 999px; border: 1.5px solid var(--border);
+  background: var(--surface); color: var(--text); font-size: 15px; font-weight: 700; cursor: pointer;
+}
+.mr-btn.primary { background: var(--accent, #1D6FE0); border-color: transparent; color: #fff; }
+.mr-btn:disabled { opacity: 0.55; cursor: default; }
+.mr-note { margin: 14px 0 0; font-size: 13px; line-height: 1.45; color: var(--text-3); }

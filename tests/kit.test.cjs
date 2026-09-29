@@ -175,13 +175,56 @@ function Page({ show = true }) {
     assert.deepStrictEqual(picks, ['b', 'c']);
     await act(async () => { const ev = { ...me(1), key: 'ArrowUp', altKey: true }; opts[2].props.onKeyDown(ev); });
     assert.deepStrictEqual(order, ['a', 'c', 'b']);
-    const box = { getBoundingClientRect: () => ({ top: 0, height: 60 }) };
-    const dt = { setData() {}, effectAllowed: '', dropEffect: '' };
-    await act(async () => { opts[2].props.onDragStart({ dataTransfer: dt }); });
-    await act(async () => { list.root.findAll((n) => n.props && n.props.role === 'option')[0].props.onDragOver({ preventDefault() {}, dataTransfer: dt, clientY: 5, currentTarget: box }); });
-    assert.ok(list.root.findAll((n) => n.props && n.props.role === 'option')[0].props.className.includes('drop-above'));
-    await act(async () => { list.root.findAll((n) => n.props && n.props.role === 'option')[0].props.onDrop({ preventDefault() {} }); });
-    assert.deepStrictEqual(order, ['c', 'a', 'b']);
+    // dragging runs on pointer events (mouse, finger, pen) — the browser's own drag and drop never
+    // reordered Home's cards for the office (2026-09-21)
+    const now = () => list.root.findAll((n) => n.props && n.props.role === 'option');
+    const box = (top) => ({ getBoundingClientRect: () => ({ top, height: 60 }) });
+    const at = (sel) => ({ closest: (q) => (q.split(',').map((x) => x.trim()).includes(sel) ? {} : null) });
+    const plain = { closest: () => null };
+    const ptr = (row, type, y, extra = {}) => ({ pointerId: 1, pointerType: 'mouse', button: 0, clientY: y, target: plain,
+      currentTarget: box(row * 60), preventDefault() {}, ...extra });
+    // a mouse: press on "c", move a little (still a click), then up past "a"'s middle
+    await act(async () => { now()[2].props.onPointerDown(ptr(2, 'down', 150)); });
+    await act(async () => { now()[2].props.onPointerMove(ptr(2, 'move', 152)); });
+    assert.ok(!now()[2].props.className.includes('dragging'), 'a few pixels is still a click');
+    await act(async () => { now()[2].props.onPointerMove(ptr(2, 'move', 130)); });
+    assert.ok(now()[2].props.className.includes('dragging'), 'further, and it is dragging');
+    await act(async () => { now()[0].props.onPointerMove(ptr(0, 'move', 5)); });
+    assert.ok(now()[0].props.className.includes('drop-above'), 'the line shows where it lands');
+    const pickedBefore = picks.length;
+    await act(async () => { now()[0].props.onPointerUp(ptr(0, 'up', 5)); });
+    assert.deepStrictEqual(order, ['c', 'a', 'b'], 'dropped above "a"');
+    await act(async () => { now()[0].props.onClick(); });
+    assert.strictEqual(picks.length, pickedBefore, 'the click that ends a drag doesn\'t pick a row');
+    await new Promise((res) => setTimeout(res, 5));
+    // a finger: only the handle drags (so a swipe on the row scrolls), and a row held by its switch stays put
+    order = null;
+    await act(async () => { now()[0].props.onPointerDown(ptr(0, 'down', 30, { pointerType: 'touch' })); });
+    await act(async () => { now()[0].props.onPointerMove(ptr(0, 'move', 150, { pointerType: 'touch' })); });
+    assert.ok(!now()[0].props.className.includes('dragging'), 'a finger on the row itself scrolls the page');
+    await act(async () => { now()[0].props.onPointerUp(ptr(0, 'up', 150, { pointerType: 'touch' })); });
+    let released = 0;
+    const grip = { ...at('.ax-grip'), releasePointerCapture: () => { released++; } };
+    await act(async () => { now()[0].props.onPointerDown(ptr(0, 'down', 30, { pointerType: 'touch', target: grip })); });
+    assert.strictEqual(released, 1, 'the finger is let go, so the rows under it hear it move');
+    await act(async () => { now()[0].props.onPointerMove(ptr(0, 'move', 60, { pointerType: 'touch' })); });
+    await act(async () => { now()[2].props.onPointerMove(ptr(2, 'move', 170, { pointerType: 'touch' })); });
+    assert.ok(now()[2].props.className.includes('drop-below'));
+    await act(async () => { now()[2].props.onPointerUp(ptr(2, 'up', 170, { pointerType: 'touch' })); });
+    assert.deepStrictEqual(order, ['b', 'c', 'a'], 'the handle drags on a touch screen: "a" below "c"');
+    order = null;
+    await act(async () => { now()[1].props.onPointerDown(ptr(1, 'down', 90, { target: at('button') })); });
+    await act(async () => { now()[1].props.onPointerMove(ptr(1, 'move', 10)); });
+    assert.ok(!now()[1].props.className.includes('dragging'), 'pressing the switch never starts a drag');
+    await act(async () => { now()[1].props.onPointerUp(ptr(1, 'up', 10)); });
+    assert.strictEqual(order, null);
+    // let go of the pointer somewhere else entirely, and cancel: nothing moves on a cancel
+    await act(async () => { now()[2].props.onPointerDown(ptr(2, 'down', 150)); });
+    await act(async () => { now()[2].props.onPointerMove(ptr(2, 'move', 120)); });
+    await act(async () => { now()[1].props.onPointerMove(ptr(1, 'move', 65)); });
+    await act(async () => { now()[1].props.onPointerCancel(ptr(1, 'cancel', 65)); });
+    assert.strictEqual(order, null, 'a cancelled drag moves nothing');
+    assert.ok(!now().some((n) => /dragging|drop-/.test(n.props.className)), 'and leaves no marks');
     list.unmount();
   });
 
