@@ -28,7 +28,7 @@ const ITEMS = [
   { to: '/cares',    icon: P.heart,    label: 'Cares' },
   { to: '/calendar', icon: P.calendar, label: 'Calendar' },
   { to: '/sms',      icon: P.chat,     label: 'SMS' },
-  { to: '/members',  icon: P.person,   label: 'Members' },
+  { to: '/members',  icon: P.person,   label: 'Directory' },
 ];
 
 export default function MobileNav() {

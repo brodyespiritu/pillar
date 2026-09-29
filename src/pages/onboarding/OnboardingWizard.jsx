@@ -18,7 +18,7 @@ const HOME_MODULES = [
   { key: 'cares', label: 'Care List' }, { key: 'guests', label: 'Guest List' },
   { key: 'calendar', label: 'Calendar' }, { key: 'services', label: 'Services' },
   { key: 'email', label: 'Email' }, { key: 'sms', label: 'SMS' },
-  { key: 'members', label: 'Members' }, { key: 'attendance', label: 'Attendance' },
+  { key: 'members', label: 'Directory' }, { key: 'attendance', label: 'Attendance' },
   { key: 'admin', label: 'Admin' },
 ];
 const labelFor = k => HOME_MODULES.find(m => m.key === k)?.label || k;

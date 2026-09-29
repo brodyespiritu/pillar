@@ -41,6 +41,21 @@ export function composeFullName(first, last, spouse, family = []) {
   return kids.length ? `${base}. ${kids.join(', ')}` : base;
 }
 
+/*
+ * composeFullName read back: "First + Spouse, Last. with son Tim (5)" into its
+ * parts. The children are cut off at ". with ", which is what composeFullName
+ * writes before them, rather than at the first full stop, so a name with an
+ * initial in it ("John D., Smith") keeps its surname.
+ */
+export function parseGuestName(full = '') {
+  const [namePart] = String(full || '').split(/\.\s+with\s/i);
+  const comma = namePart.lastIndexOf(',');
+  const last = comma !== -1 ? namePart.slice(comma + 1).trim() : '';
+  const left = comma !== -1 ? namePart.slice(0, comma) : namePart;
+  const plus = left.split('+');
+  return { first: (plus[0] || '').trim(), spouse: (plus[1] || '').trim(), last };
+}
+
 /* ── Grade levels, narrowed to the school that was chosen ── */
 const ALL_GRADES = ['Pre-K', 'K', '1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th', '9th', '10th', '11th', '12th'];
 

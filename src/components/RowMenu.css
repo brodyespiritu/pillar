@@ -1,0 +1,37 @@
+/* The three dots: quiet until the row is pointed at or the list is open. */
+.rm-btn {
+  width: 32px; height: 32px; border-radius: 8px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: none; background: none; color: var(--text-3); cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+tr:hover .rm-btn { color: var(--text-2); }
+/* A ring rather than a fill: the row behind is already tinted while it is
+   pointed at, and a fill in that tint would not show. */
+.rm-btn:hover, .rm-btn.open {
+  background: var(--surface); color: var(--text); box-shadow: inset 0 0 0 1px var(--border);
+}
+.rm-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* The list — the same material as the profile's ⋯ menu (.mp2-menu). */
+.rm-menu {
+  position: fixed; z-index: 450;
+  min-width: 214px; padding: 6px;
+  display: flex; flex-direction: column;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 12px; box-shadow: var(--shadow-md);
+  animation: rm-in 0.12s ease-out;
+}
+.rm-item {
+  display: flex; align-items: center; gap: 11px;
+  padding: 10px 12px; border: none; border-radius: 8px; background: none;
+  font-size: 14px; font-weight: 500; color: var(--text);
+  text-align: left; white-space: nowrap; cursor: pointer;
+}
+.rm-item svg { color: var(--text-3); flex-shrink: 0; }
+.rm-item:hover, .rm-item:focus-visible { background: var(--surface-2); outline: none; }
+.rm-item.danger, .rm-item.danger svg { color: var(--red); }
+.rm-item.danger:hover, .rm-item.danger:focus-visible { background: var(--red-soft); }
+
+@keyframes rm-in { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .rm-menu { animation: none; } }

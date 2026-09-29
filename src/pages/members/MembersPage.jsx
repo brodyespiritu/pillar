@@ -171,10 +171,10 @@ export default function MembersPage() {
   const inactiveCount = useMemo(() => data.rows.filter(isInactive).length, [data.rows]);
   const rows = useMemo(() => {
     const q = search.trim().toLowerCase();
-    // Prospects live off to the side — only the explicit filter shows them.
-    /* Prospects sit in the directory with a badge — hiding them meant 119
-       imported people were invisible with no hint why. Inactive still steps
-       out of the way, and each still has its own filter. */
+    /* Prospects sit in the directory with everyone else, a Prospect pill on
+       their picture — hiding them meant 119 imported people were invisible
+       with no hint why. Inactive still steps out of the way, and each still
+       has its own filter. */
     let out = groupFilter === '__prospects' ? data.rows.filter(isHiddenProspect)
       : groupFilter === '__inactive'  ? data.rows.filter(isInactive)
       : data.rows.filter(m => !isInactive(m));
@@ -216,13 +216,13 @@ export default function MembersPage() {
           ) : (<>
             <header className="mbr-hero">
               <span className="mbr-pill">My Church</span>
-              <h1 className="mbr-title">Members</h1>
-              <p className="mbr-subtitle">Your congregation directory — search, view, and keep everyone's details up to date.</p>
+              <h1 className="mbr-title">Directory</h1>
+              <p className="mbr-subtitle">Everyone in the church, members and prospects — search, view, and keep everyone's details up to date.</p>
 
               <div className="mbr-search-row">
                 <div className="mbr-search">
                   <Icon d={P.search} size={18} className="mbr-search-icon" />
-                  <input placeholder="Search members by name, phone, or email…" value={search} onChange={e => setSearch(e.target.value)} />
+                  <input placeholder="Search by name, phone, or email…" value={search} onChange={e => setSearch(e.target.value)} />
                 </div>
                 <div className="mbr-groupfilter">
                   <Icon d={P.users} size={16} className="mbr-groupfilter-ic" />
@@ -264,7 +264,7 @@ export default function MembersPage() {
             ) : rows.length === 0 ? (
               <div className="mbr-empty-state">
                 <div className="mbr-empty-icon"><Icon d={P.person} size={28} /></div>
-                <p className="mbr-empty-title">{search ? 'No members match your search' : 'No members yet'}</p>
+                <p className="mbr-empty-title">{search ? 'Nobody matches your search' : 'Nobody in the directory yet'}</p>
                 <p className="mbr-empty-sub">{search ? 'Try a different name or number.' : 'Add your first member to get started.'}</p>
               </div>
             ) : (<>
@@ -311,13 +311,15 @@ function MemberCard({ member, onOpen }) {
       <div className="mbr-card-top">
         <div className="mbr-card-headtext">
           <h3 className="mbr-card-name">{member.name}</h3>
-          {isHiddenProspect(member) && <span className="mbr-status prospect">Prospect</span>}
           {member.status === 'Inactive' && <span className="mbr-status">Inactive</span>}
         </div>
-        <div className="mbr-avatar">
-          {member.photo_url
-            ? <img src={member.photo_url} alt={member.name} />
-            : <span>{initials(member.name)}</span>}
+        <div className="mbr-avwrap">
+          <div className="mbr-avatar">
+            {member.photo_url
+              ? <img src={member.photo_url} alt={member.name} />
+              : <span>{initials(member.name)}</span>}
+          </div>
+          {isHiddenProspect(member) && <span className="mbr-ppill">Prospect</span>}
         </div>
       </div>
       <p className="mbr-card-meta">{meta || 'No contact info'}</p>
@@ -350,8 +352,11 @@ function MemberProfile({ member, onNewHousehold, allRows = [], onOpenMember, onC
 
       {/* Header */}
       <div className="mp2-header">
-        <div className="mp2-photo">
-          {member.photo_url ? <img src={member.photo_url} alt={member.name} /> : <span>{initials(member.name)}</span>}
+        <div className="mbr-avwrap">
+          <div className="mp2-photo">
+            {member.photo_url ? <img src={member.photo_url} alt={member.name} /> : <span>{initials(member.name)}</span>}
+          </div>
+          {isHiddenProspect(member) && <span className="mbr-ppill lg">Prospect</span>}
         </div>
         <div className="mp2-headinfo">
           <div className="mp2-nameRow">

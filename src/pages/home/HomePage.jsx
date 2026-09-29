@@ -58,7 +58,7 @@ export default function HomePage() {
     { key: 'services',   title: 'Services',   sub: 'Plan your Sunday service', pill: 'Plan',                                                   kw: 'services sunday service plan flow', onClick: () => navigate('/services') },
     { key: 'email',      title: 'Email',      sub: 'Inbox & compose',          pill: 'Inbox',                                                  kw: 'email inbox compose mail', onClick: () => navigate('/email') },
     { key: 'sms',        title: 'SMS',        sub: 'Text the congregation',    pill: 'Broadcast',                                              kw: 'sms text broadcast message', onClick: () => navigate('/sms') },
-    { key: 'members',    title: 'Members',    sub: 'Congregation directory',   pill: memberCount ? `${memberCount} members` : 'Directory',     kw: 'members directory congregation', onClick: () => navigate('/members') },
+    { key: 'members',    title: 'Directory',  sub: 'Members and prospects',    pill: memberCount ? `${memberCount} people` : 'Directory',     kw: 'members directory congregation prospects', onClick: () => navigate('/members') },
     { key: 'attendance', title: 'Attendance', sub: 'Worship-center map',       pill: latest.total ? `≈ ${latest.total} last time` : 'Map',     kw: 'attendance worship map heat', onClick: () => setMapOpen(true) },
     { key: 'admin',      title: 'Admin',      sub: 'Staff, settings & tools',  pill: 'Manage',                                                 kw: 'admin staff settings tools', onClick: () => navigate('/admin') },
   ], [care.active, gstats.prospects, weekEvents, memberCount, latest.total, navigate]);

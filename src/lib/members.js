@@ -381,11 +381,13 @@ export async function importMembers(rows) {
  */
 const FETCH_PAGE = 1000;
 
-export async function fetchChurchMembers() {
+/* `columns` narrows the read for callers that only match against the list,
+   so they are not handed everyone's photo. */
+export async function fetchChurchMembers(columns = '*') {
   const rows = [];
   for (let from = 0; ; from += FETCH_PAGE) {
     const { data, error } = await supabase
-      .from('church_members').select('*')
+      .from('church_members').select(columns)
       .order('name').order('id')
       .range(from, from + FETCH_PAGE - 1);
     // Failing mid-way would silently truncate again, which is the bug itself.

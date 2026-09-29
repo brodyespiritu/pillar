@@ -11,6 +11,7 @@ import './TopNav.css';
 const PAGE_LABELS = {
   '/': 'Home', '/cares': 'Care List', '/guests': 'Guest List',
   '/calendar': 'Calendar', '/email': 'Email', '/admin': 'Admin', '/rsvps': 'RSVP',
+  '/members': 'Directory',
 };
 
 const NAV_MENUS = {
@@ -20,7 +21,7 @@ const NAV_MENUS = {
       items: [
         { icon: P.heart,  name: 'Care List',  sub: 'Track pastoral care & visits', to: '/cares', actions: ['Add Care Visit', 'Update Member', 'Edit Member', 'View All'] },
         { icon: P.users,  name: 'Guest List', sub: 'Manage visitors and guests', to: '/guests', actions: ['Add Guest', 'Send Welcome Email', 'Export List', 'View All'] },
-        { icon: P.person, name: 'Members',    sub: 'Congregation directory', to: '/members', actions: ['Add Member', 'Edit Member', 'View All'] },
+        { icon: P.person, name: 'Directory',  sub: 'Members and prospects', to: '/members', actions: ['Add Member', 'Edit Member', 'View All'] },
         { icon: P.shield, name: 'Admin',      sub: 'Dashboard & controls', to: '/admin', actions: ['View Dashboard', 'App Settings', 'Audit Log', 'View All'] },
       ],
     },

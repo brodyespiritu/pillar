@@ -118,9 +118,9 @@ function MembersBody({ size, d, onOpen }) {
     <>
       <div className="hw-search" onClick={stop}>
         <Icon d={P.search} size={14} />
-        <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search members…" />
+        <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search the directory…" />
       </div>
-      {list.length === 0 ? <p className="hw-calm">{q ? 'No matches.' : 'No members yet.'}</p> : (
+      {list.length === 0 ? <p className="hw-calm">{q ? 'No matches.' : 'Nobody in the directory yet.'}</p> : (
         <div className="hw-rows">
           {list.map(m => (
             <button key={m.id} className="hw-row hw-rowbtn" onClick={e => { stop(e); onOpen(m); }}>
@@ -143,7 +143,7 @@ function StatBody({ type, d }) {
     cares:      { n: d.care.active, label: 'in care' },
     calendar:   { n: d.weekEvents, label: 'this week' },
     guests:     { n: d.gstats.prospects, label: 'to follow up' },
-    members:    { n: d.memberCount, label: 'members' },
+    members:    { n: d.memberCount, label: 'people' },
     email:      { n: null, label: 'Read & compose' },
     sms:        { n: null, label: 'Text everyone' },
     attendance: { n: d.latest.total ? `≈${d.latest.total}` : '—', label: 'last gathering' },

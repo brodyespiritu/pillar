@@ -121,8 +121,22 @@
 .mbr-card-headtext { display: flex; flex-direction: column; gap: 6px; min-width: 0; padding-top: 2px; }
 .mbr-card-name { font-size: 22px; font-weight: 700; color: var(--text); letter-spacing: -0.5px; line-height: 1.2; }
 .mbr-status { align-self: flex-start; font-size: 11px; font-weight: 600; color: var(--text-2); background: var(--surface-2); padding: 2px 9px; border-radius: 999px; }
-/* Prospects live in the directory now — the badge is what tells them apart. */
-.mbr-status.prospect { color: var(--accent); background: var(--accent-soft); }
+
+/* Prospects sit in the directory with everyone else; the pill on the corner of
+   their picture is what tells them apart. Teal, the Guests page's colour for a
+   prospect, and not blue, which is the picture's own colour. The ring is the
+   colour of whatever is behind, so the pill reads as sitting on the picture. */
+.mbr-avwrap { position: relative; flex-shrink: 0; }
+.mbr-ppill {
+  position: absolute; right: -20px; bottom: -5px;
+  padding: 4px 7px; border-radius: 999px;
+  font-size: 10.5px; font-weight: 700; line-height: 1; letter-spacing: 0.01em; white-space: nowrap;
+  color: #fff; background: #0F766E;
+  box-shadow: 0 0 0 2px var(--surface);
+  pointer-events: none;
+}
+.mbr-card:hover .mbr-ppill { box-shadow: 0 0 0 2px var(--surface-2); }
+.mbr-ppill.lg { right: -12px; bottom: -9px; padding: 6px 11px; font-size: 13px; box-shadow: 0 0 0 3px var(--bg); }
 
 .mbr-avatar {
   width: 52px; height: 52px; border-radius: 50%; flex-shrink: 0; overflow: hidden;

@@ -70,7 +70,7 @@ export const MODULES = [
   { key: 'cares',      label: 'Cares' },
   { key: 'guests',     label: 'Guests' },
   { key: 'calendar',   label: 'Calendar' },
-  { key: 'members',    label: 'Members' },
+  { key: 'members',    label: 'Directory' },
   { key: 'email',      label: 'Email' },
   { key: 'sms',        label: 'SMS' },
   { key: 'attendance', label: 'Attendance' },

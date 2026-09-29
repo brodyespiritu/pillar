@@ -1,7 +1,9 @@
 import { confirmDialog, alertDialog } from "../../lib/dialog";
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import TopNav from '../../components/TopNav';
+import RowMenu from '../../components/RowMenu';
+import { flashSaved } from '../../lib/flash';
 import { P, Icon } from '../../lib/icons';
 import {
   fetchGuests, deleteGuests, saveGuest, computeGuestStats,
@@ -16,6 +18,7 @@ import NewConnectionModal from './NewConnectionModal';
 import TextProspectsModal from './TextProspectsModal';
 import ConversationsModal from './ConversationsModal';
 import EmailTemplatePicker from './EmailTemplatePicker';
+import TransferToDirectory from './TransferToDirectory';
 import { buildGuestsDoc, buildProspectsDoc } from './guestPdf';
 import { buildCareDoc } from '../care/pdfExport';
 import { fetchMembers as fetchCareMembers } from '../../lib/care';
@@ -44,6 +47,7 @@ const COLUMNS = [
 
 export default function GuestsPage() {
   const location = useLocation();
+  const navigate = useNavigate();
   const [guests, setGuests]   = useState([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab]         = useState(location.state?.prospect ? 'prospects' : 'guests'); // guests | prospects
@@ -62,6 +66,7 @@ export default function GuestsPage() {
   const [emailOpen, setEmailOpen] = useState(false);
   const [commentOpen, setCommentOpen] = useState(false);
   const [connectOpen, setConnectOpen] = useState(false);
+  const [transfer, setTransfer] = useState(null);   // the guest being transferred to the directory
   const [weekView, setWeekView] = useState(null);   // null = this week, else a past week's start
   const [preview, setPreview] = useState(null);     // { html, filename, heading }
   const [exportPick, setExportPick] = useState(false);   // which export?
@@ -213,6 +218,20 @@ export default function GuestsPage() {
     if (!ok) return;
     const { error } = await saveGuest({ ...g, type: 'Prospect', not_prospect: false });
     if (error) return alertDialog(`Could not move ${g.full_name}: ${error.message}`);
+    load();
+  }
+
+  async function removeGuest(g) {
+    if (!(await confirmDialog({ message: `Delete ${g.full_name}?`, confirmLabel: 'Delete', danger: true }))) return;
+    await deleteGuests([g.id]);
+    load();
+  }
+
+  /* The entry stays on this list: its visits, notes and follow-up are still
+     worked from here. It is linked to the directory now, and says so. */
+  function onTransferred(res) {
+    setTransfer(null);
+    flashSaved(`In the directory as ${res.count === 1 ? `a ${res.type.toLowerCase()}` : `${res.type.toLowerCase()}s`}`);
     load();
   }
 
@@ -382,7 +401,10 @@ export default function GuestsPage() {
                       <td className="gp-check" onClick={e => e.stopPropagation()}>
                         <input type="checkbox" checked={selected.has(g.id)} onChange={() => toggleRow(g.id)} />
                       </td>
-                      <td className="gp-name" onClick={() => openEdit(g)}>{g.full_name}</td>
+                      <td className="gp-name" onClick={() => openEdit(g)}>
+                        {g.full_name}
+                        {g.member_id && <span className="gp-indir">In directory</span>}
+                      </td>
                       <td><span className="gp-badge" style={{ '--c': TYPE_COLORS[g.type] || '#6B7280' }}>{g.type}</span></td>
                       <td className="gp-muted">{g.phone || '—'}</td>
                       <td className="gp-muted">{g.email || '—'}</td>
@@ -390,16 +412,17 @@ export default function GuestsPage() {
                       <td className="gp-muted">{g.last_visit ? new Date(g.last_visit).toLocaleDateString() : '—'}</td>
                       <td><span className="gp-status" style={{ '--c': STATUS_COLORS[g.status] || '#6B7280' }}>{g.status}</span></td>
                       {showAddress && <td className="gp-muted">{g.address || '—'}</td>}
-                      <td className="gp-row-actions" onClick={e => e.stopPropagation()}>
-                        <button title="Edit" onClick={() => openEdit(g)}><Icon d={P.edit} size={15} /></button>
-                        {!isProspect(g) && (
-                          <button title="Move to prospects" onClick={() => makeProspect(g)}>
-                            <Icon d={P.location} size={15} />
-                          </button>
-                        )}
-                        <button title="Delete" onClick={async () => { if (await confirmDialog({ message: `Delete ${g.full_name}?` })) { await deleteGuests([g.id]); load(); } }}>
-                          <Icon d={P.trash} size={15} />
-                        </button>
+                      <td className="gp-row-menu" onClick={e => e.stopPropagation()}>
+                        <RowMenu label={`Actions for ${g.full_name}`} items={[
+                          { key: 'edit', label: 'Edit', icon: P.edit, onSelect: () => openEdit(g) },
+                          !isProspect(g) && { key: 'prospect', label: 'Move to prospects', icon: P.location, onSelect: () => makeProspect(g) },
+                          { key: 'transfer', label: 'Transfer to directory', icon: P.personAdd, onSelect: () => setTransfer(g) },
+                          g.member_id && {
+                            key: 'view', label: 'View in directory', icon: P.person,
+                            onSelect: () => navigate('/members', { state: { openMember: g.member_id } }),
+                          },
+                          { key: 'delete', label: 'Delete', icon: P.trash, danger: true, onSelect: () => removeGuest(g) },
+                        ]} />
                       </td>
                     </tr>
                   ))}
@@ -465,6 +488,7 @@ export default function GuestsPage() {
       {emailOpen && <EmailTemplatePicker guests={guests} onClose={() => setEmailOpen(false)} />}
       {commentOpen && <CommentModal onClose={() => setCommentOpen(false)} onSaved={() => setCommentOpen(false)} />}
       {connectOpen && <NewConnectionModal onClose={() => setConnectOpen(false)} onSaved={() => setConnectOpen(false)} />}
+      {transfer && <TransferToDirectory guest={transfer} onClose={() => setTransfer(null)} onDone={onTransferred} />}
     </div>
   );
 }

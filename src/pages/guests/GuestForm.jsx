@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { P, Icon } from '../../lib/icons';
 import { supabase } from '../../lib/supabase';
 import {
-  STATUSES, RELATIONS, composeFullName, saveGuest, TYPE_COLORS,
+  STATUSES, RELATIONS, composeFullName, parseGuestName, saveGuest, TYPE_COLORS,
   splitAddress, joinAddress, gradeOptions,
 } from '../../lib/guests';
 import { placeSuggest, placeDetails } from '../../lib/places';
@@ -11,22 +11,9 @@ import './Guests.css';
 
 const today = () => new Date().toISOString().slice(0, 10);
 
-function parseName(full = '') {
-  // best-effort split of "First + Spouse, Last. with ..."
-  const [namePart] = full.split('.');
-  let first = namePart, spouse = '', last = '';
-  const comma = namePart.lastIndexOf(',');
-  if (comma !== -1) { last = namePart.slice(comma + 1).trim(); }
-  const left = comma !== -1 ? namePart.slice(0, comma) : namePart;
-  const plus = left.split('+');
-  first = (plus[0] || '').trim();
-  spouse = (plus[1] || '').trim();
-  return { first, last, spouse };
-}
-
 export default function GuestForm({ type, guest, onClose, onSaved }) {
   const editing = !!guest;
-  const parsed = editing ? parseName(guest.full_name) : { first: '', last: '', spouse: '' };
+  const parsed = editing ? parseGuestName(guest.full_name) : { first: '', last: '', spouse: '' };
 
   const [step, setStep] = useState(1);
   const [first, setFirst] = useState(parsed.first);

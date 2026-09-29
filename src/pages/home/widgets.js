@@ -18,7 +18,7 @@ export const WIDGETS = {
   cares:     { title: 'Cares',        icon: P.heart,    to: '/cares',    action: 'Open cares',    sizes: ['small', 'medium', 'large'] },
   calendar:  { title: 'Calendar',     icon: P.calendar, to: '/calendar', action: 'Open calendar', sizes: ['small', 'medium', 'large'] },
   guests:    { title: 'Guests',       icon: P.users,    to: '/guests',   action: 'Open guests',   sizes: ['small', 'medium', 'large'] },
-  members:   { title: 'Members',      icon: P.person,   to: '/members',  action: 'Open members',  sizes: ['small', 'medium', 'large'] },
+  members:   { title: 'Directory',    icon: P.person,   to: '/members',  action: 'Open directory', sizes: ['small', 'medium', 'large'] },
   email:     { title: 'Email',        icon: P.mail,     to: '/email',    action: 'Open inbox',    sizes: ['small', 'medium'] },
   sms:       { title: 'SMS',          icon: P.chat,     to: '/sms',      action: 'Open SMS',      sizes: ['small', 'medium'] },
   attendance:{ title: 'Attendance',   icon: P.grid,                     action: 'View map',      sizes: ['small', 'medium'] },

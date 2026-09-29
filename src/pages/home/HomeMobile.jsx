@@ -27,7 +27,7 @@ const ACTIONS = [
   { key: 'cares',    to: '/cares',    icon: P.heart,    label: 'Cares' },
   { key: 'sms',      to: '/sms',      icon: P.chat,     label: 'SMS' },
   { key: 'calendar', to: '/calendar', icon: P.calendar, label: 'Calendar' },
-  { key: 'members',  to: '/members',  icon: P.person,   label: 'Members' },
+  { key: 'members',  to: '/members',  icon: P.person,   label: 'Directory' },
 ];
 
 

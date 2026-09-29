@@ -1,8 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import { P, Icon } from '../../lib/icons';
 import {
-  fetchChurchMembers, initials, isArchived,
-  markMemberAsProspect, markMemberInactive, deleteChurchMember,
+  fetchChurchMembers, initials, isInactive, isHiddenProspect,
+  markMemberAsProspect, restoreProspectToMember, markMemberInactive, deleteChurchMember,
 } from '../../lib/members';
 import { confirmDialog } from '../../lib/dialog';
 import { MemberModal } from './MembersPage';
@@ -40,10 +40,11 @@ export default function MembersMobile() {
   }
   useEffect(() => { load(); }, []);
 
-  /* Archived covers both inactive people and records demoted to prospects —
-     neither belongs in a directory you are using to reach somebody today. */
+  /* Everyone, members and prospects alike, as on the desktop: a prospect is
+     somebody you may well be trying to reach, and carries a pill saying so.
+     Inactive people still step out of the way. */
   const list = useMemo(() => {
-    let l = rows.filter(m => !isArchived(m));
+    let l = rows.filter(m => !isInactive(m));
     const s = q.trim().toLowerCase();
     if (s) {
       l = l.filter(m => [m.name, m.phone, m.email, m.family, m.tags]
@@ -59,7 +60,7 @@ export default function MembersMobile() {
       <main className="mm-scroll">
 
         <header className="mm-head">
-          <h1 className="mm-title">Members</h1>
+          <h1 className="mm-title">Directory</h1>
           <span className="mm-count">{list.length}</span>
         </header>
 
@@ -83,17 +84,20 @@ export default function MembersMobile() {
 
         {!loading && list.length === 0 && (
           <p className="mm-empty">
-            {q.trim() ? `Nobody matches “${q.trim()}”.` : 'No members yet.'}
+            {q.trim() ? `Nobody matches “${q.trim()}”.` : 'Nobody in the directory yet.'}
           </p>
         )}
 
         <div className="mm-grid">
           {list.map(m => (
             <button key={m.id} className="mm-tile" onClick={() => { tapOpen(); setPicked(m); }}>
-              <span className="mm-sq">
-                {m.photo_url
-                  ? <img src={m.photo_url} alt="" className="mm-photo" />
-                  : <span className="mm-ini">{initials(m.name)}</span>}
+              <span className="mm-avwrap">
+                <span className="mm-sq">
+                  {m.photo_url
+                    ? <img src={m.photo_url} alt="" className="mm-photo" />
+                    : <span className="mm-ini">{initials(m.name)}</span>}
+                </span>
+                {isHiddenProspect(m) && <span className="mm-ppill">Prospect</span>}
               </span>
               <span className="mm-name">{m.name}</span>
             </button>
@@ -136,8 +140,12 @@ function MemberSheet({ member: m, onClose, onEdit, onChanged }) {
   async function act(kind) {
     const spec = {
       prospect: {
-        message: `Move ${m.name} to prospects? They will come off the member directory.`,
+        message: `Mark ${m.name} as a prospect? They stay in the directory, with a Prospect pill.`,
         run: () => markMemberAsProspect(m.id),
+      },
+      member: {
+        message: `Mark ${m.name} as a member? The Prospect pill comes off.`,
+        run: () => restoreProspectToMember(m.id),
       },
       inactive: {
         message: `Mark ${m.name} inactive? They stay on record but leave the directory.`,
@@ -163,10 +171,13 @@ function MemberSheet({ member: m, onClose, onEdit, onChanged }) {
       <div className="mm-sheet" onClick={e => e.stopPropagation()} role="dialog" aria-label={m.name}>
         <button className="mm-x" onClick={onClose} aria-label="Close"><Icon d={P.close} size={19} /></button>
 
-        <span className="mm-sq lg">
-          {m.photo_url
-            ? <img src={m.photo_url} alt="" className="mm-photo" />
-            : <span className="mm-ini">{initials(m.name)}</span>}
+        <span className="mm-avwrap lg">
+          <span className="mm-sq lg">
+            {m.photo_url
+              ? <img src={m.photo_url} alt="" className="mm-photo" />
+              : <span className="mm-ini">{initials(m.name)}</span>}
+          </span>
+          {isHiddenProspect(m) && <span className="mm-ppill lg">Prospect</span>}
         </span>
         <h2 className="mm-sheet-name">{m.name}</h2>
 
@@ -199,9 +210,15 @@ function MemberSheet({ member: m, onClose, onEdit, onChanged }) {
           <button className="mm-manage-row" onClick={onEdit}>
             <Icon d={P.edit} size={18} />Edit member
           </button>
-          <button className="mm-manage-row" onClick={() => act('prospect')} disabled={!!busy}>
-            <Icon d={P.person} size={18} />{busy === 'prospect' ? 'Moving…' : 'Mark as prospect'}
-          </button>
+          {isHiddenProspect(m) ? (
+            <button className="mm-manage-row" onClick={() => act('member')} disabled={!!busy}>
+              <Icon d={P.person} size={18} />{busy === 'member' ? 'Marking…' : 'Mark as member'}
+            </button>
+          ) : (
+            <button className="mm-manage-row" onClick={() => act('prospect')} disabled={!!busy}>
+              <Icon d={P.person} size={18} />{busy === 'prospect' ? 'Marking…' : 'Mark as prospect'}
+            </button>
+          )}
           <button className="mm-manage-row" onClick={() => act('inactive')} disabled={!!busy}>
             <Icon d={P.archive} size={18} />{busy === 'inactive' ? 'Marking…' : 'Mark as inactive'}
           </button>
