@@ -11,7 +11,7 @@ import './TopNav.css';
 const PAGE_LABELS = {
   '/': 'Home', '/cares': 'Care List', '/guests': 'Guest List',
   '/calendar': 'Calendar', '/email': 'Email', '/admin': 'Admin', '/rsvps': 'RSVP',
-  '/members': 'Directory',
+  '/members': 'Directory', '/cares/texts': 'Care Texts',
 };
 
 const NAV_MENUS = {

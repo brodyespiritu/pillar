@@ -205,11 +205,16 @@ export const updateText = (name: string, note: string) => alertText(updateAlert(
 
 /* The morning summary: everything about this deacon's families since the last
    one, in as few texts as fit — one per event would be the noise it replaces. */
-export function dailyParts(items: { line: string }[]) {
+export function dailyContent(items: { line: string }[]) {
   const head = items.length === 1
     ? 'One update on your families:'
     : `${items.length} updates on your families:`;
-  return splitMessage(head, items.map(i => `- ${i.line}`));
+  return { head, lines: items.map(i => `- ${i.line}`) };
+}
+
+export function dailyParts(items: { line: string }[]) {
+  const { head, lines } = dailyContent(items);
+  return splitMessage(head, lines);
 }
 
 export function dailyText(items: { name?: string; line: string }[]) {

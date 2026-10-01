@@ -82,6 +82,15 @@
 .cp-mic:hover { background: #DBEAFF; }
 
 .cp-select { position: relative; }
+/* The way to Care Texts, sized to sit beside the priority select. */
+.cp-search-row.has-texts { max-width: 760px; }
+.cp-texts {
+  display: flex; align-items: center; gap: 8px; white-space: nowrap;
+  padding: 12px 16px; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--surface); color: var(--text); font-size: 15px; font-weight: 500;
+}
+.cp-texts svg { color: var(--text-3); }
+.cp-texts:hover { border-color: var(--text-3); }
 .cp-select select {
   appearance: none;
   height: 100%;

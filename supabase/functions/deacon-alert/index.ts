@@ -24,8 +24,10 @@
  */
 
 import {
-  matchDeacon, cadenceByPhone, DEFAULT_CADENCE, addedAlert, updateAlert, alertParts, loadDirectory,
+  matchDeacon, cadenceByPhone, DEFAULT_CADENCE, addedAlert, updateAlert, loadDirectory,
 } from '../_shared/deacons.ts';
+import { deaconAlertText } from '../_shared/careWriter.ts';
+import { openCareWriter } from '../_shared/careAi.ts';
 import { activeMaintenance } from '../_shared/maintenance.ts';
 import { systemCaller } from '../_shared/callers.ts';
 import { verifiedDeaconPhones } from '../_shared/recipients.ts';
@@ -98,12 +100,27 @@ Deno.serve(async (req) => {
     const how = cadenceByPhone(answers || []).get(hit.phone) || DEFAULT_CADENCE;
     if (how !== 'immediate') return json({ ok: true, skipped: 'deacon takes the morning summary' });
 
+    /* Told already — the sweep got there first? Then there is nothing to write. */
+    const { data: told } = await supabase.from('deacon_alerts_sent').select('ref_id')
+      .eq('deacon_phone', hit.phone).eq('kind', kind).eq('ref_id', String(id)).maybeSingle();
+    if (told) return json({ ok: true, skipped: 'already sent' });
+
+    /*
+     * The wording: Pillar's, or the AI's when that is switched on and passes
+     * its checks (careAi.ts). Written before the claim, so the claim and the
+     * send stay seconds apart however long the AI takes.
+     */
+    const writer = await openCareWriter(supabase, { budgetMs: 40_000 });
+    const written = await writer.write(deaconAlertText({
+      alert, kind, phone: hit.phone, ref: String(id), deacon: hit.deacon.name, person: care.full_name,
+    }));
+
     /* Claim before sending, so the half-hourly sweep cannot send it again. */
     const { error: claimErr } = await supabase.from('deacon_alerts_sent')
       .insert({ deacon_phone: hit.phone, kind, ref_id: String(id) });
     if (claimErr) return json({ ok: true, skipped: 'already sent' });
 
-    const parts = alertParts(alert);
+    const parts = written.parts;
     const res = await fetch(`${SUPABASE_URL}/functions/v1/send-prospect-sms`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SERVICE_ROLE}` },
@@ -127,7 +144,7 @@ Deno.serve(async (req) => {
         error: out?.error || out?.failed?.[0]?.error || `send failed: ${res.status}` }, out?.maintenance ? 200 : 502);
     }
 
-    return json({ ok: true, sent: out.sent, parts: parts.length, deacon: hit.deacon.name });
+    return json({ ok: true, sent: out.sent, parts: parts.length, deacon: hit.deacon.name, wording: written.used });
   } catch (e) {
     console.error('deacon-alert:', (e as Error).message);
     return json({ error: String((e as Error).message || e) }, 500);

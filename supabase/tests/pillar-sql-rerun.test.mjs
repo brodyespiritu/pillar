@@ -66,7 +66,7 @@ const BUILD = ['admin-schema.sql', 'security-hardening.sql', 'members-schema.sql
   'sms-poll-schema.sql', 'sms-maintenance-schema.sql', path.resolve(SUPA, '../supabase-website-content.sql'),
   'sms-recipient-guards.sql', 'rsvp-forms-schema.sql', 'push-schema.sql', 'email-templates-schema.sql',
   'guests-schema.sql', 'attendance-schema.sql', 'email-recap-schema.sql', 'sms-library-schema.sql',
-  'groups-schema.sql',
+  'groups-schema.sql', 'care-ai-writer.sql',
   // what the member app reads: these are public on purpose, so they must stay public-read only
   'app-home-cards.sql', 'app-live-updates.sql', 'group-posts.sql', 'app-home-tiles.sql', 'calendar-featured.sql',
   'app-media-series.sql', 'app-page-headers.sql'];

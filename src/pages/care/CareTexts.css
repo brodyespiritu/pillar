@@ -1,0 +1,135 @@
+/* Care Texts — the page that teaches the AI writer. Card metrics follow the
+   care list's (.mc in CaresPage.css): radius-lg, generous padding, one soft
+   border; colour lives in the small status chips, not in rules or stripes. */
+
+.ct-wrap { display: flex; flex-direction: column; height: 100vh; overflow: hidden; background: var(--bg); }
+.ct-scroll { flex: 1; overflow-y: auto; }
+.ct-container { max-width: 1120px; margin: 0 auto; padding: 32px 32px 72px; display: flex; flex-direction: column; gap: 22px; }
+
+.ct-back {
+  align-self: flex-start; display: flex; align-items: center; gap: 4px;
+  background: none; font-size: 14px; font-weight: 600; color: var(--accent);
+}
+.ct-back:hover { text-decoration: underline; }
+
+/* ── Hero (the care list's) ── */
+.ct-hero { text-align: center; display: flex; flex-direction: column; align-items: center; margin-bottom: 14px; }
+.ct-pill {
+  display: inline-block; background: var(--accent-soft); color: var(--accent);
+  font-size: 13px; font-weight: 600; padding: 6px 16px; border-radius: 999px; margin-bottom: 20px;
+}
+.ct-title { font-size: 52px; font-weight: 800; color: var(--text); letter-spacing: -1.5px; line-height: 1.05; margin-bottom: 16px; }
+.ct-subtitle { font-size: 17px; line-height: 1.6; color: var(--text-2); max-width: 640px; text-wrap: balance; }
+
+/* ── Cards ── */
+.ct-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); padding: 28px 30px;
+}
+.ct-h2 { font-size: 20px; font-weight: 800; color: var(--text); letter-spacing: -0.3px; }
+.ct-meta { font-size: 13px; color: var(--text-3); }
+.ct-empty { font-size: 15px; line-height: 1.55; color: var(--text-3); padding: 8px 4px; }
+
+.ct-note { display: flex; align-items: flex-start; gap: 12px; font-size: 15px; line-height: 1.55; color: var(--text); background: var(--yellow-soft); border-color: transparent; }
+.ct-note svg { flex-shrink: 0; margin-top: 3px; color: var(--yellow); }
+
+/* ── How texts go out ── */
+.ct-status { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 32px; align-items: start; }
+.ct-status-main { display: flex; flex-direction: column; gap: 16px; }
+.ct-status-sub { font-size: 15px; line-height: 1.55; color: var(--text-2); max-width: 560px; }
+
+.ct-seg { display: inline-flex; align-self: flex-start; gap: 4px; padding: 4px; background: var(--surface-2); border-radius: 14px; }
+.ct-seg-btn {
+  padding: 10px 22px; border-radius: 10px; background: none;
+  font-size: 15px; font-weight: 600; color: var(--text-2);
+  transition: background 0.12s, color 0.12s, box-shadow 0.12s;
+}
+.ct-seg-btn:hover:not(:disabled) { color: var(--text); }
+.ct-seg-btn.on { background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
+.ct-seg-btn:disabled { cursor: default; }
+.ct-seg-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.ct-spend { display: flex; flex-direction: column; gap: 4px; padding: 20px 22px; border-radius: var(--radius); background: var(--surface-2); }
+.ct-spend-label { font-size: 12px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; color: var(--text-3); }
+.ct-spend-value { font-size: 34px; font-weight: 800; color: var(--text); letter-spacing: -0.8px; font-variant-numeric: tabular-nums; }
+.ct-spend-sub { font-size: 13px; line-height: 1.45; color: var(--text-2); }
+.ct-cap { display: flex; align-items: center; gap: 6px; margin-top: 10px; font-size: 14px; font-weight: 600; color: var(--text-2); }
+.ct-cap input {
+  width: 72px; padding: 7px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--surface); font-size: 14px; color: var(--text); font-variant-numeric: tabular-nums;
+}
+.ct-cap input:focus { outline: none; border-color: var(--accent); }
+
+/* ── Rules ── */
+.ct-rules { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
+.ct-rule { display: flex; flex-direction: column; gap: 14px; }
+.ct-rule-head { display: flex; flex-direction: column; gap: 3px; }
+.ct-rule-sub { font-size: 14px; color: var(--text-3); }
+.ct-rule-foot { display: flex; align-items: center; justify-content: flex-end; gap: 12px; min-height: 34px; }
+
+.ct-textarea, .ct-input {
+  width: 100%; padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--surface); color: var(--text); font: inherit; font-size: 15px; line-height: 1.55;
+}
+.ct-textarea { resize: vertical; min-height: 120px; }
+.ct-textarea:focus, .ct-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(0, 107, 255, 0.1); }
+.ct-textarea:disabled { background: var(--surface-2); color: var(--text-2); }
+.ct-textarea::placeholder, .ct-input::placeholder { color: var(--text-3); }
+
+/* ── Sections ── */
+.ct-section { display: flex; flex-direction: column; gap: 16px; margin-top: 14px; }
+.ct-section-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.ct-chips { display: flex; gap: 6px; }
+.ct-chip {
+  padding: 7px 16px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface);
+  font-size: 14px; font-weight: 600; color: var(--text-2);
+}
+.ct-chip:hover { border-color: var(--text-3); color: var(--text); }
+.ct-chip.on { background: var(--text); border-color: var(--text); color: var(--surface); }
+
+/* ── One text ── */
+.ct-draft { display: flex; flex-direction: column; gap: 18px; }
+.ct-draft-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.ct-draft-title { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.ct-draft-label { font-size: 17px; font-weight: 700; color: var(--text); }
+.ct-draft-tags { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+.ct-status-chip { padding: 5px 12px; border-radius: 999px; font-size: 13px; font-weight: 600; white-space: nowrap; }
+.ct-status-chip.sent { color: #0A6B50; background: var(--green-soft); }
+.ct-status-chip.practice { color: var(--accent); background: var(--accent-soft); }
+.ct-status-chip.held { color: #8A5A00; background: var(--yellow-soft); }
+.ct-tag { padding: 4px 11px; border-radius: 999px; font-size: 12px; font-weight: 600; color: var(--text-2); background: var(--surface-2); }
+
+.ct-problem { display: flex; align-items: flex-start; gap: 8px; font-size: 14px; line-height: 1.5; color: #8A5A00; }
+.ct-problem svg { flex-shrink: 0; margin-top: 3px; }
+
+.ct-compare { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.ct-version { display: flex; flex-direction: column; gap: 8px; padding: 18px 20px; border-radius: var(--radius); background: var(--surface-2); min-width: 0; }
+.ct-version.ai { background: var(--accent-soft); }
+.ct-version-label { font-size: 12px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; color: var(--text-3); }
+.ct-text { font-size: 15px; line-height: 1.55; color: var(--text); white-space: pre-wrap; overflow-wrap: anywhere; }
+.ct-muted { color: var(--text-3); }
+
+.ct-retry { display: flex; flex-direction: column; gap: 8px; padding: 18px 20px; border-radius: var(--radius); border: 1px dashed var(--border); }
+
+.ct-correct { display: flex; flex-direction: column; gap: 10px; }
+.ct-actions { display: flex; justify-content: flex-end; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ct-actions .btn-ghost, .ct-actions .btn-primary { display: inline-flex; align-items: center; gap: 6px; }
+
+/* ── Examples ── */
+.ct-examples { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.ct-example { display: flex; flex-direction: column; gap: 10px; padding: 22px 24px; }
+.ct-example-head { display: flex; align-items: center; gap: 10px; }
+.ct-why { font-size: 14px; line-height: 1.5; color: var(--text-2); }
+.ct-link { margin-left: auto; background: none; font-size: 13px; font-weight: 600; color: var(--text-2); }
+.ct-link:hover { color: var(--text); text-decoration: underline; }
+.ct-link.danger:hover { color: var(--red); }
+
+@media (max-width: 900px) {
+  .ct-container { padding: 20px 16px 56px; }
+  .ct-title { font-size: 38px; }
+  .ct-card { padding: 22px 20px; }
+  .ct-status, .ct-rules, .ct-compare, .ct-examples { grid-template-columns: 1fr; }
+  .ct-seg { align-self: stretch; }
+  .ct-seg-btn { flex: 1; padding: 10px 8px; }
+}

@@ -169,27 +169,27 @@ function sectionLines(title: string, items: any[], render: (x: any) => string) {
   return [`${title} (${items.length}):`, ...items.map(render)];
 }
 
+type DigestPayload = {
+  slot: number; added: any[]; updates: any[]; edited: any[]; events: any[]; ongoing?: any[]; today?: Date;
+};
+
+export type DigestContent =
+  | { quiet: true; line: string }
+  | { quiet: false; header: string; lines: string[] };
+
 /*
- * The digest as one or more message bodies — one entry per text to send, in
- * order. Callers must send every part.
+ * What the digest says, before it is cut into texts: the header and its lines,
+ * or — when there is nothing to report outside the morning — the single quiet
+ * line. Kept apart from packDigest so a rewritten body (careWriter.ts) is cut
+ * into texts exactly the way Pillar's own is.
  */
-export function buildDigest(
-  { slot, added, updates, edited, events, ongoing = [], today }:
-  { slot: number; added: any[]; updates: any[]; edited: any[]; events: any[]; ongoing?: any[]; today?: Date },
-  { tail = '' }: { tail?: string } = {},
-): string[] {
+export function digestContent(
+  { slot, added, updates, edited, events, ongoing = [], today }: DigestPayload,
+): DigestContent {
   const morning = slot === MORNING;
   /* Someone still in a hospital bed counts as something to report, so a slot
      carrying only them is not a quiet one. */
   const nothing = !added.length && !updates.length && !edited.length && !ongoing.length;
-  /*
-   * Everything that goes out is normalised to plain punctuation first — the
-   * header, every staff note, the tail. Measured after, not before: "…" becomes
-   * "..." and grows by two characters, so sizing the un-normalised text would
-   * under-count exactly the parts this is here to keep under the limit.
-   */
-  const suffix = toGsm(tail ? `\n\n${tail}` : '');
-  const tidy = (s: string) => s.replace(/\n{3,}/g, '\n\n').trim();
 
   /*
    * A quiet check is a single line, not a header with an empty body under it —
@@ -197,7 +197,7 @@ export function buildDigest(
    * day's schedule when there is one.
    */
   if (nothing && !morning) {
-    return [toGsm(`CARES - No recent updates. Next check at ${slotLabel(nextSlot(slot))}`) + suffix];
+    return { quiet: true, line: toGsm(`CARES - No recent updates. Next check at ${slotLabel(nextSlot(slot))}`) };
   }
 
   /* A plain hyphen. The em dash that was here sat on the first line of every
@@ -227,7 +227,43 @@ export function buildDigest(
       : ['Today: no appointments or surgeries']));
   }
 
-  const lines = content.map(toGsm);
+  return { quiet: false, header, lines: content.map(toGsm) };
+}
+
+/* Everyone a digest names — what a rewrite of it must still name. */
+export function digestPeople({ added = [], updates = [], edited = [], events = [], ongoing = [] }: Partial<DigestPayload>) {
+  const names = [
+    ...added.map((m: any) => m.full_name), ...updates.map((u: any) => u.name), ...edited.map((e: any) => e.name),
+    ...ongoing.map((m: any) => m.full_name), ...events.map((e: any) => e.member?.full_name),
+  ];
+  return [...new Set(names.map(n => clean(n)).filter(n => n && n !== 'Unknown'))];
+}
+
+/*
+ * The digest as one or more message bodies — one entry per text to send, in
+ * order. Callers must send every part.
+ */
+export function buildDigest(payload: DigestPayload, { tail = '' }: { tail?: string } = {}): string[] {
+  const c = digestContent(payload);
+  if (c.quiet) return [c.line + toGsm(tail ? `\n\n${tail}` : '')];
+  return packDigest(c.header, c.lines, { tail });
+}
+
+/*
+ * A header and its lines as texts: one, or numbered parts each under the limit.
+ */
+export function packDigest(header: string, lines: string[], { tail = '' }: { tail?: string } = {}): string[] {
+  /*
+   * Everything that goes out is normalised to plain punctuation first — the
+   * header, every staff note, the tail. Measured after, not before: "…" becomes
+   * "..." and grows by two characters, so sizing the un-normalised text would
+   * under-count exactly the parts this is here to keep under the limit.
+   */
+  const suffix = toGsm(tail ? `\n\n${tail}` : '');
+  const tidy = (s: string) => s.replace(/\n{3,}/g, '\n\n').trim();
+  header = toGsm(header);
+  lines = lines.map(toGsm);
+
   const whole = tidy([header, '', ...lines].join('\n'));
   if (smsCost(whole + suffix).segments <= PART_SEGMENTS) return [whole + suffix];
 

@@ -10,6 +10,7 @@ import MobileNav from './components/MobileNav';
 import PINPage   from './pages/auth/PINPage';
 import HomePage  from './pages/home/HomePage';
 import CaresPage from './pages/care/CaresPage';
+import CareTextsPage from './pages/care/CareTextsPage';
 import GuestsPage from './pages/guests/GuestsPage';
 import CalendarPage from './pages/calendar/CalendarPage';
 import PlaybooksPage from './pages/playbooks/PlaybooksPage';
@@ -105,6 +106,7 @@ export default function App() {
       <Routes>
         <Route path="/"       element={isRsvpHost ? <RsvpHome /> : <HomePage />} />
         <Route path="/cares"  element={<CaresPage />} />
+        <Route path="/cares/texts" element={<CareTextsPage />} />
         <Route path="/guests"   element={<GuestsPage />} />
         <Route path="/calendar" element={<CalendarPage />} />
         <Route path="/playbooks"     element={<PlaybooksPage />} />

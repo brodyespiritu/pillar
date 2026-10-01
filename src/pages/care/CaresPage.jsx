@@ -1,6 +1,6 @@
 import { confirmDialog, alertDialog } from "../../lib/dialog";
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import TopNav from '../../components/TopNav';
 import { P, Icon } from '../../lib/icons';
 import {
@@ -20,6 +20,7 @@ import LogContactSheet from './LogContactSheet';
 import CareUpdatesSheet from './CareUpdatesSheet';
 import { useAuth } from '../../context/AuthContext';
 import { canSendCareUpdates } from '../../lib/careUpdates';
+import { canSeeCareTexts } from '../../lib/careTexts';
 import './CaresPage.css';
 
 const FILTERS = {
@@ -50,6 +51,9 @@ export default function CaresPage() {
   /* The Update button: only for staff an admin has allowed to email care updates. */
   const { profile } = useAuth();
   const canUpdate = canSendCareUpdates(profile);
+  /* How the texts to deacons and staff are written — Cares access. */
+  const canTexts = canSeeCareTexts(profile);
+  const navigate = useNavigate();
   const [updatesOpen, setUpdatesOpen] = useState(false);
 
   const [holdProgress, setHoldProgress] = useState(0);
@@ -245,7 +249,7 @@ export default function CaresPage() {
             <h1 className="cp-title">Care List</h1>
             <p className="cp-subtitle">{summary}</p>
 
-            <div className="cp-search-row">
+            <div className={`cp-search-row ${canTexts ? 'has-texts' : ''}`}>
               <div className="cp-search">
                 <Icon d={P.search} size={18} className="cp-search-icon" />
                 <input
@@ -263,6 +267,11 @@ export default function CaresPage() {
                   {PRIORITIES.map(p => <option key={p} value={p}>{p} priority</option>)}
                 </select>
               </div>
+              {canTexts && (
+                <button className="cp-texts" onClick={() => navigate('/cares/texts')}>
+                  <Icon d={P.chat} size={16} />Care texts
+                </button>
+              )}
             </div>
           </header>
 

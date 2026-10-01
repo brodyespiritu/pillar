@@ -74,6 +74,37 @@ export type Caller =
   | { ok: false; status: 401 | 403; error: string };
 
 /*
+ * Staff with Cares access, for functions that show or act on care details:
+ * an admin, or someone given Cares view ('view') or edit ('edit'). The same
+ * rule as can_read_cares() / can_edit_cares() in care-ai-writer.sql. A
+ * member-app login is never staff. `supabase` must be a service-role client.
+ */
+export async function authorizeCares(
+  req: Request, supabase: any, need: 'view' | 'edit',
+): Promise<{ ok: true; staffId: string; name: string } | { ok: false; status: 401 | 403; error: string }> {
+  const token = bearerToken(req);
+  if (!token) return { ok: false, status: 401, error: 'Sign in first.' };
+  const { data, error } = await supabase.auth.getUser(token);
+  const user = data?.user;
+  if (error || !user?.id) return { ok: false, status: 401, error: 'Your session has expired. Sign in again.' };
+  if (user.app_metadata?.bbc_member_id) return { ok: false, status: 403, error: 'This is for church staff.' };
+
+  const { data: staff, error: staffErr } = await supabase
+    .from('staff').select('id, name, role, active, permissions').eq('id', user.id).maybeSingle();
+  if (staffErr) return { ok: false, status: 403, error: 'Could not confirm you are staff. Try again in a moment.' };
+  if (!staff || staff.active === false) return { ok: false, status: 403, error: 'Only active staff can do this.' };
+
+  const admin = /admin/i.test(String(staff.role || ''));
+  const cares = String(staff.permissions?.cares || 'none');
+  const allowed = admin || (need === 'view' ? ['view', 'edit'].includes(cares) : cares === 'edit');
+  if (!allowed) {
+    return { ok: false, status: 403,
+      error: need === 'edit' ? 'You need Cares edit access for this.' : 'You need Cares access for this.' };
+  }
+  return { ok: true, staffId: staff.id, name: staff.name || '' };
+}
+
+/*
  * `supabase` must be a service-role client: it reads staff past row-level
  * security, and verifies the caller's token with the auth server.
  */

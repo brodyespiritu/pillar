@@ -29,12 +29,14 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { upcomingCareEvents } from '../_shared/careEvents.ts';
 import {
-  SLOTS, MORNING, slotLabel, buildDigest, reminderText, wherePlace,
+  SLOTS, MORNING, slotLabel, buildDigest, reminderText, wherePlace, digestContent, packDigest, digestPeople,
 } from '../_shared/careDigest.ts';
 import {
   matchDeacon, cadenceByPhone, DEFAULT_CADENCE, addedAlert, updateAlert, alertText, alertParts,
-  dailyParts, loadDirectory, last10,
+  dailyParts, dailyContent, loadDirectory, last10,
 } from '../_shared/deacons.ts';
+import { deaconAlertText, deaconSummaryText, staffDigestText, type CareText } from '../_shared/careWriter.ts';
+import { openCareWriter, mapLimit } from '../_shared/careAi.ts';
 import { activeMaintenance } from '../_shared/maintenance.ts';
 import { smsCost, toGsm } from '../_shared/smsEncoding.ts';
 import { systemCaller } from '../_shared/callers.ts';
@@ -178,7 +180,8 @@ const SWEEP_LOOKBACK_MS = 2 * 3600_000;
 const DAILY_FIRST_MS = 24 * 3600_000;
 const DAILY_MAX_MS = 48 * 3600_000;
 
-type Planned = { phone: string; deacon: string; kind: string; ref: string; parts: string[] };
+/* `parts` is Pillar's wording; `text` is what the AI writer is handed (careAi.ts). */
+type Planned = { phone: string; deacon: string; kind: string; ref: string; parts: string[]; text: CareText };
 
 /*
  * What the deacon alerts would do now, without doing it. Shared by the real run
@@ -245,7 +248,12 @@ async function planDeaconAlerts(
     const m = matchDeacon(e.care, directory, deaconPhones);
     if (!m.ok) { counts[m.why]++; continue; }      // unmatched, ambiguous or unreachable — never guessed
     if ((cadence.get(m.phone) || DEFAULT_CADENCE) === 'daily') { counts.daily_cadence++; continue; }
-    immediate.push({ phone: m.phone, deacon: m.deacon.name || '', kind: e.kind, ref: String(e.ref), parts: alertParts(e.alert) });
+    immediate.push({
+      phone: m.phone, deacon: m.deacon.name || '', kind: e.kind, ref: String(e.ref), parts: alertParts(e.alert),
+      text: deaconAlertText({
+        alert: e.alert, kind: e.kind, phone: m.phone, ref: String(e.ref), deacon: m.deacon.name, person: e.care.full_name,
+      }),
+    });
   }
 
   const daily: Planned[] = [];
@@ -270,14 +278,14 @@ async function planDeaconAlerts(
       .select('id, notes, created_at, member_id, type, logged_by_name, care_members(full_name, phone)')
       .gte('created_at', from);
 
-    const byDeacon = new Map<string, { deacon: string; lines: { line: string }[] }>();
+    const byDeacon = new Map<string, { deacon: string; lines: { line: string; name: string }[] }>();
     const push = (care: any, at: string, line: string) => {
       const m = matchDeacon(care, directory, deaconPhones);
       if (!m.ok) return;
       if ((cadence.get(m.phone) || DEFAULT_CADENCE) !== 'daily') return;
       if (Date.parse(at) < startFor(m.phone)) return;
       if (!byDeacon.has(m.phone)) byDeacon.set(m.phone, { deacon: m.deacon.name || '', lines: [] });
-      byDeacon.get(m.phone)!.lines.push({ line });
+      byDeacon.get(m.phone)!.lines.push({ line, name: care.full_name || '' });
     };
     for (const m of dAdded || []) push(m, m.created_at, alertText(addedAlert(m)));
     for (const l of dLogs || []) {
@@ -285,7 +293,14 @@ async function planDeaconAlerts(
       if (cm && String(l.notes || '').trim()) push(cm, l.created_at, alertText(updateAlert(cm.full_name, l.notes)));
     }
     for (const [phone, v] of byDeacon) {
-      if (v.lines.length) daily.push({ phone, deacon: v.deacon, kind: 'daily', ref: stamp, parts: dailyParts(v.lines) });
+      if (!v.lines.length) continue;
+      daily.push({
+        phone, deacon: v.deacon, kind: 'daily', ref: stamp, parts: dailyParts(v.lines),
+        text: deaconSummaryText({
+          ...dailyContent(v.lines), phone, stamp, deacon: v.deacon,
+          people: [...new Set(v.lines.map(l => l.name).filter(Boolean))],
+        }),
+      });
     }
   }
 
@@ -316,22 +331,37 @@ async function sendDeaconAlerts(supabase: any, nowMs: number, isMorning: boolean
   const plan = await planDeaconAlerts(supabase, nowMs, isMorning, stamp, sinceMs, includeHeld);
   if ('skipped' in plan && plan.skipped) return { skipped: plan.skipped };
 
-  let immediate = 0, daily = 0, released = 0;
-  for (const p of [...plan.immediate, ...plan.daily]) {
+  const planned = [...plan.immediate, ...plan.daily];
+  /* Opened only when there is something to send; most firings have nothing. */
+  const writer = planned.length ? await openCareWriter(supabase, { budgetMs: 40_000 }) : null;
+
+  let immediate = 0, daily = 0, released = 0, ai = 0;
+  /*
+   * Three at a time: the morning's summaries all fall due at once, and each can
+   * wait a few seconds on the AI. Each still claims before anything else, and
+   * writes after the claim — so a sweep passing an alert already sent never
+   * pays to write it again.
+   */
+  await mapLimit(planned, 3, async (p) => {
     /* Claim before sending — a repeat firing, or the trigger's own call, must not text again. */
     const { error } = await supabase.from('deacon_alerts_sent')
       .insert({ deacon_phone: p.phone, kind: p.kind, ref_id: p.ref });
-    if (error) continue;                                   // 23505 = already told
+    if (error) return;                                     // 23505 = already told
 
-    const went = await deliverToDeacon(p.phone, p.parts);
-    if (went > 0) { if (p.kind === 'daily') daily++; else immediate++; continue; }
+    const written = writer ? await writer.write(p.text) : null;
+    const went = await deliverToDeacon(p.phone, written?.parts || p.parts);
+    if (went > 0) {
+      if (p.kind === 'daily') daily++; else immediate++;
+      if (written?.used === 'ai') ai++;
+      return;
+    }
 
     /* Nothing arrived: give the claim back so the next firing tries again. */
     await supabase.from('deacon_alerts_sent').delete()
       .eq('deacon_phone', p.phone).eq('kind', p.kind).eq('ref_id', p.ref);
     released++;
-  }
-  return { deacons: plan.deacons, ...plan.counts, immediate, daily, released };
+  });
+  return { deacons: plan.deacons, ...plan.counts, immediate, daily, released, aiWritten: ai };
 }
 
 async function sendReminders(supabase: any, members: any[], now: Date, today: Date) {
@@ -595,8 +625,8 @@ Deno.serve(async (req) => {
     // the signal that the system is alive and was looked at.
     const payload = { slot, added, updates, edited, events, ongoing, today };
     // One or more parts — a long digest is split, never trimmed.
-    const parts = buildDigest(payload);
-    const partsWithNotice = buildDigest(payload, { tail: STOP_NOTICE });
+    let parts = buildDigest(payload);
+    let partsWithNotice = buildDigest(payload, { tail: STOP_NOTICE });
 
     // 4. Recipients — the admin-managed opt-in list, staff only.
     const { data: staff, error: staffErr } = await supabase
@@ -619,6 +649,27 @@ Deno.serve(async (req) => {
     }
 
     if (!recipients.length) return json({ ok: true, sentOn, slot, skipped: 'no opted-in staff' });
+
+    /*
+     * The wording: Pillar's, or the AI's when that is switched on and passes
+     * its checks (careAi.ts). The header and the part numbering stay Pillar's,
+     * so the delivery check further down still recognises the parts. A quiet
+     * "no recent updates" line is left as it is.
+     */
+    let wording = 'pillar';
+    const content = digestContent(payload);
+    if (!content.quiet) {
+      const writer = await openCareWriter(supabase, { budgetMs: 60_000 });
+      const written = await writer.write(staffDigestText({
+        header: content.header, lines: content.lines, parts, sentOn, slot,
+        slotName: slotLabel(slot), people: digestPeople(payload),
+      }));
+      if (written.used === 'ai' && written.lines) {
+        parts = written.parts;
+        partsWithNotice = packDigest(content.header, written.lines, { tail: STOP_NOTICE });
+        wording = 'ai';
+      }
+    }
 
     /* One message per part per person. flatMap, not map — mapping would send
        only the first part and silently drop the rest of the digest. */
@@ -717,7 +768,7 @@ Deno.serve(async (req) => {
                 note: parts.length > 1 ? `${parts.length} parts` : null })
       .eq('sent_on', sentOn).eq('slot', slot);
 
-    return json({ ok: true, sentOn, slot: slotLabel(slot), sent: reached,
+    return json({ ok: true, sentOn, slot: slotLabel(slot), sent: reached, wording,
       parts: parts.length, messages: out?.sent ?? 0,
       failed: out?.failed ?? [], added: added.length, updates: updates.length,
       edited: edited.length, events: events.length });
